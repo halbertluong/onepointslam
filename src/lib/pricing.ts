@@ -1,27 +1,36 @@
-export const SYSTEM_TECH_FEE = 5.0;
+export const DEFAULT_PLATFORM_FEE = 5.0;
 
-export interface PriceBreakdown {
-  playerTotal: number;
+export interface GoalBasedResult {
+  entranceFeePerPlayer: number;
+  totalRaised: number;
+  playerCount: number;
+}
+
+export interface PlayerBasedResult {
+  entranceFeePerPlayer: number;
   schoolRevenue: number;
-  systemFee: number;
 }
 
 export function calcGoalBased(
   fundraisingGoal: number,
   targetPlayerCount: number,
-  systemFee: number = SYSTEM_TECH_FEE,
-): PriceBreakdown {
-  const schoolRevenue = fundraisingGoal / targetPlayerCount;
-  const playerTotal = schoolRevenue + systemFee;
-  return { playerTotal, schoolRevenue, systemFee };
+): GoalBasedResult {
+  const entranceFeePerPlayer = fundraisingGoal / (targetPlayerCount || 1);
+  return {
+    entranceFeePerPlayer,
+    totalRaised: fundraisingGoal,
+    playerCount: targetPlayerCount,
+  };
 }
 
-export function calcMarginBased(
-  desiredMarginPerPlayer: number,
-  systemFee: number = SYSTEM_TECH_FEE,
-): PriceBreakdown {
-  const playerTotal = desiredMarginPerPlayer + systemFee;
-  return { playerTotal, schoolRevenue: desiredMarginPerPlayer, systemFee };
+export function calcPlayerBased(
+  entranceFeePerPlayer: number,
+  targetPlayerCount: number,
+): PlayerBasedResult {
+  return {
+    entranceFeePerPlayer,
+    schoolRevenue: entranceFeePerPlayer * targetPlayerCount,
+  };
 }
 
 export function formatCurrency(amount: number): string {

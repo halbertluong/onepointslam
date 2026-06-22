@@ -5,12 +5,12 @@ import { createClient } from '@/lib/supabase/browser';
 import { useRouter } from 'next/navigation';
 import FundraisingCalculator from '@/components/FundraisingCalculator';
 import type { TournamentSettings, MaxPlayers } from '@/types';
-import { SYSTEM_TECH_FEE } from '@/lib/pricing';
+import { DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
 
 const DEFAULT_SETTINGS: TournamentSettings = {
   maxPlayers: 32,
   ticketPriceForFundraiser: 20,
-  systemTechFee: SYSTEM_TECH_FEE,
+  systemTechFee: DEFAULT_PLATFORM_FEE,
   serveRuleProfile: 'one_serve_sudden_death',
   serverDetermination: 'random_coin_toss',
   receivingSideSelection: 'server_choice',

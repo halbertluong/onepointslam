@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { useParams, useRouter } from 'next/navigation';
-import { formatCurrency } from '@/lib/pricing';
+import { formatCurrency, DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
 import type { Tournament } from '@/types';
 
 const CLOSE_REASON_TEXT: Record<string, string> = {
@@ -18,6 +18,7 @@ export default function RegisterPage() {
   const { slug, tournamentId } = useParams<{ slug: string; tournamentId: string }>();
   const router = useRouter();
   const [tournament, setTournament] = useState<Tournament | null>(null);
+  const [platformFee, setPlatformFee] = useState(DEFAULT_PLATFORM_FEE);
   const [playerCount, setPlayerCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -31,16 +32,21 @@ export default function RegisterPage() {
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const [{ data: t }, { count }] = await Promise.all([
-        supabase.from('tournaments').select('*').eq('id', tournamentId).single(),
+      const [{ data: t }, { count }, { data: tenant }] = await Promise.all([
+        supabase.from('tournaments').select('*, tenants(platform_fee)').eq('id', tournamentId).single(),
         supabase.from('players').select('id', { count: 'exact', head: true }).eq('tournament_id', tournamentId),
+        supabase.from('tenants').select('platform_fee').eq('slug', slug).single(),
       ]);
       setTournament(t);
       setPlayerCount(count ?? 0);
+      // Per-tournament override takes priority, then tenant default, then global default
+      const tournamentFee = t?.settings?.systemTechFee;
+      const tenantFee = tenant?.platform_fee;
+      setPlatformFee(tournamentFee ?? tenantFee ?? DEFAULT_PLATFORM_FEE);
       setLoading(false);
     }
     load();
-  }, [tournamentId]);
+  }, [tournamentId, slug]);
 
   const isOpen = tournament?.status === 'registration_open';
   const closeReason = tournament?.registrationCloseReason;
@@ -51,7 +57,6 @@ export default function RegisterPage() {
     setSubmitting(true);
     setError('');
 
-    // Check cap before submitting
     const supabase = createClient();
     const { count: currentCount } = await supabase
       .from('players')
@@ -79,7 +84,6 @@ export default function RegisterPage() {
     if (err) {
       setError(err.message);
     } else {
-      // If cap now reached, auto-close registration
       if (
         tournament.settings?.playerRegistrationCap &&
         (currentCount ?? 0) + 1 >= tournament.settings.playerRegistrationCap
@@ -117,9 +121,8 @@ export default function RegisterPage() {
     );
   }
 
-  const totalPrice =
-    (tournament?.settings?.ticketPriceForFundraiser ?? 0) +
-    (tournament?.settings?.systemTechFee ?? 5);
+  const entranceFee = tournament?.settings?.ticketPriceForFundraiser ?? 0;
+  const totalPrice = entranceFee + platformFee;
 
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4">
@@ -205,13 +208,13 @@ export default function RegisterPage() {
                 <div className="flex justify-between px-5 py-3 text-sm">
                   <span className="text-slate-600">Tournament entry</span>
                   <span className="font-semibold text-emerald-600">
-                    {formatCurrency(tournament?.settings?.ticketPriceForFundraiser ?? 0)}
+                    {formatCurrency(entranceFee)}
                   </span>
                 </div>
                 <div className="flex justify-between px-5 py-3 text-sm">
                   <span className="text-slate-600">Platform fee</span>
                   <span className="font-semibold text-slate-500">
-                    {formatCurrency(tournament?.settings?.systemTechFee ?? 5)}
+                    {formatCurrency(platformFee)}
                   </span>
                 </div>
                 <div
