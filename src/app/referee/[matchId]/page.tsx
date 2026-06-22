@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import CoinTossAnimation from '@/components/CoinTossAnimation';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Match, Player, Tournament } from '@/types';
+import { mapPlayer } from '@/types';
 import { advanceWinner } from '@/lib/bracket';
 
 type Phase = 'loading' | 'player_check' | 'coin_toss' | 'scoring' | 'finalized';
@@ -58,8 +59,9 @@ export default function RefereeMatchPage() {
 
     if (t) setTournament(t);
     if (players) {
-      setPlayer1(players.find((p) => p.id === m.player1_id) ?? null);
-      setPlayer2(players.find((p) => p.id === m.player2_id) ?? null);
+      const mapped = players.map((p) => mapPlayer(p as Record<string, unknown>));
+      setPlayer1(mapped.find((p) => p.id === m.player1_id) ?? null);
+      setPlayer2(mapped.find((p) => p.id === m.player2_id) ?? null);
     }
     setAllMatches(
       (allM ?? []).map((x) => ({

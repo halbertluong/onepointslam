@@ -2,21 +2,244 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/browser';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import BracketView from '@/components/BracketView';
 import { generateBracket } from '@/lib/bracket';
 import type { Tournament, Player, Match } from '@/types';
+import { mapPlayer } from '@/types';
 import { formatCurrency } from '@/lib/pricing';
+
+type Tab = 'overview' | 'draw' | 'players';
+
+function DrawEditor({
+  players,
+  matches,
+  tournamentId,
+  onSaved,
+}: {
+  players: Player[];
+  matches: Match[];
+  tournamentId: string;
+  onSaved: () => void;
+}) {
+  const [swapA, setSwapA] = useState<string | null>(null);
+  const [seedEdits, setSeedEdits] = useState<Record<string, string>>(() => {
+    const m: Record<string, string> = {};
+    players.forEach((p) => { m[p.id] = p.seedRating != null ? String(p.seedRating) : ''; });
+    return m;
+  });
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const round0 = matches.filter((m) => m.roundIndex === 0).sort((a, b) => a.matchIndex - b.matchIndex);
+
+  function playerName(id: string | null | 'BYE') {
+    if (!id || id === 'BYE') return 'BYE';
+    return players.find((p) => p.id === id)?.fullName ?? 'Unknown';
+  }
+
+  async function handleSwap(targetId: string) {
+    if (!swapA) { setSwapA(targetId); return; }
+    if (swapA === targetId) { setSwapA(null); return; }
+    // Swap swapA and targetId in all round-0 matches
+    setSaving(true);
+    const supabase = createClient();
+    const updates: PromiseLike<unknown>[] = [];
+    for (const m of round0) {
+      let p1 = m.player1Id;
+      let p2 = m.player2Id;
+      if (p1 === swapA) p1 = targetId;
+      else if (p1 === targetId) p1 = swapA;
+      if (p2 === swapA) p2 = targetId;
+      else if (p2 === targetId) p2 = swapA;
+      if (p1 !== m.player1Id || p2 !== m.player2Id) {
+        updates.push(
+          supabase.from('matches').update({ player1_id: p1, player2_id: p2 }).eq('id', m.id)
+        );
+      }
+    }
+    await Promise.all(updates);
+    setSwapA(null);
+    setSaving(false);
+    setMsg('Players swapped!');
+    onSaved();
+    setTimeout(() => setMsg(''), 2000);
+  }
+
+  async function handleSaveSeeds() {
+    setSaving(true);
+    const supabase = createClient();
+    await Promise.all(
+      players.map((p) => {
+        const val = seedEdits[p.id];
+        const seed = val ? parseInt(val) : null;
+        return supabase.from('players').update({ seed_rating: seed }).eq('id', p.id);
+      })
+    );
+    setSaving(false);
+    setMsg('Seeds saved!');
+    onSaved();
+    setTimeout(() => setMsg(''), 2000);
+  }
+
+  async function handleRandomizeUnseeded() {
+    const unseeded = round0
+      .flatMap((m) => [m.player1Id, m.player2Id])
+      .filter((id): id is string => !!id && id !== 'BYE');
+    const seededIds = players.filter((p) => p.seedRating).map((p) => p.id);
+    const unseededIds = unseeded.filter((id) => !seededIds.includes(id));
+    const shuffled = [...unseededIds].sort(() => Math.random() - 0.5);
+
+    // Build new order: seeded players keep their positions, unseeded get shuffled
+    const newOrder = unseeded.map((id) =>
+      seededIds.includes(id) ? id : shuffled.splice(0, 1)[0]
+    );
+
+    setSaving(true);
+    const supabase = createClient();
+    let idx = 0;
+    for (const m of round0) {
+      const updates: Record<string, string | null> = {};
+      if (m.player1Id && m.player1Id !== 'BYE') {
+        updates.player1_id = newOrder[idx++] ?? m.player1Id;
+      }
+      if (m.player2Id && m.player2Id !== 'BYE') {
+        updates.player2_id = newOrder[idx++] ?? m.player2Id;
+      }
+      if (Object.keys(updates).length > 0) {
+        await supabase.from('matches').update(updates).eq('id', m.id);
+      }
+    }
+    setSaving(false);
+    setMsg('Unseeded players randomized!');
+    onSaved();
+    setTimeout(() => setMsg(''), 2000);
+  }
+
+  const seeded = players.filter((p) => p.seedRating).sort((a, b) => (a.seedRating ?? 0) - (b.seedRating ?? 0));
+
+  return (
+    <div className="space-y-6">
+      {msg && <p className="text-sm bg-emerald-50 text-emerald-700 rounded-xl p-3">{msg}</p>}
+
+      {/* Seed Assignment */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="font-bold text-slate-800">Seed Assignments</h3>
+          <button
+            onClick={handleSaveSeeds}
+            disabled={saving}
+            className="btn-primary px-3 py-2 rounded-xl text-xs font-bold disabled:opacity-60"
+          >
+            Save Seeds
+          </button>
+        </div>
+        <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {players
+            .sort((a, b) => {
+              if (a.seedRating && b.seedRating) return a.seedRating - b.seedRating;
+              if (a.seedRating) return -1;
+              if (b.seedRating) return 1;
+              return a.fullName.localeCompare(b.fullName);
+            })
+            .map((p) => (
+              <div key={p.id} className="flex items-center gap-2 bg-slate-50 rounded-xl p-2.5">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-slate-700 truncate">{p.fullName}</p>
+                  {p.ntrpRating && (
+                    <p className="text-xs text-slate-400">NTRP {p.ntrpRating}</p>
+                  )}
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  max={players.length}
+                  value={seedEdits[p.id] ?? ''}
+                  onChange={(e) => setSeedEdits((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                  placeholder="—"
+                  className="w-10 text-center border border-slate-200 rounded-lg py-1 text-xs focus:outline-none"
+                />
+              </div>
+            ))}
+        </div>
+      </div>
+
+      {/* Bracket slot swap */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-slate-800">Swap Draw Positions</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {swapA
+                ? `Selected: ${playerName(swapA)} — click another player to swap`
+                : 'Click a player to select, then click another to swap positions'}
+            </p>
+          </div>
+          <button
+            onClick={handleRandomizeUnseeded}
+            disabled={saving}
+            className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+          >
+            🎲 Randomize Unseeded
+          </button>
+        </div>
+        <div className="p-4 space-y-1.5">
+          {round0.map((m) => (
+            <div key={m.id} className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 w-14 shrink-0">Match {m.matchIndex + 1}</span>
+              {[m.player1Id, m.player2Id].map((pid, slot) => {
+                const isBye = !pid || pid === 'BYE';
+                const isSelected = swapA === pid;
+                return (
+                  <button
+                    key={slot}
+                    onClick={() => !isBye && pid && handleSwap(pid)}
+                    disabled={isBye || saving}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all text-left ${
+                      isBye
+                        ? 'bg-slate-100 text-slate-400 cursor-default'
+                        : isSelected
+                        ? 'ring-2 text-white'
+                        : swapA
+                        ? 'bg-amber-50 border border-amber-200 text-slate-700 hover:bg-amber-100'
+                        : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                    style={isSelected ? { backgroundColor: 'var(--tenant-primary)', borderColor: 'var(--tenant-primary)' } : {}}
+                  >
+                    {isBye ? 'BYE' : playerName(pid)}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {seeded.length > 0 && (
+        <div className="bg-slate-50 rounded-2xl p-4">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Current Seeds</p>
+          <div className="flex flex-wrap gap-2">
+            {seeded.map((p) => (
+              <span key={p.id} className="px-2.5 py-1 bg-white border border-slate-200 rounded-full text-xs font-semibold text-slate-700">
+                [{p.seedRating}] {p.fullName}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function TournamentAdminPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [tab, setTab] = useState<Tab>('overview');
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -26,8 +249,21 @@ export default function TournamentAdminPage() {
       supabase.from('matches').select('*').eq('tournament_id', id).order('round_index').order('match_index'),
     ]);
     if (t) setTournament(t);
-    setPlayers(p ?? []);
-    setMatches(m ?? []);
+    setPlayers((p ?? []).map((row) => mapPlayer(row as Record<string, unknown>)));
+    setMatches(
+      (m ?? []).map((x) => ({
+        id: x.id,
+        tournamentId: x.tournament_id,
+        roundIndex: x.round_index,
+        matchIndex: x.match_index,
+        player1Id: x.player1_id,
+        player2Id: x.player2_id,
+        serverPlayerId: x.server_player_id,
+        winnerId: x.winner_id,
+        status: x.status,
+        courtNumber: x.court_number,
+      }))
+    );
     setLoading(false);
   }, [id]);
 
@@ -50,7 +286,6 @@ export default function TournamentAdminPage() {
     setSaving(true);
     const supabase = createClient();
     const generated = generateBracket(players, tournament.settings, id);
-    // Upsert all matches
     const { error } = await supabase.from('matches').upsert(
       generated.map((m) => ({
         id: m.id,
@@ -66,10 +301,7 @@ export default function TournamentAdminPage() {
       })),
     );
     if (!error) {
-      await supabase
-        .from('tournaments')
-        .update({ status: 'bracket_generated' })
-        .eq('id', id);
+      await supabase.from('tournaments').update({ status: 'bracket_generated' }).eq('id', id);
       setMessage('Bracket generated!');
       load();
     } else {
@@ -94,8 +326,11 @@ export default function TournamentAdminPage() {
     (tournament.settings?.ticketPriceForFundraiser ?? 0) +
     (tournament.settings?.systemTechFee ?? 5);
 
+  const canManageDraw =
+    tournament.status === 'bracket_generated' || tournament.status === 'live_play';
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900">{tournament.name}</h1>
@@ -113,37 +348,28 @@ export default function TournamentAdminPage() {
             </span>
           </div>
         </div>
-      </div>
 
-      {/* Action buttons */}
-      <div className="flex flex-wrap gap-3">
-        {tournament.status === 'registration_open' && (
-          <button
-            onClick={handleForceClose}
-            disabled={saving}
-            className="px-4 py-2.5 rounded-xl border-2 border-red-200 text-red-600 font-semibold text-sm hover:bg-red-50 transition-colors disabled:opacity-60"
-          >
-            Force Close Registration
-          </button>
-        )}
-        {(tournament.status === 'registration_open' || tournament.status === 'registration_closed') && players.length >= 2 && (
-          <button
-            onClick={handleGenerateBracket}
-            disabled={saving}
-            className="btn-primary px-4 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-60"
-          >
-            Generate Bracket
-          </button>
-        )}
-        {tournament.status === 'bracket_generated' && (
-          <button
-            onClick={handleStartPlay}
-            disabled={saving}
-            className="btn-primary px-4 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-60"
-          >
-            Start Live Play
-          </button>
-        )}
+        {/* Action buttons */}
+        <div className="flex flex-wrap gap-2">
+          {tournament.status === 'registration_open' && (
+            <button onClick={handleForceClose} disabled={saving}
+              className="px-3 py-2 rounded-xl border-2 border-red-200 text-red-600 font-semibold text-sm hover:bg-red-50 transition-colors disabled:opacity-60">
+              Close Registration
+            </button>
+          )}
+          {(tournament.status === 'registration_open' || tournament.status === 'registration_closed') && players.length >= 2 && (
+            <button onClick={handleGenerateBracket} disabled={saving}
+              className="btn-primary px-3 py-2 rounded-xl font-semibold text-sm disabled:opacity-60">
+              Generate Bracket
+            </button>
+          )}
+          {tournament.status === 'bracket_generated' && (
+            <button onClick={handleStartPlay} disabled={saving}
+              className="btn-primary px-3 py-2 rounded-xl font-semibold text-sm disabled:opacity-60">
+              Start Live Play
+            </button>
+          )}
+        </div>
       </div>
 
       {message && (
@@ -165,68 +391,121 @@ export default function TournamentAdminPage() {
         ))}
       </div>
 
-      {/* Bracket */}
-      {matches.length > 0 && (
+      {/* Tabs */}
+      <div className="flex border-b border-slate-200 gap-1">
+        {(['overview', 'draw', 'players'] as Tab[]).map((t) => {
+          if (t === 'draw' && !canManageDraw) return null;
+          return (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-colors capitalize ${
+                tab === t
+                  ? 'border-b-2 text-slate-900'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+              style={tab === t ? { borderColor: 'var(--tenant-primary)', color: 'var(--tenant-primary)' } : {}}
+            >
+              {t === 'draw' ? 'Draw Editor' : t === 'overview' ? 'Bracket' : 'Players'}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Bracket tab */}
+      {tab === 'overview' && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          <h2 className="font-bold text-slate-800 mb-6">Bracket</h2>
-          <BracketView
-            initialMatches={matches}
-            players={players}
-            maxPlayers={tournament.settings?.maxPlayers ?? 32}
-            tournamentId={id}
-            liveUpdates
-          />
+          {matches.length === 0 ? (
+            <p className="text-slate-400 text-center py-8">No bracket yet. Generate one above.</p>
+          ) : (
+            <BracketView
+              initialMatches={matches}
+              players={players}
+              maxPlayers={tournament.settings?.maxPlayers ?? 32}
+              tournamentId={id}
+              liveUpdates
+            />
+          )}
         </div>
       )}
 
-      {/* Players list */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="font-bold text-slate-800">Registered Players ({players.length})</h2>
-          <a
-            href={`/t/${tournament.tenantId ?? ''}/`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs font-semibold underline"
-            style={{ color: 'var(--tenant-primary)' }}
-          >
-            Public Page ↗
-          </a>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                <th className="px-6 py-3 text-left">#</th>
-                <th className="px-6 py-3 text-left">Name</th>
-                <th className="px-6 py-3 text-left">Email</th>
-                <th className="px-6 py-3 text-left">Seed</th>
-                <th className="px-6 py-3 text-left">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {players.length === 0 && (
-                <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
-              )}
-              {players.map((p, i) => (
-                <tr key={p.id} className="hover:bg-slate-50">
-                  <td className="px-6 py-3 text-slate-400">{i + 1}</td>
-                  <td className="px-6 py-3 font-medium text-slate-800">{p.fullName}</td>
-                  <td className="px-6 py-3 text-slate-500">{p.email}</td>
-                  <td className="px-6 py-3 text-slate-500">{p.seedRating ?? '—'}</td>
-                  <td className="px-6 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                      p.status === 'checked_in' ? 'bg-emerald-100 text-emerald-700' :
-                      p.status === 'no_show_eliminated' ? 'bg-red-100 text-red-700' :
-                      'bg-slate-100 text-slate-600'
-                    }`}>{p.status}</span>
-                  </td>
+      {/* Draw editor tab */}
+      {tab === 'draw' && canManageDraw && (
+        <DrawEditor
+          players={players}
+          matches={matches}
+          tournamentId={id}
+          onSaved={load}
+        />
+      )}
+
+      {/* Players tab */}
+      {tab === 'players' && (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="font-bold text-slate-800">Registered Players ({players.length})</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  <th className="px-4 py-3 text-left">#</th>
+                  <th className="px-4 py-3 text-left">Name</th>
+                  <th className="px-4 py-3 text-left">Gender</th>
+                  <th className="px-4 py-3 text-left">NTRP</th>
+                  <th className="px-4 py-3 text-left">UTR</th>
+                  <th className="px-4 py-3 text-left">Seed</th>
+                  <th className="px-4 py-3 text-left">Tier</th>
+                  <th className="px-4 py-3 text-left">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {players.length === 0 && (
+                  <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
+                )}
+                {players
+                  .sort((a, b) => {
+                    if (a.seedRating && b.seedRating) return a.seedRating - b.seedRating;
+                    if (a.seedRating) return -1;
+                    if (b.seedRating) return 1;
+                    return a.fullName.localeCompare(b.fullName);
+                  })
+                  .map((p, i) => (
+                    <tr key={p.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-slate-400">{i + 1}</td>
+                      <td className="px-4 py-3 font-medium text-slate-800">
+                        {p.fullName}
+                        {p.seedRating && (
+                          <span className="ml-1.5 text-xs text-amber-600 font-bold">[{p.seedRating}]</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500 capitalize">{p.gender ?? '—'}</td>
+                      <td className="px-4 py-3">
+                        {p.ntrpRating != null ? (
+                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold text-xs">{p.ntrpRating}</span>
+                        ) : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {p.utrRating != null ? (
+                          <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded font-semibold text-xs">{p.utrRating}</span>
+                        ) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">{p.seedRating ?? '—'}</td>
+                      <td className="px-4 py-3 text-slate-500">{p.skillTier ?? '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          p.status === 'checked_in' ? 'bg-emerald-100 text-emerald-700' :
+                          p.status === 'no_show_eliminated' ? 'bg-red-100 text-red-700' :
+                          'bg-slate-100 text-slate-600'
+                        }`}>{p.status.replace(/_/g, ' ')}</span>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

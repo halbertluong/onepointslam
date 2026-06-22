@@ -27,18 +27,24 @@ export default async function DashboardPage() {
     .eq('id', user!.id)
     .single();
 
-  const tenantId = appUser?.assigned_tenant_ids?.[0];
+  const tenantIds: string[] = appUser?.assigned_tenant_ids ?? [];
+  const tenantId = tenantIds[0] ?? null;
 
-  const { data: tournaments } = tenantId
+  const { data: allTenants } = tenantIds.length > 0
+    ? await supabase.from('tenants').select('id, display_name, slug').in('id', tenantIds)
+    : { data: [] };
+
+  const { data: tournaments } = tenantIds.length > 0
     ? await supabase
         .from('tournaments')
         .select('*')
-        .eq('tenant_id', tenantId)
+        .in('tenant_id', tenantIds)
         .order('created_at', { ascending: false })
     : { data: [] };
 
-  const live = (tournaments ?? []).filter((t) => t.status === 'live_play');
-  const open = (tournaments ?? []).filter((t) => t.status === 'registration_open');
+  const tenantMap = Object.fromEntries((allTenants ?? []).map((t) => [t.id, t]));
+  const live = (tournaments ?? []).filter((t: Record<string, unknown>) => t.status === 'live_play');
+  const open = (tournaments ?? []).filter((t: Record<string, unknown>) => t.status === 'registration_open');
 
   return (
     <div className="space-y-8">
@@ -85,6 +91,7 @@ export default async function DashboardPage() {
               </span>
             </div>
             <div className="text-xs text-slate-400 space-y-1">
+              <p className="font-medium text-slate-500">{tenantMap[t.tenantId]?.display_name ?? ''}</p>
               <p>Max {t.settings?.maxPlayers ?? '—'} players</p>
               <p>Created {new Date(t.createdAt).toLocaleDateString()}</p>
             </div>

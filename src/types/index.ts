@@ -62,8 +62,27 @@ export interface Player {
   email: string;
   seedRating?: number;
   skillTier?: string;
+  gender?: string;
+  ntrpRating?: number;
+  utrRating?: number;
   status: PlayerStatus;
   stripePaymentIntentId?: string;
+}
+
+export function mapPlayer(row: Record<string, unknown>): Player {
+  return {
+    id: row.id as string,
+    tournamentId: (row.tournament_id ?? row.tournamentId) as string,
+    fullName: (row.full_name ?? row.fullName) as string,
+    email: row.email as string,
+    seedRating: (row.seed_rating ?? row.seedRating) as number | undefined,
+    skillTier: (row.skill_tier ?? row.skillTier) as string | undefined,
+    gender: row.gender as string | undefined,
+    ntrpRating: (row.ntrp_rating ?? row.ntrpRating) as number | undefined,
+    utrRating: (row.utr_rating ?? row.utrRating) as number | undefined,
+    status: (row.status as PlayerStatus) ?? 'registered',
+    stripePaymentIntentId: (row.stripe_payment_intent_id ?? row.stripePaymentIntentId) as string | undefined,
+  };
 }
 
 export type MatchStatus =

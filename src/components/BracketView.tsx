@@ -12,15 +12,41 @@ interface BracketViewProps {
   liveUpdates?: boolean;
 }
 
+function getPlayer(id: string | null | 'BYE', players: Player[]): Player | null {
+  if (!id || id === 'BYE') return null;
+  return players.find((p) => p.id === id) ?? null;
+}
+
 function getPlayerName(id: string | null | 'BYE', players: Player[]): string {
   if (!id) return 'TBD';
   if (id === 'BYE') return 'BYE';
   return players.find((p) => p.id === id)?.fullName ?? 'TBD';
 }
 
+function PlayerSlot({ id, players, isWinner }: { id: string | null | 'BYE'; players: Player[]; isWinner: boolean }) {
+  const name = getPlayerName(id, players);
+  const p = id && id !== 'BYE' ? getPlayer(id, players) : null;
+  return (
+    <div className={`px-3 py-2 flex items-center justify-between gap-1 border-b border-slate-100 ${isWinner ? 'bg-emerald-50' : ''}`}>
+      <div className="flex-1 min-w-0">
+        <span className={`text-sm font-medium truncate block ${isWinner ? 'text-emerald-700 font-bold' : 'text-slate-700'}`}>
+          {p?.seedRating ? <span className="text-amber-500 font-bold mr-1 text-xs">[{p.seedRating}]</span> : null}
+          {name}
+        </span>
+        {p && (p.ntrpRating != null || p.utrRating != null) && (
+          <span className="text-xs text-slate-400">
+            {p.ntrpRating != null ? `NTRP ${p.ntrpRating}` : ''}
+            {p.ntrpRating != null && p.utrRating != null ? ' · ' : ''}
+            {p.utrRating != null ? `UTR ${p.utrRating}` : ''}
+          </span>
+        )}
+      </div>
+      {isWinner && <span className="text-emerald-500 text-xs font-bold shrink-0">WIN</span>}
+    </div>
+  );
+}
+
 function MatchCard({ match, players }: { match: Match; players: Player[] }) {
-  const p1 = getPlayerName(match.player1Id, players);
-  const p2 = getPlayerName(match.player2Id, players);
   const isP1Winner = match.winnerId === match.player1Id;
   const isP2Winner = match.winnerId === match.player2Id;
 
@@ -32,25 +58,12 @@ function MatchCard({ match, players }: { match: Match; players: Player[] }) {
       : '';
 
   return (
-    <div className={`bracket-match ${statusClass} min-w-[160px] overflow-hidden`}>
+    <div className={`bracket-match ${statusClass} min-w-[180px] overflow-hidden`}>
       {match.status === 'playing' && (
-        <div
-          className="h-1 w-full"
-          style={{ backgroundColor: 'var(--tenant-primary)' }}
-        />
+        <div className="h-1 w-full" style={{ backgroundColor: 'var(--tenant-primary)' }} />
       )}
-      <div className={`px-3 py-2 flex items-center justify-between gap-2 border-b border-slate-100 ${isP1Winner ? 'bg-emerald-50' : ''}`}>
-        <span className={`text-sm font-medium truncate ${isP1Winner ? 'text-emerald-700 font-bold' : 'text-slate-700'}`}>
-          {p1}
-        </span>
-        {isP1Winner && <span className="text-emerald-500 text-xs font-bold shrink-0">WIN</span>}
-      </div>
-      <div className={`px-3 py-2 flex items-center justify-between gap-2 ${isP2Winner ? 'bg-emerald-50' : ''}`}>
-        <span className={`text-sm font-medium truncate ${isP2Winner ? 'text-emerald-700 font-bold' : 'text-slate-700'}`}>
-          {p2}
-        </span>
-        {isP2Winner && <span className="text-emerald-500 text-xs font-bold shrink-0">WIN</span>}
-      </div>
+      <PlayerSlot id={match.player1Id} players={players} isWinner={isP1Winner} />
+      <PlayerSlot id={match.player2Id} players={players} isWinner={isP2Winner} />
       {match.status === 'playing' && (
         <div className="px-3 py-1 bg-slate-50">
           <span
