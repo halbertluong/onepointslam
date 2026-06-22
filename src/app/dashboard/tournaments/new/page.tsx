@@ -144,8 +144,9 @@ export default function NewTournamentPage() {
                 onChange={(e) => updateSettings('serveRuleProfile', e.target.value as TournamentSettings['serveRuleProfile'])}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
               >
-                <option value="one_serve_sudden_death">1 Serve (Sudden Death)</option>
-                <option value="two_serves_traditional">2 Serves (Traditional)</option>
+                <option value="one_serve_sudden_death">1 Serve — Sudden Death (all players)</option>
+                <option value="two_serves_traditional">2 Serves — Traditional (all players)</option>
+                <option value="skill_based">Skill-Based — Pros 1 serve, Amateurs 2 serves</option>
               </select>
             </div>
             <div>

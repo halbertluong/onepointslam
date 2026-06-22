@@ -353,6 +353,8 @@ export default function RefereeMatchPage() {
               <div className="text-center text-xs text-slate-600 pb-2">
                 {tournament?.settings?.serveRuleProfile === 'one_serve_sudden_death'
                   ? '1 Serve · Sudden Death'
+                  : tournament?.settings?.serveRuleProfile === 'skill_based'
+                  ? 'Skill-Based · Pros 1 serve, Amateurs 2 serves'
                   : '2 Serves · Traditional'}
               </div>
             </motion.div>
