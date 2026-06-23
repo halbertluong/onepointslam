@@ -177,12 +177,9 @@ export default function AdminUsersPage() {
 
   function tenantDisplay(u: UserRow) {
     if (u.role === 'super_admin') return <span className="text-xs text-purple-600 font-semibold">All</span>;
-    if (!u.assigned_tenant_ids?.length) return <span className="text-slate-400">—</span>;
-    return (
-      <span className="text-slate-500 text-xs">
-        {u.assigned_tenant_ids.map((id) => tenants.find((t) => t.id === id)?.display_name ?? id.slice(0, 8)).join(', ')}
-      </span>
-    );
+    if (!u.assigned_tenant_ids?.length) return <span className="text-slate-400 text-xs">—</span>;
+    const names = u.assigned_tenant_ids.map((id) => tenants.find((t) => t.id === id)?.display_name ?? id.slice(0, 8));
+    return <span className="text-slate-500 text-xs">{names.join(', ')}</span>;
   }
 
   function primaryTenantName(ids: string[]) {

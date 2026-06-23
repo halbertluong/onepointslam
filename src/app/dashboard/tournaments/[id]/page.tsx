@@ -272,16 +272,21 @@ export default function TournamentAdminPage() {
   const [message, setMessage] = useState('');
   const [tab, setTab] = useState<Tab>('overview');
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [tenantSlug, setTenantSlug] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
     const [{ data: t }, { data: p }, { data: m }, { data: me }] = await Promise.all([
-      supabase.from('tournaments').select('*').eq('id', id).single(),
+      supabase.from('tournaments').select('*, tenants(slug)').eq('id', id).single(),
       supabase.from('players').select('*').eq('tournament_id', id).order('created_at'),
       supabase.from('matches').select('*').eq('tournament_id', id).order('round_index').order('match_index'),
       supabase.from('users').select('role').eq('id', (await supabase.auth.getUser()).data.user?.id ?? '').single(),
     ]);
-    if (t) setTournament(t);
+    if (t) {
+      setTournament(t);
+      setTenantSlug((t.tenants as Record<string, string> | null)?.slug ?? '');
+    }
     setIsSuperAdmin((me as { role?: string } | null)?.role === 'super_admin');
     setPlayers((p ?? []).map((row) => mapPlayer(row as Record<string, unknown>)));
     setMatches(
@@ -385,6 +390,19 @@ export default function TournamentAdminPage() {
 
         {/* Action buttons */}
         <div className="flex flex-wrap gap-2">
+          {tournament.status === 'registration_open' && tenantSlug && (
+            <button
+              onClick={() => {
+                const link = `${window.location.origin}/t/${tenantSlug}/${id}/register`;
+                navigator.clipboard.writeText(link);
+                setLinkCopied(true);
+                setTimeout(() => setLinkCopied(false), 2000);
+              }}
+              className="px-3 py-2 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+            >
+              {linkCopied ? '✓ Copied!' : '🔗 Copy Registration Link'}
+            </button>
+          )}
           {tournament.status === 'registration_open' && (
             <button onClick={handleForceClose} disabled={saving}
               className="px-3 py-2 rounded-xl border-2 border-red-200 text-red-600 font-semibold text-sm hover:bg-red-50 transition-colors disabled:opacity-60">
