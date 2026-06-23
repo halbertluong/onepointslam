@@ -105,6 +105,7 @@ export default function AdminUsersPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [impersonating, setImpersonating] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditState | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
@@ -136,7 +137,9 @@ export default function AdminUsersPage() {
       });
       const data = await res.json();
       if (data.magicLink) {
-        window.open(data.magicLink, '_blank');
+        await navigator.clipboard.writeText(data.magicLink);
+        setCopiedLink(email);
+        setTimeout(() => setCopiedLink(null), 4000);
       } else {
         setMsg(`Error: ${data.error ?? 'Unknown error — check server logs'}`);
       }
@@ -253,7 +256,7 @@ export default function AdminUsersPage() {
         <div>
           <h2 className="font-black text-lg">🎭 Impersonate Demo Accounts</h2>
           <p className="text-slate-400 text-sm mt-0.5">
-            Click to open a new tab logged in as that user. Password: <code className="text-amber-400 bg-slate-800 px-1.5 py-0.5 rounded text-xs">Demo1234!</code>
+            Copies a one-time login link — paste it into an <strong className="text-white">Incognito window</strong> for a fully isolated session. Password: <code className="text-amber-400 bg-slate-800 px-1.5 py-0.5 rounded text-xs">Demo1234!</code>
           </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -278,9 +281,9 @@ export default function AdminUsersPage() {
                   disabled={impersonating === account.email}
                   className="w-full py-2 rounded-lg bg-white text-slate-900 text-xs font-bold hover:bg-slate-100 transition-colors disabled:opacity-60"
                 >
-                  {impersonating === account.email ? 'Opening…' : '→ Login as this user'}
+                  {impersonating === account.email ? 'Generating…' : copiedLink === account.email ? '✓ Link copied! Paste in Incognito' : '→ Copy login link'}
                 </button>
-                <p className="text-xs text-slate-600 text-center">Opens new tab · lands on {account.landingPath}</p>
+                <p className="text-xs text-slate-600 text-center">Paste in Incognito · lands on {account.landingPath}</p>
               </div>
             </div>
           ))}
@@ -290,9 +293,9 @@ export default function AdminUsersPage() {
           <p className="text-xs text-slate-500 font-semibold uppercase tracking-wide mb-2">How to test in separate windows</p>
           <ol className="text-xs text-slate-400 space-y-1 list-decimal list-inside">
             <li>You are already logged in as <strong className="text-white">Super Admin</strong> in this window</li>
-            <li>Click any button above → a new tab opens, already authenticated as that role</li>
-            <li>Explore that role's UI, then close the tab to return here as Super Admin</li>
-            <li>Or open an <strong className="text-white">Incognito window</strong> and log in with the email + password above for a fully isolated session</li>
+            <li>Click any button above → a magic link is copied to your clipboard</li>
+            <li>Open a new <strong className="text-white">Incognito window</strong> (⌘⇧N / Ctrl⇧N) and paste the link</li>
+            <li>You land on that role's dashboard, fully isolated from your super admin session</li>
           </ol>
         </div>
       </div>
@@ -394,7 +397,7 @@ export default function AdminUsersPage() {
                               className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-60 transition-colors"
                               style={{ color: 'var(--tenant-primary)' }}
                             >
-                              {impersonating === u.email ? 'Opening…' : '→ Login'}
+                              {impersonating === u.email ? 'Generating…' : copiedLink === u.email ? '✓ Copied!' : '→ Copy link'}
                             </button>
                           )}
                         </div>
