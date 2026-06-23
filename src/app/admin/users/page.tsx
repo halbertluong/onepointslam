@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/browser';
-import { useRouter } from 'next/navigation';
+
+type SortKey = 'tenant' | 'email' | 'role';
+type SortDir = 'asc' | 'desc';
 
 type UserRole = 'super_admin' | 'tenant_admin' | 'referee' | 'player';
 
@@ -93,7 +95,6 @@ const DEMO_ACCOUNTS: { email: string; role: UserRole; label: string; description
 ];
 
 export default function AdminUsersPage() {
-  const router = useRouter();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,6 +102,9 @@ export default function AdminUsersPage() {
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [savingRole, setSavingRole] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
+  const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('tenant');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -155,6 +159,56 @@ export default function AdminUsersPage() {
   function tenantNames(ids: string[]) {
     if (!ids?.length) return '—';
     return ids.map((id) => tenants.find((t) => t.id === id)?.display_name ?? id.slice(0, 8)).join(', ');
+  }
+
+  function primaryTenantName(ids: string[]) {
+    if (!ids?.length) return '';
+    return tenants.find((t) => t.id === ids[0])?.display_name ?? '';
+  }
+
+  const filteredUsers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const result = q
+      ? users.filter((u) => {
+          const tName = tenantNames(u.assigned_tenant_ids).toLowerCase();
+          const [emailLocal] = u.email.split('@');
+          const parts = emailLocal.replace(/[._-]/g, ' ').split(' ');
+          return (
+            u.email.toLowerCase().includes(q) ||
+            tName.includes(q) ||
+            ROLE_LABELS[u.role]?.toLowerCase().includes(q) ||
+            parts.some((p) => p.startsWith(q))
+          );
+        })
+      : [...users];
+
+    const ROLE_ORDER: Record<string, number> = { super_admin: 0, tenant_admin: 1, referee: 2, player: 3 };
+
+    result.sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === 'tenant') {
+        const ta = primaryTenantName(a.assigned_tenant_ids).toLowerCase();
+        const tb = primaryTenantName(b.assigned_tenant_ids).toLowerCase();
+        cmp = ta.localeCompare(tb) || ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.email.localeCompare(b.email);
+      } else if (sortKey === 'email') {
+        cmp = a.email.localeCompare(b.email);
+      } else if (sortKey === 'role') {
+        cmp = (ROLE_ORDER[a.role] ?? 9) - (ROLE_ORDER[b.role] ?? 9) || a.email.localeCompare(b.email);
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+    return result;
+  }, [users, tenants, search, sortKey, sortDir]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(key); setSortDir('asc'); }
+  }
+
+  function SortIcon({ col }: { col: SortKey }) {
+    if (sortKey !== col) return <span className="text-slate-300 ml-1">↕</span>;
+    return <span className="ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>;
   }
 
   if (loading) return <div className="p-8 text-slate-400">Loading…</div>;
@@ -219,72 +273,123 @@ export default function AdminUsersPage() {
 
       {/* All Users Table */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100">
-          <h2 className="font-bold text-slate-800">All Platform Users ({users.length})</h2>
+        <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex-1">
+            <h2 className="font-bold text-slate-800">All Platform Users ({users.length})</h2>
+            {filteredUsers.length !== users.length && (
+              <p className="text-xs text-slate-400 mt-0.5">{filteredUsers.length} matching</p>
+            )}
+          </div>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by email, name, tenant, or role…"
+            className="w-full sm:w-72 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+          />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                <th className="px-6 py-3 text-left">Email</th>
-                <th className="px-6 py-3 text-left">Role</th>
-                <th className="px-6 py-3 text-left">Tenant(s)</th>
+                <th className="px-6 py-3 text-left">
+                  <button onClick={() => toggleSort('email')} className="flex items-center hover:text-slate-700">
+                    Email <SortIcon col="email" />
+                  </button>
+                </th>
+                <th className="px-6 py-3 text-left">
+                  <button onClick={() => toggleSort('role')} className="flex items-center hover:text-slate-700">
+                    Role <SortIcon col="role" />
+                  </button>
+                </th>
+                <th className="px-6 py-3 text-left">
+                  <button onClick={() => toggleSort('tenant')} className="flex items-center hover:text-slate-700">
+                    Tenant <SortIcon col="tenant" />
+                  </button>
+                </th>
                 <th className="px-6 py-3 text-left">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {users.map((u) => (
-                <tr key={u.id} className="hover:bg-slate-50">
-                  <td className="px-6 py-3 font-medium text-slate-800">
-                    {u.email}
-                    {DEMO_ACCOUNTS.some((d) => d.email === u.email) && (
-                      <span className="ml-2 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-normal">demo</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-3">
-                    {editingRole === u.id ? (
-                      <div className="flex items-center gap-2">
-                        <select
-                          defaultValue={u.role}
-                          className="border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none"
-                          onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
-                          disabled={savingRole === u.id}
-                        >
-                          {(['super_admin', 'tenant_admin', 'referee', 'player'] as UserRole[]).map((r) => (
-                            <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-                          ))}
-                        </select>
-                        <button onClick={() => setEditingRole(null)} className="text-xs text-slate-400 hover:text-slate-600">✕</button>
-                      </div>
-                    ) : (
-                      <button onClick={() => setEditingRole(u.id)} className="group flex items-center gap-1.5">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${ROLE_STYLES[u.role]}`}>
-                          {ROLE_LABELS[u.role] ?? u.role}
-                        </span>
-                        <span className="text-xs text-slate-400 hidden group-hover:inline">edit</span>
-                      </button>
-                    )}
-                  </td>
-                  <td className="px-6 py-3 text-slate-500 text-xs">{tenantNames(u.assigned_tenant_ids)}</td>
-                  <td className="px-6 py-3">
-                    {DEMO_ACCOUNTS.find((d) => d.email === u.email) ? (
-                      <button
-                        onClick={() => {
-                          const account = DEMO_ACCOUNTS.find((d) => d.email === u.email)!;
-                          handleImpersonate(u.email, account.landingPath);
-                        }}
-                        disabled={impersonating === u.email}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-60 transition-colors"
-                        style={{ color: 'var(--tenant-primary)' }}
-                      >
-                        {impersonating === u.email ? 'Opening…' : '→ Impersonate'}
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-300">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {filteredUsers.length === 0 && (
+                <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-400 text-sm">No users match your search.</td></tr>
+              )}
+              {(() => {
+                const rows: React.ReactNode[] = [];
+                let lastGroup = '';
+                filteredUsers.forEach((u) => {
+                  const group = sortKey === 'tenant'
+                    ? (tenantNames(u.assigned_tenant_ids))
+                    : sortKey === 'role'
+                    ? (ROLE_LABELS[u.role] ?? u.role)
+                    : '';
+
+                  if (sortKey !== 'email' && group !== lastGroup) {
+                    lastGroup = group;
+                    rows.push(
+                      <tr key={`group-${group}`} className="bg-slate-50">
+                        <td colSpan={4} className="px-6 py-1.5 text-xs font-bold text-slate-400 uppercase tracking-widest">
+                          {group}
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  rows.push(
+                    <tr key={u.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-3 font-medium text-slate-800">
+                        {u.email}
+                        {DEMO_ACCOUNTS.some((d) => d.email === u.email) && (
+                          <span className="ml-2 text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-normal">demo</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-3">
+                        {editingRole === u.id ? (
+                          <div className="flex items-center gap-2">
+                            <select
+                              defaultValue={u.role}
+                              className="border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none"
+                              onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
+                              disabled={savingRole === u.id}
+                            >
+                              {(['super_admin', 'tenant_admin', 'referee', 'player'] as UserRole[]).map((r) => (
+                                <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                              ))}
+                            </select>
+                            <button onClick={() => setEditingRole(null)} className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setEditingRole(u.id)} className="group flex items-center gap-1.5">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${ROLE_STYLES[u.role]}`}>
+                              {ROLE_LABELS[u.role] ?? u.role}
+                            </span>
+                            <span className="text-xs text-slate-400 hidden group-hover:inline">edit</span>
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-6 py-3 text-slate-500 text-xs">{tenantNames(u.assigned_tenant_ids)}</td>
+                      <td className="px-6 py-3">
+                        {DEMO_ACCOUNTS.find((d) => d.email === u.email) ? (
+                          <button
+                            onClick={() => {
+                              const account = DEMO_ACCOUNTS.find((d) => d.email === u.email)!;
+                              handleImpersonate(u.email, account.landingPath);
+                            }}
+                            disabled={impersonating === u.email}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-60 transition-colors"
+                            style={{ color: 'var(--tenant-primary)' }}
+                          >
+                            {impersonating === u.email ? 'Opening…' : '→ Impersonate'}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-300">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                });
+                return rows;
+              })()}
             </tbody>
           </table>
         </div>
