@@ -6,23 +6,18 @@ import { createClient } from '@/lib/supabase/browser';
 
 // Handles implicit-flow magic links where Supabase puts tokens in the URL hash.
 // The browser Supabase client auto-detects the hash and establishes the session;
-// we just wait for it then redirect to the intended landing path.
+// we listen for the SIGNED_IN event then redirect to the intended landing path.
 export default function ConfirmPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   useEffect(() => {
     const supabase = createClient();
+    let settled = false;
 
-    async function handleSession() {
-      // Give the client a moment to parse the hash and set the session
-      await new Promise((r) => setTimeout(r, 500));
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        router.replace('/auth/login?error=link_expired');
-        return;
-      }
+    async function redirectForSession(session: { user: { id: string } }) {
+      if (settled) return;
+      settled = true;
 
       const { data: appUser } = await supabase
         .from('users')
@@ -39,7 +34,32 @@ export default function ConfirmPage() {
       router.replace(next ?? defaultPath);
     }
 
-    handleSession();
+    // Listen for the Supabase client to parse the hash and sign in
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          await redirectForSession(session);
+        }
+      }
+    );
+
+    // Fallback: if the event never fires within 5s, check for an existing session
+    // (covers the case where the client already parsed the hash before we subscribed)
+    const fallbackTimer = setTimeout(async () => {
+      if (settled) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        await redirectForSession(session);
+      } else {
+        settled = true;
+        router.replace('/auth/login?error=link_expired');
+      }
+    }, 5000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(fallbackTimer);
+    };
   }, [router, searchParams]);
 
   return (
