@@ -175,7 +175,7 @@ export default function FundraisingCalculator({ onPriceSet }: FundraisingCalcula
         <span className="text-slate-400 mt-0.5 shrink-0">ℹ️</span>
         <p className="text-xs text-slate-500 leading-relaxed">
           A <strong className="text-slate-700">{formatCurrency(DEFAULT_PLATFORM_FEE)} platform fee per registrant</strong> is
-          charged separately at checkout and goes directly to One Point Slam. This fee is not
+          charged separately at checkout and goes directly to SuddenSlam. This fee is not
           included in the calculations above.
         </p>
       </div>

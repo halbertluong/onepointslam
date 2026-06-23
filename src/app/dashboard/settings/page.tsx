@@ -347,7 +347,7 @@ export default function SettingsPage() {
               )}
               <div className="flex-1">
                 <p className="text-white font-black text-lg leading-tight">{displayName || 'Your School'}</p>
-                <p className="text-white/70 text-xs">Powered by One Point Slam</p>
+                <p className="text-white/70 text-xs">Powered by SuddenSlam</p>
               </div>
               <div
                 className="w-2 h-8 rounded-full"

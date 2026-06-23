@@ -57,7 +57,7 @@ export default async function TenantPage({ params }: Props) {
           />
         )}
         <h1 className="text-4xl font-black tracking-tight">{tenant.display_name}</h1>
-        <p className="mt-2 text-white/80 text-lg">One Point Slam Tournaments</p>
+        <p className="mt-2 text-white/80 text-lg">SuddenSlam · Single Point Showdown</p>
       </div>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-10">

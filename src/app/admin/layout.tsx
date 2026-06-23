@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import OnepointSlamLogo from '@/components/OnepointSlamLogo';
+import SuddenSlamLogo from '@/components/SuddenSlamLogo';
 
 const NAV = [
   { href: '/admin', label: 'Overview' },
@@ -29,8 +29,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <nav className="bg-slate-900 text-white px-6 h-14 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <OnepointSlamLogo size={24} color="#60a5fa" />
-            <span className="font-black tracking-tight text-sm text-blue-400">One Point Slam</span>
+            <SuddenSlamLogo size={24} color="#60a5fa" />
+            <span className="font-black tracking-tight text-sm text-blue-400">SuddenSlam</span>
             <span className="text-slate-500 font-normal text-sm">Super Admin</span>
           </div>
           <div className="flex gap-1">
