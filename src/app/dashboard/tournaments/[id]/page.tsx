@@ -390,7 +390,7 @@ export default function TournamentAdminPage() {
 
         {/* Action buttons */}
         <div className="flex flex-wrap gap-2">
-          {tournament.status === 'registration_open' && tenantSlug && (
+          {tenantSlug && tournament.status !== 'completed' && (
             <button
               onClick={() => {
                 const link = `${window.location.origin}/t/${tenantSlug}/${id}/register`;

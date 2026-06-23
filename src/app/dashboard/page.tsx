@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { formatCurrency } from '@/lib/pricing';
 import type { TournamentSettings } from '@/types';
+import CopyLinkButton from '@/components/CopyLinkButton';
 
 const STATUS_STYLES: Record<string, string> = {
   registration_open: 'bg-emerald-100 text-emerald-700',
@@ -60,6 +61,17 @@ export default async function DashboardPage() {
   if (appUser?.role === 'super_admin') redirect('/admin');
 
   const assignedTenantIds: string[] = appUser?.assigned_tenant_ids ?? [];
+
+  // Fetch tenant slug for registration link
+  let tenantSlug = '';
+  if (assignedTenantIds.length > 0) {
+    const { data: tenantRow } = await supabase
+      .from('tenants')
+      .select('slug')
+      .eq('id', assignedTenantIds[0])
+      .single();
+    tenantSlug = tenantRow?.slug ?? '';
+  }
 
   let tournaments: TournamentRow[] = [];
 
@@ -182,12 +194,17 @@ export default async function DashboardPage() {
                     </div>
                     <h2 className="text-lg font-black text-slate-900 leading-tight">{t.name}</h2>
                   </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {tenantSlug && t.status !== 'completed' && (
+                      <CopyLinkButton url={`/t/${tenantSlug}/${t.id}/register`} />
+                    )}
                   <Link
                     href={`/dashboard/tournaments/${t.id}`}
-                    className="shrink-0 px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-50 transition-colors text-slate-700"
+                    className="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-50 transition-colors text-slate-700"
                   >
                     Manage →
                   </Link>
+                  </div>
                 </div>
 
                 {/* Stats grid */}
