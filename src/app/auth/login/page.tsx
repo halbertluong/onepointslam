@@ -20,7 +20,10 @@ export default function LoginPage() {
     const supabase = createClient();
 
     if (mode === 'magic') {
-      const { error } = await supabase.auth.signInWithOtp({ email });
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      });
       if (error) setMessage(error.message);
       else setMessage('Check your email for a login link.');
     } else {
