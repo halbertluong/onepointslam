@@ -30,10 +30,14 @@ export async function GET(request: NextRequest) {
     await supabase.auth.exchangeCodeForSession(code);
   } else if (token_hash && type) {
     await supabase.auth.verifyOtp({ token_hash, type: type as 'magiclink' | 'email' });
+  } else {
+    // Implicit flow: tokens are in the URL hash, which server-side code can't read.
+    // Hand off to the client-side /auth/confirm page which can read the hash.
+    const confirmUrl = new URL(`${origin}/auth/confirm`);
+    if (next !== '/') confirmUrl.searchParams.set('next', next);
+    return NextResponse.redirect(confirmUrl.toString());
   }
 
-  // Redirect to the page stored in sessionStorage (set by impersonate button),
-  // or fall back to role-based default
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
     const { data: appUser } = await supabase.from('users').select('role').eq('id', user.id).single();
