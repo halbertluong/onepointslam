@@ -94,13 +94,19 @@ const DEMO_ACCOUNTS: { email: string; role: UserRole; label: string; description
   },
 ];
 
+interface EditState {
+  userId: string;
+  role: UserRole;
+  tenantIds: string[];
+}
+
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [impersonating, setImpersonating] = useState<string | null>(null);
-  const [editingRole, setEditingRole] = useState<string | null>(null);
-  const [savingRole, setSavingRole] = useState<string | null>(null);
+  const [editing, setEditing] = useState<EditState | null>(null);
+  const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('tenant');
@@ -110,7 +116,7 @@ export default function AdminUsersPage() {
     const supabase = createClient();
     const [{ data: u }, { data: t }] = await Promise.all([
       supabase.from('users').select('*').order('created_at', { ascending: false }),
-      supabase.from('tenants').select('id, display_name, slug'),
+      supabase.from('tenants').select('id, display_name, slug').order('display_name'),
     ]);
     setUsers(u ?? []);
     setTenants(t ?? []);
@@ -126,14 +132,9 @@ export default function AdminUsersPage() {
       const res = await fetch('/api/admin/impersonate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetEmail: email,
-          origin: window.location.origin,
-          landingPath,
-        }),
+        body: JSON.stringify({ targetEmail: email, origin: window.location.origin, landingPath }),
       });
       const data = await res.json();
-
       if (data.magicLink) {
         window.open(data.magicLink, '_blank');
       } else {
@@ -145,25 +146,53 @@ export default function AdminUsersPage() {
     setImpersonating(null);
   }
 
-  async function handleRoleChange(userId: string, newRole: UserRole) {
-    setSavingRole(userId);
-    const supabase = createClient();
-    await supabase.from('users').update({ role: newRole }).eq('id', userId);
-    setSavingRole(null);
-    setEditingRole(null);
-    setMsg('Role updated.');
-    load();
-    setTimeout(() => setMsg(''), 2000);
+  function startEdit(u: UserRow) {
+    setEditing({ userId: u.id, role: u.role, tenantIds: u.assigned_tenant_ids ?? [] });
   }
 
-  function tenantNames(ids: string[]) {
-    if (!ids?.length) return '—';
-    return ids.map((id) => tenants.find((t) => t.id === id)?.display_name ?? id.slice(0, 8)).join(', ');
+  async function handleSaveEdit() {
+    if (!editing) return;
+    setSaving(true);
+    const supabase = createClient();
+    await supabase
+      .from('users')
+      .update({ role: editing.role, assigned_tenant_ids: editing.tenantIds })
+      .eq('id', editing.userId);
+    setSaving(false);
+    setEditing(null);
+    setMsg('User updated.');
+    load();
+    setTimeout(() => setMsg(''), 3000);
+  }
+
+  function toggleTenant(id: string) {
+    if (!editing) return;
+    setEditing((e) => e ? ({
+      ...e,
+      tenantIds: e.tenantIds.includes(id)
+        ? e.tenantIds.filter((t) => t !== id)
+        : [...e.tenantIds, id],
+    }) : e);
+  }
+
+  function tenantDisplay(u: UserRow) {
+    if (u.role === 'super_admin') return <span className="text-xs text-purple-600 font-semibold">All</span>;
+    if (!u.assigned_tenant_ids?.length) return <span className="text-slate-400">—</span>;
+    return (
+      <span className="text-slate-500 text-xs">
+        {u.assigned_tenant_ids.map((id) => tenants.find((t) => t.id === id)?.display_name ?? id.slice(0, 8)).join(', ')}
+      </span>
+    );
   }
 
   function primaryTenantName(ids: string[]) {
     if (!ids?.length) return '';
     return tenants.find((t) => t.id === ids[0])?.display_name ?? '';
+  }
+
+  function tenantNames(ids: string[]) {
+    if (!ids?.length) return '';
+    return ids.map((id) => tenants.find((t) => t.id === id)?.display_name ?? id.slice(0, 8)).join(', ');
   }
 
   const filteredUsers = useMemo(() => {
@@ -319,7 +348,7 @@ export default function AdminUsersPage() {
                 let lastGroup = '';
                 filteredUsers.forEach((u) => {
                   const group = sortKey === 'tenant'
-                    ? (tenantNames(u.assigned_tenant_ids))
+                    ? (u.role === 'super_admin' ? 'All Tenants' : tenantNames(u.assigned_tenant_ids) || 'Unassigned')
                     : sortKey === 'role'
                     ? (ROLE_LABELS[u.role] ?? u.role)
                     : '';
@@ -335,8 +364,9 @@ export default function AdminUsersPage() {
                     );
                   }
 
+                  const isEditing = editing?.userId === u.id;
                   rows.push(
-                    <tr key={u.id} className="hover:bg-slate-50">
+                    <tr key={u.id} className={isEditing ? 'bg-slate-50' : 'hover:bg-slate-50'}>
                       <td className="px-6 py-3 font-medium text-slate-800">
                         {u.email}
                         {DEMO_ACCOUNTS.some((d) => d.email === u.email) && (
@@ -344,49 +374,108 @@ export default function AdminUsersPage() {
                         )}
                       </td>
                       <td className="px-6 py-3">
-                        {editingRole === u.id ? (
-                          <div className="flex items-center gap-2">
-                            <select
-                              defaultValue={u.role}
-                              className="border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none"
-                              onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
-                              disabled={savingRole === u.id}
-                            >
-                              {(['super_admin', 'tenant_admin', 'referee', 'player'] as UserRole[]).map((r) => (
-                                <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-                              ))}
-                            </select>
-                            <button onClick={() => setEditingRole(null)} className="text-xs text-slate-400 hover:text-slate-600">✕</button>
-                          </div>
-                        ) : (
-                          <button onClick={() => setEditingRole(u.id)} className="group flex items-center gap-1.5">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${ROLE_STYLES[u.role]}`}>
-                              {ROLE_LABELS[u.role] ?? u.role}
-                            </span>
-                            <span className="text-xs text-slate-400 hidden group-hover:inline">edit</span>
-                          </button>
-                        )}
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${ROLE_STYLES[u.role]}`}>
+                          {ROLE_LABELS[u.role] ?? u.role}
+                        </span>
                       </td>
-                      <td className="px-6 py-3 text-slate-500 text-xs">{tenantNames(u.assigned_tenant_ids)}</td>
+                      <td className="px-6 py-3">{tenantDisplay(u)}</td>
                       <td className="px-6 py-3">
-                        {DEMO_ACCOUNTS.find((d) => d.email === u.email) ? (
+                        <div className="flex items-center gap-2">
                           <button
-                            onClick={() => {
-                              const account = DEMO_ACCOUNTS.find((d) => d.email === u.email)!;
-                              handleImpersonate(u.email, account.landingPath);
-                            }}
-                            disabled={impersonating === u.email}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-60 transition-colors"
-                            style={{ color: 'var(--tenant-primary)' }}
+                            onClick={() => isEditing ? setEditing(null) : startEdit(u)}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors"
                           >
-                            {impersonating === u.email ? 'Opening…' : '→ Impersonate'}
+                            {isEditing ? 'Cancel' : 'Edit'}
                           </button>
-                        ) : (
-                          <span className="text-xs text-slate-300">—</span>
-                        )}
+                          {DEMO_ACCOUNTS.find((d) => d.email === u.email) && (
+                            <button
+                              onClick={() => {
+                                const account = DEMO_ACCOUNTS.find((d) => d.email === u.email)!;
+                                handleImpersonate(u.email, account.landingPath);
+                              }}
+                              disabled={impersonating === u.email}
+                              className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-60 transition-colors"
+                              style={{ color: 'var(--tenant-primary)' }}
+                            >
+                              {impersonating === u.email ? 'Opening…' : '→ Login'}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
+                  if (isEditing && editing) {
+                    rows.push(
+                      <tr key={`edit-${u.id}`} className="bg-slate-50 border-t border-slate-200">
+                        <td colSpan={4} className="px-6 py-4">
+                          <div className="space-y-4 max-w-lg">
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Editing: {u.email}</p>
+                            <div>
+                              <p className="text-xs font-semibold text-slate-500 mb-2">Role</p>
+                              <div className="flex flex-wrap gap-2">
+                                {(['super_admin', 'tenant_admin', 'referee', 'player'] as UserRole[]).map((r) => (
+                                  <button
+                                    key={r}
+                                    type="button"
+                                    onClick={() => setEditing((e) => e ? { ...e, role: r } : e)}
+                                    className={`px-3 py-1.5 rounded-full text-xs font-bold border-2 transition-colors ${
+                                      editing.role === r
+                                        ? ROLE_STYLES[r] + ' border-current'
+                                        : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                                    }`}
+                                  >
+                                    {ROLE_LABELS[r]}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            {(editing.role === 'tenant_admin' || editing.role === 'referee') && (
+                              <div>
+                                <p className="text-xs font-semibold text-slate-500 mb-2">
+                                  Assigned Tenant(s)
+                                  <span className="text-slate-400 font-normal ml-1">— select one or more</span>
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  {tenants.map((t) => {
+                                    const selected = editing.tenantIds.includes(t.id);
+                                    return (
+                                      <button
+                                        key={t.id}
+                                        type="button"
+                                        onClick={() => toggleTenant(t.id)}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold border-2 transition-colors ${
+                                          selected
+                                            ? 'bg-slate-800 text-white border-slate-800'
+                                            : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                                        }`}
+                                      >
+                                        {selected ? '✓ ' : ''}{t.display_name}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            <div className="flex gap-2 pt-1">
+                              <button
+                                onClick={handleSaveEdit}
+                                disabled={saving}
+                                className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-700 disabled:opacity-60 transition-colors"
+                              >
+                                {saving ? 'Saving…' : 'Save Changes'}
+                              </button>
+                              <button
+                                onClick={() => setEditing(null)}
+                                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-100 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
                 });
                 return rows;
               })()}

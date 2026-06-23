@@ -57,6 +57,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
               Admin
             </Link>
           )}
+          <span className="text-xs text-slate-400 border border-slate-200 rounded-full px-2.5 py-1 font-mono hidden sm:inline">
+            {user.email}
+          </span>
         </div>
       </nav>
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">{children}</main>
