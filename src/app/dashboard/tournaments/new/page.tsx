@@ -97,7 +97,7 @@ export default function NewTournamentPage() {
                 onChange={(e) => updateSettings('maxPlayers', parseInt(e.target.value) as MaxPlayers)}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
               >
-                {[8, 16, 32, 64, 128].map((n) => (
+                {[8, 16, 32, 48, 64, 96, 128, 192, 256].map((n) => (
                   <option key={n} value={n}>{n} players</option>
                 ))}
               </select>

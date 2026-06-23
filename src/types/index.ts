@@ -18,7 +18,7 @@ export interface Tenant {
   createdAt: string;
 }
 
-export type MaxPlayers = 8 | 16 | 32 | 64 | 128;
+export type MaxPlayers = 8 | 16 | 32 | 48 | 64 | 96 | 128 | 192 | 256;
 export type ServeRuleProfile = 'one_serve_sudden_death' | 'two_serves_traditional' | 'skill_based';
 export type ServerDetermination = 'random_coin_toss' | 'referee_manual_override';
 export type ReceivingSideSelection = 'server_choice' | 'ad_court_fixed' | 'deuce_court_fixed';
