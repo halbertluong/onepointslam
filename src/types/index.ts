@@ -23,6 +23,12 @@ export type ServeRuleProfile = 'one_serve_sudden_death' | 'two_serves_traditiona
 export type ServerDetermination = 'random_coin_toss' | 'referee_manual_override';
 export type ReceivingSideSelection = 'server_choice' | 'ad_court_fixed' | 'deuce_court_fixed';
 
+export interface PrizePlace {
+  place: number;
+  type: 'fixed' | 'percentage';
+  value: number; // dollar amount if fixed, 0-100 if percentage
+}
+
 export interface TournamentSettings {
   maxPlayers: MaxPlayers;
   ticketPriceForFundraiser: number;
@@ -32,7 +38,9 @@ export interface TournamentSettings {
   receivingSideSelection: ReceivingSideSelection;
   registrationDeadline?: string;
   playerRegistrationCap?: number;
+  minimumRegistrants?: number;
   tournamentDate?: string;
+  prizePlaces?: PrizePlace[];
 }
 
 export type TournamentStatus =
