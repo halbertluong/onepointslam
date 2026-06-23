@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
             Authorization: `Bearer ${resendApiKey}`,
           },
           body: JSON.stringify({
-            from: `${tenantName} via SuddenSlam <noreply@onepointslam.com>`,
+            from: `${tenantName} via SuddenSlam <noreply@suddenslam.com>`,
             to: [email],
             subject,
             text: `${message}\n\n---\nSent by ${tenantName} via SuddenSlam`,
