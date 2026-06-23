@@ -185,23 +185,62 @@ export default function RefereeMatchPage() {
       </div>
 
       <div className="flex-1 flex flex-col px-4 py-6 max-w-lg mx-auto w-full space-y-6">
-        {/* Player headers */}
+        {/* Player stat cards */}
         <div className="grid grid-cols-2 gap-3">
           {[
-            { name: p1Name, id: player1?.id, key: 'player1' as const },
-            { name: p2Name, id: player2?.id, key: 'player2' as const },
-          ].map(({ name, key }) => (
+            { player: player1, name: p1Name, key: 'player1' as const },
+            { player: player2, name: p2Name, key: 'player2' as const },
+          ].map(({ player, name, key }) => (
             <div
               key={key}
-              className={`rounded-2xl p-4 text-center font-bold text-lg transition-all ${
+              className={`rounded-2xl p-4 transition-all ${
                 effectiveServer === key
                   ? 'ring-2 ring-yellow-400 bg-slate-700'
                   : 'bg-slate-800'
               }`}
             >
-              {name}
-              {effectiveServer === key && (
-                <div className="text-xs text-yellow-400 font-semibold mt-1">Serves</div>
+              <div className="text-center">
+                {player?.seedRating && (
+                  <span className="text-amber-400 text-xs font-bold">[{player.seedRating}] </span>
+                )}
+                <span className="font-bold text-base">{name}</span>
+                {effectiveServer === key && (
+                  <div className="text-xs text-yellow-400 font-semibold mt-0.5">Serves</div>
+                )}
+              </div>
+              {player && (
+                <div className="mt-3 pt-3 border-t border-slate-600 grid grid-cols-2 gap-x-2 gap-y-1.5 text-xs">
+                  {player.ntrpRating != null && (
+                    <div>
+                      <p className="text-slate-500 uppercase tracking-wide" style={{fontSize:'9px'}}>NTRP</p>
+                      <p className="font-bold text-blue-400">{player.ntrpRating}</p>
+                    </div>
+                  )}
+                  {player.utrRating != null && (
+                    <div>
+                      <p className="text-slate-500 uppercase tracking-wide" style={{fontSize:'9px'}}>UTR</p>
+                      <p className="font-bold text-purple-400">{player.utrRating}</p>
+                    </div>
+                  )}
+                  {player.age != null && (
+                    <div>
+                      <p className="text-slate-500 uppercase tracking-wide" style={{fontSize:'9px'}}>Age</p>
+                      <p className="font-bold text-slate-300">{player.age}</p>
+                    </div>
+                  )}
+                  {player.gender && (
+                    <div>
+                      <p className="text-slate-500 uppercase tracking-wide" style={{fontSize:'9px'}}>Gender</p>
+                      <p className="font-bold text-slate-300 capitalize">{player.gender}</p>
+                    </div>
+                  )}
+                  {player.skillTier && (
+                    <div className="col-span-2">
+                      <p className="text-slate-500 uppercase tracking-wide" style={{fontSize:'9px'}}>Skill Tier</p>
+                      <p className="font-bold text-slate-300">{player.skillTier}</p>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           ))}
