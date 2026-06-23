@@ -34,20 +34,54 @@ const ROLE_LABELS: Record<UserRole, string> = {
   player: 'Player / Spectator',
 };
 
-const DEMO_ACCOUNTS: { email: string; role: UserRole; label: string; description: string; landingPath: string }[] = [
+const DEMO_ACCOUNTS: { email: string; role: UserRole; label: string; description: string; landingPath: string; tenant?: string }[] = [
   {
     email: 'director.stanford@demo.onepointslam.com',
     role: 'tenant_admin',
-    label: 'Stanford Tournament Director',
+    label: 'Stanford Director',
     description: 'Manages Stanford tournaments: closes registration, generates brackets, manipulates draw seeding, starts live play.',
     landingPath: '/dashboard',
+    tenant: 'Stanford',
+  },
+  {
+    email: 'director.ucla@demo.onepointslam.com',
+    role: 'tenant_admin',
+    label: 'UCLA Director',
+    description: 'Manages UCLA Tennis Club tournaments. Isolated to UCLA tenant only — cannot see Stanford or USC data.',
+    landingPath: '/dashboard',
+    tenant: 'UCLA',
+  },
+  {
+    email: 'director.usc@demo.onepointslam.com',
+    role: 'tenant_admin',
+    label: 'USC Director',
+    description: 'Manages USC Trojans Tennis tournaments. Isolated to USC tenant only.',
+    landingPath: '/dashboard',
+    tenant: 'USC',
   },
   {
     email: 'referee1@demo.onepointslam.com',
     role: 'referee',
-    label: 'Court Referee',
-    description: 'Mobile scorekeeper: confirms players present, triggers coin toss, declares match winner point-by-point.',
+    label: 'Stanford Referee',
+    description: 'Mobile scorekeeper for Stanford: confirms players present, triggers coin toss, declares match winner point-by-point.',
     landingPath: '/referee',
+    tenant: 'Stanford',
+  },
+  {
+    email: 'referee.ucla@demo.onepointslam.com',
+    role: 'referee',
+    label: 'UCLA Referee',
+    description: 'Court referee for UCLA Tennis Club. Only sees UCLA matches in the queue.',
+    landingPath: '/referee',
+    tenant: 'UCLA',
+  },
+  {
+    email: 'referee.usc@demo.onepointslam.com',
+    role: 'referee',
+    label: 'USC Referee',
+    description: 'Court referee for USC Trojans. Only sees USC matches in the queue.',
+    landingPath: '/referee',
+    tenant: 'USC',
   },
   {
     email: 'player.demo@demo.onepointslam.com',
@@ -142,13 +176,18 @@ export default function AdminUsersPage() {
             Click to open a new tab logged in as that user. Password: <code className="text-amber-400 bg-slate-800 px-1.5 py-0.5 rounded text-xs">Demo1234!</code>
           </p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {DEMO_ACCOUNTS.map((account) => (
             <div key={account.email} className="bg-slate-800 rounded-xl p-4 space-y-3">
               <div>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${ROLE_STYLES[account.role]}`}>
-                  {ROLE_LABELS[account.role]}
-                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${ROLE_STYLES[account.role]}`}>
+                    {ROLE_LABELS[account.role]}
+                  </span>
+                  {account.tenant && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-700 text-slate-300">{account.tenant}</span>
+                  )}
+                </div>
                 <p className="font-bold text-white mt-2">{account.label}</p>
                 <p className="text-slate-400 text-xs mt-1 leading-relaxed">{account.description}</p>
               </div>

@@ -11,6 +11,23 @@ import { formatCurrency } from '@/lib/pricing';
 
 type Tab = 'overview' | 'draw' | 'players';
 
+const GENDER_STYLES: Record<string, { bg: string; text: string; label: string }> = {
+  male:       { bg: 'bg-blue-100',   text: 'text-blue-600',   label: '♂' },
+  female:     { bg: 'bg-pink-100',   text: 'text-pink-600',   label: '♀' },
+  non_binary: { bg: 'bg-purple-100', text: 'text-purple-600', label: '⚧' },
+};
+
+function GenderDot({ gender, size = 'md' }: { gender?: string; size?: 'sm' | 'md' }) {
+  if (!gender) return null;
+  const g = gender.toLowerCase().replace('-', '_').replace(' ', '_');
+  const style = GENDER_STYLES[g] ?? { bg: 'bg-slate-100', text: 'text-slate-500', label: gender[0].toUpperCase() };
+  return (
+    <span className={`inline-flex items-center justify-center rounded-full font-bold shrink-0 ${style.bg} ${style.text} ${size === 'sm' ? 'w-4 h-4 text-[9px]' : 'w-5 h-5 text-xs'}`}>
+      {style.label}
+    </span>
+  );
+}
+
 function DrawEditor({
   players,
   matches,
@@ -134,7 +151,7 @@ function DrawEditor({
             Save Seeds
           </button>
         </div>
-        <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
           {players
             .sort((a, b) => {
               if (a.seedRating && b.seedRating) return a.seedRating - b.seedRating;
@@ -143,12 +160,15 @@ function DrawEditor({
               return a.fullName.localeCompare(b.fullName);
             })
             .map((p) => (
-              <div key={p.id} className="flex items-center gap-2 bg-slate-50 rounded-xl p-2.5">
+              <div key={p.id} className="flex items-center gap-2 bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+                <GenderDot gender={p.gender} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-slate-700 truncate">{p.fullName}</p>
-                  {p.ntrpRating && (
-                    <p className="text-xs text-slate-400">NTRP {p.ntrpRating}</p>
-                  )}
+                  <div className="flex flex-wrap gap-x-2 gap-y-0 mt-0.5">
+                    {p.ntrpRating != null && <span className="text-xs text-blue-500 font-medium">NTRP {p.ntrpRating}</span>}
+                    {p.utrRating != null && <span className="text-xs text-purple-500 font-medium">UTR {p.utrRating}</span>}
+                    {p.age != null && <span className="text-xs text-slate-400">{p.age}y</span>}
+                  </div>
                 </div>
                 <input
                   type="number"
@@ -206,7 +226,18 @@ function DrawEditor({
                     }`}
                     style={isSelected ? { backgroundColor: 'var(--tenant-primary)', borderColor: 'var(--tenant-primary)' } : {}}
                   >
-                    {isBye ? 'BYE' : playerName(pid)}
+                    {isBye ? 'BYE' : (() => {
+                      const p = players.find((pl) => pl.id === pid);
+                      return (
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          {p?.gender && <GenderDot gender={p.gender} size="sm" />}
+                          <span className="truncate">{p?.fullName ?? 'Unknown'}</span>
+                          {p?.ntrpRating != null && <span className="text-blue-400 shrink-0" style={{fontSize:'10px'}}>NTRP {p.ntrpRating}</span>}
+                          {p?.utrRating != null && <span className="text-purple-400 shrink-0" style={{fontSize:'10px'}}>UTR {p.utrRating}</span>}
+                          {p?.age != null && <span className="text-slate-400 shrink-0" style={{fontSize:'10px'}}>{p.age}y</span>}
+                        </span>
+                      );
+                    })()}
                   </button>
                 );
               })}
@@ -240,15 +271,18 @@ export default function TournamentAdminPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [tab, setTab] = useState<Tab>('overview');
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const [{ data: t }, { data: p }, { data: m }] = await Promise.all([
+    const [{ data: t }, { data: p }, { data: m }, { data: me }] = await Promise.all([
       supabase.from('tournaments').select('*').eq('id', id).single(),
       supabase.from('players').select('*').eq('tournament_id', id).order('created_at'),
       supabase.from('matches').select('*').eq('tournament_id', id).order('round_index').order('match_index'),
+      supabase.from('users').select('role').eq('id', (await supabase.auth.getUser()).data.user?.id ?? '').single(),
     ]);
     if (t) setTournament(t);
+    setIsSuperAdmin((me as { role?: string } | null)?.role === 'super_admin');
     setPlayers((p ?? []).map((row) => mapPlayer(row as Record<string, unknown>)));
     setMatches(
       (m ?? []).map((x) => ({
@@ -378,12 +412,12 @@ export default function TournamentAdminPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
+        {(([
           { label: 'Players', value: players.length },
-          { label: 'Ticket Price', value: formatCurrency(totalPricePerPlayer) },
+          { label: 'Ticket Price', value: formatCurrency(tournament.settings?.ticketPriceForFundraiser ?? 0) },
           { label: 'School Revenue', value: formatCurrency((tournament.settings?.ticketPriceForFundraiser ?? 0) * players.length) },
-          { label: 'Platform Fees', value: formatCurrency((tournament.settings?.systemTechFee ?? 5) * players.length) },
-        ].map((s) => (
+          ...(isSuperAdmin ? [{ label: 'Platform Fees', value: formatCurrency((tournament.settings?.systemTechFee ?? 5) * players.length) }] : []),
+        ]) as { label: string; value: string | number }[]).map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-4">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{s.label}</p>
             <p className="text-2xl font-black text-slate-900 mt-1">{s.value}</p>
