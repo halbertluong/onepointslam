@@ -23,17 +23,11 @@ export default function LoginPage() {
       if (error) setMessage(error.message);
       else setMessage('Check your email for a login link.');
     } else {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setMessage(error.message);
       } else {
-        const { data: appUser } = await supabase.from('users').select('role').eq('id', data.user.id).single();
-        const role = appUser?.role;
-        const dest =
-          role === 'super_admin' ? '/admin' :
-          role === 'referee' ? '/referee' :
-          '/dashboard';
-        router.push(dest);
+        router.push('/dashboard');
         router.refresh();
       }
     }
