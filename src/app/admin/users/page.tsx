@@ -83,31 +83,26 @@ export default function AdminUsersPage() {
 
   async function handleImpersonate(email: string, landingPath: string) {
     setImpersonating(email);
+    setMsg('');
     try {
       const res = await fetch('/api/admin/impersonate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetEmail: email }),
+        body: JSON.stringify({
+          targetEmail: email,
+          origin: window.location.origin,
+          landingPath,
+        }),
       });
       const data = await res.json();
 
       if (data.magicLink) {
-        // Service role path: magic link opens in new tab, auto-logs in
         window.open(data.magicLink, '_blank');
-      } else if (data.session) {
-        // Demo password path: set the session in browser, open landing in new tab
-        const supabase = createClient();
-        await supabase.auth.setSession(data.session);
-        // Open new tab with the landing page after brief delay for session propagation
-        window.open(landingPath, '_blank');
-        // Restore super admin session
-        await supabase.auth.signOut();
-        router.refresh();
       } else {
-        setMsg(`Error: ${data.error ?? 'Unknown error'}`);
+        setMsg(`Error: ${data.error ?? 'Unknown error — check server logs'}`);
       }
-    } catch {
-      setMsg('Failed to impersonate user');
+    } catch (e) {
+      setMsg(`Failed to contact impersonate API: ${e}`);
     }
     setImpersonating(null);
   }
