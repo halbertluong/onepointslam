@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   });
 
   const base = origin ?? 'https://onepointslam.vercel.app';
-  const redirectTo = `${base}/auth/callback?next=${encodeURIComponent(landingPath ?? '/')}`;
+  const redirectTo = `${base}/auth/confirm?next=${encodeURIComponent(landingPath ?? '/')}`;
 
   const { data, error } = await admin.auth.admin.generateLink({
     type: 'magiclink',
