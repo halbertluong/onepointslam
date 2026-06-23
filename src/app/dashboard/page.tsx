@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 const STATUS_STYLES: Record<string, string> = {
   registration_open: 'bg-emerald-100 text-emerald-700',
@@ -26,35 +27,24 @@ export default async function DashboardPage() {
     .eq('id', user!.id)
     .single();
 
-  const isSuperAdmin = appUser?.role === 'super_admin';
+  // Super admins have their own portal
+  if (appUser?.role === 'super_admin') redirect('/admin');
+
   const assignedTenantIds: string[] = appUser?.assigned_tenant_ids ?? [];
 
-  // Super admin sees ALL tournaments; tenant_admin sees only their tenants
   let tournaments: Record<string, unknown>[] = [];
-  let allTenants: { id: string; display_name: string; slug: string }[] = [];
 
-  if (isSuperAdmin) {
-    const [{ data: t }, { data: tn }] = await Promise.all([
-      supabase.from('tournaments').select('*').order('created_at', { ascending: false }),
-      supabase.from('tenants').select('id, display_name, slug'),
-    ]);
-    tournaments = t ?? [];
-    allTenants = tn ?? [];
-  } else if (assignedTenantIds.length > 0) {
-    const [{ data: t }, { data: tn }] = await Promise.all([
-      supabase.from('tournaments').select('*').in('tenant_id', assignedTenantIds).order('created_at', { ascending: false }),
-      supabase.from('tenants').select('id, display_name, slug').in('id', assignedTenantIds),
-    ]);
-    tournaments = t ?? [];
-    allTenants = tn ?? [];
+  if (assignedTenantIds.length > 0) {
+    const { data } = await supabase
+      .from('tournaments')
+      .select('*')
+      .in('tenant_id', assignedTenantIds)
+      .order('created_at', { ascending: false });
+    tournaments = data ?? [];
   }
 
-  const tenantMap = Object.fromEntries(allTenants.map((t) => [t.id, t]));
   const live = tournaments.filter((t) => t.status === 'live_play');
   const open = tournaments.filter((t) => t.status === 'registration_open');
-
-  // For "New Tournament" — tenant_admin uses their first tenant; super_admin needs to pick
-  const primaryTenantId = assignedTenantIds[0] ?? null;
 
   return (
     <div className="space-y-8">
@@ -64,32 +54,25 @@ export default async function DashboardPage() {
           <p className="text-slate-500 mt-1 text-sm">
             {live.length > 0 ? `${live.length} live · ` : ''}
             {open.length} open for registration
-            {isSuperAdmin && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">All Tenants</span>}
           </p>
         </div>
-        {primaryTenantId && (
-          <Link
-            href="/dashboard/tournaments/new"
-            className="btn-primary px-5 py-2.5 rounded-xl text-sm font-bold"
-          >
+        {assignedTenantIds.length > 0 && (
+          <Link href="/dashboard/tournaments/new" className="btn-primary px-5 py-2.5 rounded-xl text-sm font-bold">
             + New Tournament
           </Link>
         )}
       </div>
 
-      {!isSuperAdmin && assignedTenantIds.length === 0 && (
+      {assignedTenantIds.length === 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
           <p className="text-amber-800 font-medium">
-            Your account is not linked to a school tenant yet.
-            Contact a Super Admin to get set up.
+            Your account is not linked to a school yet. Contact a Super Admin to get set up.
           </p>
         </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {tournaments.map((t) => {
-          const tenantId = t.tenant_id as string;
-          const tenantName = tenantMap[tenantId]?.display_name;
           const settings = t.settings as Record<string, unknown> | null;
           return (
             <Link
@@ -98,17 +81,12 @@ export default async function DashboardPage() {
               className="bg-white rounded-2xl border border-slate-200 p-5 hover:border-slate-300 hover:shadow-sm transition-all group"
             >
               <div className="flex items-start justify-between gap-2 mb-3">
-                <h3 className="font-bold text-slate-800 group-hover:text-slate-900 leading-snug">
-                  {t.name as string}
-                </h3>
+                <h3 className="font-bold text-slate-800 group-hover:text-slate-900 leading-snug">{t.name as string}</h3>
                 <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-bold ${STATUS_STYLES[t.status as string] ?? 'bg-slate-100 text-slate-600'}`}>
                   {STATUS_LABELS[t.status as string] ?? t.status}
                 </span>
               </div>
               <div className="text-xs text-slate-400 space-y-1">
-                {tenantName && (
-                  <p className="font-medium text-slate-500">{tenantName}</p>
-                )}
                 <p>Max {(settings?.maxPlayers as number) ?? '—'} players</p>
                 <p>Created {new Date(t.created_at as string).toLocaleDateString()}</p>
               </div>
@@ -116,7 +94,7 @@ export default async function DashboardPage() {
           );
         })}
 
-        {tournaments.length === 0 && (isSuperAdmin || assignedTenantIds.length > 0) && (
+        {tournaments.length === 0 && assignedTenantIds.length > 0 && (
           <div className="col-span-full text-center py-16 text-slate-400">
             <p className="text-4xl mb-3">🎾</p>
             <p className="font-medium">No tournaments yet.</p>
