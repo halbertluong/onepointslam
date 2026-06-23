@@ -9,7 +9,7 @@ import type { Tournament, Player, Match } from '@/types';
 import { mapPlayer } from '@/types';
 import { formatCurrency } from '@/lib/pricing';
 
-type Tab = 'overview' | 'draw' | 'players';
+type Tab = 'overview' | 'draw' | 'players' | 'settings';
 
 const GENDER_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   male:       { bg: 'bg-blue-100',   text: 'text-blue-600',   label: '♂' },
@@ -274,6 +274,11 @@ export default function TournamentAdminPage() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [tenantSlug, setTenantSlug] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -356,6 +361,44 @@ export default function TournamentAdminPage() {
     setMessage('Tournament is now live!');
     load();
     setSaving(false);
+  }
+
+  async function handleSaveSettings(patch: Partial<Tournament['settings']>) {
+    if (!tournament) return;
+    setSaving(true);
+    const supabase = createClient();
+    const merged = { ...tournament.settings, ...patch };
+    await supabase.from('tournaments').update({ settings: merged }).eq('id', id);
+    setSettingsSaved(true);
+    setTimeout(() => setSettingsSaved(false), 2000);
+    load();
+    setSaving(false);
+  }
+
+  async function handleEmailBlast() {
+    if (!emailSubject.trim() || !emailBody.trim() || players.length === 0) return;
+    setEmailSending(true);
+    // Send via API route
+    const res = await fetch('/api/tournaments/email-blast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tournamentId: id,
+        subject: emailSubject,
+        body: emailBody,
+        recipientEmails: players.map((p) => p.email),
+      }),
+    });
+    const data = await res.json();
+    setEmailSending(false);
+    if (res.ok) {
+      setEmailSent(true);
+      setEmailSubject('');
+      setEmailBody('');
+      setTimeout(() => setEmailSent(false), 4000);
+    } else {
+      setMessage(`Email error: ${data.error ?? 'Unknown error'}`);
+    }
   }
 
   if (loading) return <div className="p-8 text-slate-400">Loading…</div>;
@@ -445,7 +488,7 @@ export default function TournamentAdminPage() {
 
       {/* Tabs */}
       <div className="flex border-b border-slate-200 gap-1">
-        {(['overview', 'draw', 'players'] as Tab[]).map((t) => {
+        {(['overview', 'draw', 'players', 'settings'] as Tab[]).map((t) => {
           if (t === 'draw' && !canManageDraw) return null;
           return (
             <button
@@ -458,7 +501,7 @@ export default function TournamentAdminPage() {
               }`}
               style={tab === t ? { borderColor: 'var(--tenant-primary)', color: 'var(--tenant-primary)' } : {}}
             >
-              {t === 'draw' ? 'Draw Editor' : t === 'overview' ? 'Bracket' : 'Players'}
+              {t === 'draw' ? 'Draw Editor' : t === 'overview' ? 'Bracket' : t === 'players' ? 'Players' : 'Settings'}
             </button>
           );
         })}
@@ -558,6 +601,165 @@ export default function TournamentAdminPage() {
           </div>
         </div>
       )}
+
+      {/* Settings tab */}
+      {tab === 'settings' && (
+        <div className="space-y-6">
+          <SettingsEditor
+            tournament={tournament}
+            saving={saving}
+            saved={settingsSaved}
+            onSave={handleSaveSettings}
+          />
+
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+            <div>
+              <h2 className="font-bold text-slate-800">Email Registrants</h2>
+              <p className="text-sm text-slate-500 mt-0.5">{players.length} registrant{players.length !== 1 ? 's' : ''} will receive this email</p>
+            </div>
+            {players.length === 0 ? (
+              <p className="text-sm text-slate-400">No registrants yet.</p>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Subject</label>
+                  <input
+                    type="text"
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                    placeholder={`Update about ${tournament.name}`}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-slate-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Message</label>
+                  <textarea
+                    rows={5}
+                    value={emailBody}
+                    onChange={(e) => setEmailBody(e.target.value)}
+                    placeholder="Write your update here…"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-slate-400 resize-none"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleEmailBlast}
+                    disabled={emailSending || !emailSubject.trim() || !emailBody.trim()}
+                    className="btn-primary px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60"
+                  >
+                    {emailSending ? 'Sending…' : `Send to ${players.length} registrant${players.length !== 1 ? 's' : ''}`}
+                  </button>
+                  {emailSent && <span className="text-sm text-emerald-600 font-semibold">✓ Sent!</span>}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function SettingsEditor({
+  tournament,
+  saving,
+  saved,
+  onSave,
+}: {
+  tournament: Tournament;
+  saving: boolean;
+  saved: boolean;
+  onSave: (patch: Partial<Tournament['settings']>) => Promise<void>;
+}) {
+  const s = tournament.settings;
+  const [ticketPrice, setTicketPrice] = useState(String(s?.ticketPriceForFundraiser ?? ''));
+  const [tournamentDate, setTournamentDate] = useState(s?.tournamentDate ?? '');
+  const [deadline, setDeadline] = useState(s?.registrationDeadline ?? '');
+  const [cap, setCap] = useState(String(s?.playerRegistrationCap ?? ''));
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const patch: Partial<Tournament['settings']> = {};
+    const price = parseFloat(ticketPrice);
+    if (!isNaN(price) && price >= 0) patch.ticketPriceForFundraiser = price;
+    patch.tournamentDate = tournamentDate || undefined;
+    patch.registrationDeadline = deadline || undefined;
+    const capNum = parseInt(cap);
+    patch.playerRegistrationCap = (!isNaN(capNum) && capNum > 0) ? capNum : undefined;
+    await onSave(patch);
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
+      <h2 className="font-bold text-slate-800">Tournament Settings</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+            Ticket Price / Player
+          </label>
+          <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden">
+            <span className="px-3 py-2.5 bg-slate-50 text-slate-400 text-sm border-r border-slate-200">$</span>
+            <input
+              type="number"
+              min="0"
+              step="0.50"
+              value={ticketPrice}
+              onChange={(e) => setTicketPrice(e.target.value)}
+              className="flex-1 px-3 py-2.5 text-sm focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+            Tournament Date
+          </label>
+          <input
+            type="date"
+            value={tournamentDate}
+            onChange={(e) => setTournamentDate(e.target.value)}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+            Registration Deadline
+          </label>
+          <input
+            type="datetime-local"
+            value={deadline}
+            onChange={(e) => setDeadline(e.target.value)}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+            Player Cap (optional)
+          </label>
+          <input
+            type="number"
+            min="2"
+            max={s?.maxPlayers ?? 64}
+            value={cap}
+            onChange={(e) => setCap(e.target.value)}
+            placeholder={`Max ${s?.maxPlayers ?? 64}`}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          type="submit"
+          disabled={saving}
+          className="btn-primary px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60"
+        >
+          {saving ? 'Saving…' : 'Save Changes'}
+        </button>
+        {saved && <span className="text-sm text-emerald-600 font-semibold">✓ Saved!</span>}
+      </div>
+    </form>
   );
 }
