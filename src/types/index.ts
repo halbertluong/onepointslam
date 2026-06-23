@@ -32,6 +32,7 @@ export interface TournamentSettings {
   receivingSideSelection: ReceivingSideSelection;
   registrationDeadline?: string;
   playerRegistrationCap?: number;
+  tournamentDate?: string;
 }
 
 export type TournamentStatus =

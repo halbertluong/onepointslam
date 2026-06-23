@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import OnepointSlamLogo from '@/components/OnepointSlamLogo';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -38,8 +39,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
         style={{ borderBottomColor: 'var(--tenant-primary)' }}
       >
         <div className="flex items-center gap-3">
-          {tenant?.logo_url && (
+          {tenant?.logo_url ? (
             <img src={tenant.logo_url} alt={tenant.display_name} className="h-7 w-auto object-contain" />
+          ) : (
+            <OnepointSlamLogo size={28} color="var(--tenant-primary)" />
           )}
           <span className="font-black text-lg" style={{ color: 'var(--tenant-primary)' }}>
             {tenant?.display_name ?? 'Dashboard'}

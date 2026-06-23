@@ -120,6 +120,18 @@ export default function NewTournamentPage() {
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Tournament Date (optional)
+            </label>
+            <input
+              type="date"
+              value={settings.tournamentDate ?? ''}
+              onChange={(e) => updateSettings('tournamentDate', e.target.value || undefined)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
               Registration Deadline (optional)
             </label>
             <input
