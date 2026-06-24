@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/browser';
-import SuddenSlamLogo from '@/components/SuddenSlamLogo';
+import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 import { useRouter } from 'next/navigation';
 
 interface NavBarProps {
@@ -35,9 +35,9 @@ export default function NavBar({ role, tenantSlug, displayName, logoUrl }: NavBa
             <img src={logoUrl} alt={displayName} className="h-7 w-auto object-contain" />
           ) : (
             <div className="flex items-center gap-2">
-              <SuddenSlamLogo size={26} color="var(--tenant-primary)" />
+              <OnePointBowlLogo size={26} color="var(--tenant-primary)" />
               <span className="font-black text-lg tracking-tight" style={{ color: 'var(--tenant-primary)' }}>
-                {displayName ?? 'SuddenSlam'}
+                {displayName ?? 'One Point Bowl'}
               </span>
             </div>
           )}

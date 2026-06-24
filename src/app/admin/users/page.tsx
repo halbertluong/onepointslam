@@ -38,7 +38,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 const DEMO_ACCOUNTS: { email: string; role: UserRole; label: string; description: string; landingPath: string; tenant?: string }[] = [
   {
-    email: 'director.stanford@demo.suddenslam.com',
+    email: 'director.stanford@demo.onepointbowl.com',
     role: 'tenant_admin',
     label: 'Stanford Director',
     description: 'Manages Stanford tournaments: closes registration, generates brackets, manipulates draw seeding, starts live play.',
@@ -46,7 +46,7 @@ const DEMO_ACCOUNTS: { email: string; role: UserRole; label: string; description
     tenant: 'Stanford',
   },
   {
-    email: 'director.ucla@demo.suddenslam.com',
+    email: 'director.ucla@demo.onepointbowl.com',
     role: 'tenant_admin',
     label: 'UCLA Director',
     description: 'Manages UCLA Tennis Club tournaments. Isolated to UCLA tenant only — cannot see Stanford or USC data.',
@@ -54,7 +54,7 @@ const DEMO_ACCOUNTS: { email: string; role: UserRole; label: string; description
     tenant: 'UCLA',
   },
   {
-    email: 'director.usc@demo.suddenslam.com',
+    email: 'director.usc@demo.onepointbowl.com',
     role: 'tenant_admin',
     label: 'USC Director',
     description: 'Manages USC Trojans Tennis tournaments. Isolated to USC tenant only.',
@@ -62,7 +62,7 @@ const DEMO_ACCOUNTS: { email: string; role: UserRole; label: string; description
     tenant: 'USC',
   },
   {
-    email: 'referee1@demo.suddenslam.com',
+    email: 'referee1@demo.onepointbowl.com',
     role: 'referee',
     label: 'Stanford Referee',
     description: 'Mobile scorekeeper for Stanford: confirms players present, triggers coin toss, declares match winner point-by-point.',
@@ -70,7 +70,7 @@ const DEMO_ACCOUNTS: { email: string; role: UserRole; label: string; description
     tenant: 'Stanford',
   },
   {
-    email: 'referee.ucla@demo.suddenslam.com',
+    email: 'referee.ucla@demo.onepointbowl.com',
     role: 'referee',
     label: 'UCLA Referee',
     description: 'Court referee for UCLA Tennis Club. Only sees UCLA matches in the queue.',
@@ -78,7 +78,7 @@ const DEMO_ACCOUNTS: { email: string; role: UserRole; label: string; description
     tenant: 'UCLA',
   },
   {
-    email: 'referee.usc@demo.suddenslam.com',
+    email: 'referee.usc@demo.onepointbowl.com',
     role: 'referee',
     label: 'USC Referee',
     description: 'Court referee for USC Trojans. Only sees USC matches in the queue.',
@@ -86,7 +86,7 @@ const DEMO_ACCOUNTS: { email: string; role: UserRole; label: string; description
     tenant: 'USC',
   },
   {
-    email: 'player.demo@demo.suddenslam.com',
+    email: 'player.demo@demo.onepointbowl.com',
     role: 'player',
     label: 'Player / Spectator',
     description: 'Public-facing experience: views live bracket, registers for tournaments, sees real-time match updates.',

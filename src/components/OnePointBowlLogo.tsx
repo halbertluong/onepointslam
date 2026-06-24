@@ -5,8 +5,8 @@ interface LogoProps {
   dark?: boolean;
 }
 
-// SuddenSlam mark: lightning bolt striking through a tennis ball circle
-export default function SuddenSlamLogo({ color = 'currentColor', size = 32, className, dark = false }: LogoProps) {
+// One Point Bowl mark: lightning bolt striking through a tennis ball circle
+export default function OnePointBowlLogo({ color = 'currentColor', size = 32, className, dark = false }: LogoProps) {
   const track = dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
   return (
     <svg

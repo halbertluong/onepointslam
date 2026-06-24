@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import SuddenSlamLogo from '@/components/SuddenSlamLogo';
+import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 
 export default function HomePage() {
   return (
@@ -11,16 +11,16 @@ export default function HomePage() {
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold text-white mb-2"
             style={{ backgroundColor: 'var(--tenant-primary)' }}
           >
-            ⚡ Single Point Showdown
+            ⚡ Tennis Tournament Platform
           </div>
           <div className="flex items-center justify-center gap-5 mb-2">
-            <SuddenSlamLogo size={72} color="var(--tenant-primary)" />
+            <OnePointBowlLogo size={72} color="var(--tenant-primary)" />
           </div>
           <h1 className="text-5xl sm:text-7xl font-black text-slate-900 leading-none tracking-tight">
             Sudden<span style={{ color: 'var(--tenant-primary)' }}>Slam</span>
           </h1>
           <p className="text-lg text-slate-500 font-semibold tracking-wide uppercase">
-            Single Point Showdown
+            Tennis Tournament Platform
           </p>
           <p className="text-xl text-slate-600 max-w-xl mx-auto leading-relaxed">
             Run a 32-player single-elimination tennis tournament in under 45 minutes.
@@ -79,7 +79,7 @@ export default function HomePage() {
 
       <footer className="border-t border-slate-100 py-8 text-center">
         <p className="text-sm text-slate-400">
-          © {new Date().getFullYear()} SuddenSlam. All rights reserved.
+          © {new Date().getFullYear()} One Point Bowl. All rights reserved.
         </p>
       </footer>
     </div>

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { useRouter } from 'next/navigation';
-import SuddenSlamLogo from '@/components/SuddenSlamLogo';
+import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -42,11 +42,11 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <SuddenSlamLogo size={48} color="var(--tenant-primary)" className="mx-auto mb-2" />
+          <OnePointBowlLogo size={48} color="var(--tenant-primary)" className="mx-auto mb-2" />
           <span className="font-black text-3xl" style={{ color: 'var(--tenant-primary)' }}>
-            SuddenSlam
+            One Point Bowl
           </span>
-          <p className="text-slate-400 text-xs font-semibold uppercase tracking-widest mt-1">Single Point Showdown</p>
+          <p className="text-slate-400 text-xs font-semibold uppercase tracking-widest mt-1">Tennis Tournament Platform</p>
           <p className="text-slate-500 mt-2 text-sm">Sign in to your account</p>
         </div>
 

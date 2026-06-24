@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import SuddenSlamLogo from '@/components/SuddenSlamLogo';
+import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 
 export default async function RefereeLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -41,10 +41,10 @@ export default async function RefereeLayout({ children }: { children: React.Reac
           {tenant?.logo_url ? (
             <img src={tenant.logo_url} alt={tenant.display_name} className="h-7 w-auto object-contain" />
           ) : (
-            <SuddenSlamLogo size={26} color={primary} />
+            <OnePointBowlLogo size={26} color={primary} />
           )}
           <div>
-            <span className="font-black text-sm text-white">{tenant?.display_name ?? 'SuddenSlam'}</span>
+            <span className="font-black text-sm text-white">{tenant?.display_name ?? 'One Point Bowl'}</span>
             <span className="text-white/30 text-xs ml-2">Referee</span>
           </div>
         </div>

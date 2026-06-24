@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   const tenantRaw = tournament.tenants as unknown;
   const tenantName = (tenantRaw && typeof tenantRaw === 'object' && 'display_name' in tenantRaw)
     ? (tenantRaw as { display_name: string }).display_name
-    : 'SuddenSlam';
+    : 'One Point Bowl';
 
   // Use Supabase Auth to send emails via their built-in SMTP
   // (or fall back to logging if no email provider configured)
@@ -60,11 +60,11 @@ export async function POST(req: NextRequest) {
             Authorization: `Bearer ${resendApiKey}`,
           },
           body: JSON.stringify({
-            from: `${tenantName} via SuddenSlam <noreply@suddenslam.com>`,
+            from: `${tenantName} via One Point Bowl <noreply@onepointbowl.com>`,
             to: [email],
             subject,
-            text: `${message}\n\n---\nSent by ${tenantName} via SuddenSlam`,
-            html: `<p>${message.replace(/\n/g, '<br/>')}</p><hr/><p style="color:#888;font-size:12px">Sent by ${tenantName} via SuddenSlam</p>`,
+            text: `${message}\n\n---\nSent by ${tenantName} via One Point Bowl`,
+            html: `<p>${message.replace(/\n/g, '<br/>')}</p><hr/><p style="color:#888;font-size:12px">Sent by ${tenantName} via One Point Bowl</p>`,
           }),
         })
       )
