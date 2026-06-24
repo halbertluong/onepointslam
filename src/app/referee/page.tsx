@@ -7,7 +7,6 @@ export default async function RefereeQueuePage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/auth/login');
 
-  // Get this referee's assigned tenants
   const { data: appUser } = await supabase
     .from('users')
     .select('role, assigned_tenant_ids')
@@ -17,7 +16,6 @@ export default async function RefereeQueuePage() {
   const tenantIds: string[] = appUser?.assigned_tenant_ids ?? [];
   const isSuperAdmin = appUser?.role === 'super_admin';
 
-  // Get tournaments for this referee's tenants (super_admin sees all)
   const tournamentsQuery = supabase
     .from('tournaments')
     .select('id, name, tenant_id, settings, tenants(display_name, primary_color)')
@@ -26,7 +24,6 @@ export default async function RefereeQueuePage() {
   if (!isSuperAdmin && tenantIds.length > 0) {
     tournamentsQuery.in('tenant_id', tenantIds);
   } else if (!isSuperAdmin) {
-    // Referee with no tenant assigned — show nothing
     return <EmptyQueue reason="Your account is not linked to a tenant yet. Contact your tournament director." />;
   }
 
@@ -37,7 +34,6 @@ export default async function RefereeQueuePage() {
     return <EmptyQueue reason="No live tournaments in your organization right now." />;
   }
 
-  // Get active matches only for those tournaments
   const { data: rawMatches } = await supabase
     .from('matches')
     .select('*')
@@ -48,16 +44,13 @@ export default async function RefereeQueuePage() {
     .not('player2_id', 'is', null)
     .neq('player1_id', 'BYE')
     .neq('player2_id', 'BYE')
-    .order('status') // playing first (alphabetically comes after scheduled but we'll sort below)
     .order('match_index');
 
   const matches = (rawMatches ?? []).sort((a, b) => {
-    // playing first, then court_assigned, warmup, scheduled
     const order = { playing: 0, court_assigned: 1, warmup: 2, scheduled: 3 };
     return (order[a.status as keyof typeof order] ?? 9) - (order[b.status as keyof typeof order] ?? 9);
   });
 
-  // Collect all player IDs and fetch with full details
   const playerIds = [...new Set(
     matches.flatMap((m) => [m.player1_id, m.player2_id]).filter(Boolean)
   )];
@@ -72,26 +65,27 @@ export default async function RefereeQueuePage() {
   const playerMap = Object.fromEntries((players ?? []).map((p) => [p.id, p]));
   const tournamentMap = Object.fromEntries((tournaments ?? []).map((t) => [t.id, t]));
 
-  // Group by tournament
   const grouped = matches.reduce<Record<string, typeof matches>>((acc, m) => {
     (acc[m.tournament_id] ??= []).push(m);
     return acc;
   }, {});
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
+    <div className="min-h-screen bg-slate-950 text-white">
       <div className="px-4 py-6 max-w-lg mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-black">Referee Console</h1>
-          <p className="text-slate-400 text-sm mt-1">
-            {matches.length === 0 ? 'No active matches' : `${matches.filter(m => m.status === 'playing').length} live · ${matches.length} total queued`}
+          <p className="text-white/40 text-sm mt-1">
+            {matches.length === 0
+              ? 'No active matches'
+              : `${matches.filter(m => m.status === 'playing').length} live · ${matches.length} total queued`}
           </p>
         </div>
 
         {matches.length === 0 && (
-          <div className="text-center py-16 text-slate-500">
+          <div className="text-center py-16 text-white/30">
             <p className="text-4xl mb-3">🎾</p>
-            <p className="font-medium">No matches queued.</p>
+            <p className="font-medium text-white/50">No matches queued.</p>
             <p className="text-sm mt-1">Matches appear here once a tournament director starts live play.</p>
           </div>
         )}
@@ -99,13 +93,19 @@ export default async function RefereeQueuePage() {
         {Object.entries(grouped).map(([tournamentId, tMatches]) => {
           const t = tournamentMap[tournamentId];
           const tenant = t?.tenants as Record<string, unknown> | undefined;
+          const tenantColor = (tenant?.primary_color as string | undefined) ?? 'var(--tenant-primary)';
+
           return (
             <div key={tournamentId} className="space-y-2">
-              <div className="px-1 pb-1 border-b border-slate-700">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                  {tenant?.display_name as string ?? ''}
-                </p>
-                <p className="text-sm font-bold text-slate-200">{t?.name}</p>
+              {/* Tournament header with tenant color accent */}
+              <div className="flex items-center gap-2 pb-2 border-b border-white/10">
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: tenantColor }} />
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest" style={{ color: tenantColor }}>
+                    {tenant?.display_name as string ?? ''}
+                  </p>
+                  <p className="text-sm font-bold text-white/70">{t?.name}</p>
+                </div>
               </div>
 
               {tMatches.map((m) => {
@@ -117,30 +117,35 @@ export default async function RefereeQueuePage() {
                   <Link
                     key={m.id}
                     href={`/referee/${m.id}`}
-                    className={`block rounded-2xl p-4 transition-colors ${
-                      isLive
-                        ? 'bg-red-900/40 border border-red-500/30 hover:bg-red-900/60'
-                        : 'bg-slate-800 hover:bg-slate-700 active:bg-slate-600'
-                    }`}
+                    className="block rounded-2xl p-4 transition-all active:scale-[0.98] bg-white/5 hover:bg-white/10 border"
+                    style={{
+                      borderColor: isLive ? tenantColor : 'transparent',
+                      boxShadow: isLive ? `0 0 0 1px ${tenantColor}22` : undefined,
+                    }}
                   >
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs text-slate-500">
-                        Round {m.round_index + 1} · Match {m.match_index + 1}
+                      <span className="text-xs text-white/30">
+                        R{m.round_index + 1} · M{m.match_index + 1}
                         {m.court_number ? ` · Court ${m.court_number}` : ''}
                       </span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                        isLive ? 'bg-red-500/30 text-red-400 animate-pulse' :
-                        m.status === 'warmup' ? 'bg-yellow-500/20 text-yellow-400' :
-                        m.status === 'court_assigned' ? 'bg-blue-500/20 text-blue-400' :
-                        'bg-slate-700 text-slate-400'
-                      }`}>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-bold ${isLive ? 'animate-pulse' : ''}`}
+                        style={isLive
+                          ? { backgroundColor: `${tenantColor}30`, color: tenantColor }
+                          : m.status === 'warmup'
+                          ? { backgroundColor: '#f59e0b22', color: '#f59e0b' }
+                          : m.status === 'court_assigned'
+                          ? { backgroundColor: '#3b82f622', color: '#3b82f6' }
+                          : { backgroundColor: '#ffffff10', color: '#94a3b8' }
+                        }
+                      >
                         {isLive ? '● LIVE' : m.status === 'warmup' ? 'Warmup' : m.status === 'court_assigned' ? 'Court Assigned' : 'Scheduled'}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                       <PlayerBadge player={p1} />
-                      <span className="text-slate-600 font-bold text-sm">vs</span>
+                      <span className="text-white/20 font-bold text-sm">vs</span>
                       <PlayerBadge player={p2} align="right" />
                     </div>
                   </Link>
@@ -161,28 +166,22 @@ function PlayerBadge({
   player: Record<string, unknown> | undefined;
   align?: 'left' | 'right';
 }) {
-  if (!player) return <span className="text-slate-500 text-sm">TBD</span>;
+  if (!player) return <span className="text-white/30 text-sm">TBD</span>;
 
   const seed = player.seed_rating as number | null;
   const name = player.full_name as string;
   const ntrp = player.ntrp_rating as number | null;
   const utr = player.utr_rating as number | null;
-  const gender = player.gender as string | null;
-  const age = player.age as number | null;
-
-  const isRight = align === 'right';
 
   return (
-    <div className={`space-y-0.5 ${isRight ? 'text-right' : ''}`}>
+    <div className={`space-y-0.5 ${align === 'right' ? 'text-right' : ''}`}>
       <p className="text-white font-bold text-sm leading-tight">
-        {seed ? <span className="text-amber-400 text-xs font-bold mr-1">[{seed}]</span> : null}
+        {seed ? <span className="text-xs font-bold mr-1" style={{ color: 'var(--tenant-primary)' }}>[{seed}]</span> : null}
         {name}
       </p>
-      <p className="text-xs text-slate-400 space-x-1.5">
-        {ntrp != null && <span>NTRP {ntrp}</span>}
+      <p className="text-xs text-white/30">
+        {ntrp != null && <span className="mr-1.5">NTRP {ntrp}</span>}
         {utr != null && <span>UTR {utr}</span>}
-        {age != null && <span>{age}y</span>}
-        {gender && <span className="capitalize">{gender === 'male' ? '♂' : gender === 'female' ? '♀' : gender}</span>}
       </p>
     </div>
   );
@@ -190,11 +189,11 @@ function PlayerBadge({
 
 function EmptyQueue({ reason }: { reason: string }) {
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-4">
       <div className="text-center space-y-3">
         <p className="text-4xl">🎾</p>
-        <p className="font-bold text-slate-300">No matches available</p>
-        <p className="text-sm text-slate-500 max-w-xs">{reason}</p>
+        <p className="font-bold text-white/60">No matches available</p>
+        <p className="text-sm text-white/30 max-w-xs">{reason}</p>
       </div>
     </div>
   );

@@ -161,25 +161,25 @@ export default function RefereeMatchPage() {
 
   if (phase === 'loading') {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="text-slate-400 animate-pulse">Loading match…</div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="text-white/30 animate-pulse">Loading match…</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
       {/* Header */}
-      <div className="px-4 py-4 border-b border-slate-800 flex items-center justify-between">
+      <div className="px-4 py-4 border-b border-white/10 flex items-center justify-between">
         <button
           onClick={() => router.push('/referee')}
-          className="text-slate-400 hover:text-white text-sm transition-colors"
+          className="text-white/40 hover:text-white text-sm transition-colors"
         >
           ← Back
         </button>
         <div className="text-center">
-          <p className="text-xs text-slate-500 uppercase tracking-widest">Match</p>
-          <p className="text-sm font-bold text-slate-300">{tournament?.name}</p>
+          <p className="text-xs uppercase tracking-widest font-bold" style={{ color: 'var(--tenant-primary)' }}>Match</p>
+          <p className="text-sm font-bold text-white/70">{tournament?.name}</p>
         </div>
         <div className="w-12" />
       </div>
@@ -193,51 +193,52 @@ export default function RefereeMatchPage() {
           ].map(({ player, name, key }) => (
             <div
               key={key}
-              className={`rounded-2xl p-4 transition-all ${
-                effectiveServer === key
-                  ? 'ring-2 ring-yellow-400 bg-slate-700'
-                  : 'bg-slate-800'
-              }`}
+              className="rounded-2xl p-4 transition-all bg-white/5"
+              style={effectiveServer === key ? {
+                outline: '2px solid var(--tenant-primary)',
+                outlineOffset: '0px',
+                backgroundColor: 'color-mix(in srgb, var(--tenant-primary) 12%, #0f172a)',
+              } : {}}
             >
               <div className="text-center">
                 {player?.seedRating && (
-                  <span className="text-amber-400 text-xs font-bold">[{player.seedRating}] </span>
+                  <span className="text-xs font-bold mr-1" style={{ color: 'var(--tenant-primary)' }}>[{player.seedRating}]</span>
                 )}
                 <span className="font-bold text-base">{name}</span>
                 {effectiveServer === key && (
-                  <div className="text-xs text-yellow-400 font-semibold mt-0.5">Serves</div>
+                  <div className="text-xs font-semibold mt-0.5" style={{ color: 'var(--tenant-primary)' }}>Serves</div>
                 )}
               </div>
               {player && (
-                <div className="mt-3 pt-3 border-t border-slate-600 grid grid-cols-2 gap-x-2 gap-y-1.5 text-xs">
+                <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-x-2 gap-y-1.5 text-xs">
                   {player.ntrpRating != null && (
                     <div>
-                      <p className="text-slate-500 uppercase tracking-wide" style={{fontSize:'9px'}}>NTRP</p>
-                      <p className="font-bold text-blue-400">{player.ntrpRating}</p>
+                      <p className="text-white/30 uppercase tracking-wide" style={{fontSize:'9px'}}>NTRP</p>
+                      <p className="font-bold" style={{ color: 'var(--tenant-primary)' }}>{player.ntrpRating}</p>
                     </div>
                   )}
                   {player.utrRating != null && (
                     <div>
-                      <p className="text-slate-500 uppercase tracking-wide" style={{fontSize:'9px'}}>UTR</p>
-                      <p className="font-bold text-purple-400">{player.utrRating}</p>
+                      <p className="text-white/30 uppercase tracking-wide" style={{fontSize:'9px'}}>UTR</p>
+                      <p className="font-bold" style={{ color: 'var(--tenant-secondary, var(--tenant-primary))' }}>{player.utrRating}</p>
                     </div>
                   )}
                   {player.age != null && (
                     <div>
-                      <p className="text-slate-500 uppercase tracking-wide" style={{fontSize:'9px'}}>Age</p>
-                      <p className="font-bold text-slate-300">{player.age}</p>
+                      <p className="text-white/30 uppercase tracking-wide" style={{fontSize:'9px'}}>Age</p>
+                      <p className="font-bold text-white/70">{player.age}</p>
                     </div>
                   )}
                   {player.gender && (
                     <div>
-                      <p className="text-slate-500 uppercase tracking-wide" style={{fontSize:'9px'}}>Gender</p>
-                      <p className="font-bold text-slate-300 capitalize">{player.gender}</p>
+                      <p className="text-white/30 uppercase tracking-wide" style={{fontSize:'9px'}}>Gender</p>
+                      <p className="font-bold text-white/70 capitalize">{player.gender}</p>
                     </div>
                   )}
                   {player.skillTier && (
                     <div className="col-span-2">
-                      <p className="text-slate-500 uppercase tracking-wide" style={{fontSize:'9px'}}>Skill Tier</p>
-                      <p className="font-bold text-slate-300">{player.skillTier}</p>
+                      <p className="text-white/30 uppercase tracking-wide" style={{fontSize:'9px'}}>Skill Tier</p>
+                      <p className="font-bold text-white/70">{player.skillTier}</p>
                     </div>
                   )}
                 </div>
@@ -256,9 +257,9 @@ export default function RefereeMatchPage() {
               exit={{ opacity: 0, y: -20 }}
               className="space-y-4"
             >
-              <div className="bg-slate-800 rounded-2xl p-5 text-center">
-                <p className="text-slate-300 font-semibold mb-1">Confirm Players Present</p>
-                <p className="text-slate-500 text-sm">Are both players on court and ready?</p>
+              <div className="bg-white/5 rounded-2xl p-5 text-center">
+                <p className="text-white/80 font-semibold mb-1">Confirm Players Present</p>
+                <p className="text-white/40 text-sm">Are both players on court and ready?</p>
               </div>
 
               <button
@@ -268,9 +269,8 @@ export default function RefereeMatchPage() {
                 Both Players Ready ✓
               </button>
 
-              {/* Walkover section */}
-              <div className="bg-slate-800 rounded-2xl p-4 space-y-3">
-                <p className="text-sm font-semibold text-slate-400 text-center">No-Show / Walkover</p>
+              <div className="bg-white/5 rounded-2xl p-4 space-y-3">
+                <p className="text-sm font-semibold text-white/40 text-center">No-Show / Walkover</p>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { label: `${p1Name} no-show`, winner: player2?.id, winnerName: p2Name },
@@ -280,7 +280,7 @@ export default function RefereeMatchPage() {
                       key={label}
                       onClick={() => winner && handleWalkover(winner)}
                       disabled={saving}
-                      className="bg-slate-700 hover:bg-red-900/40 border border-slate-600 hover:border-red-500 rounded-xl py-3 px-3 text-xs font-semibold text-slate-300 transition-colors text-center"
+                      className="bg-white/5 hover:bg-red-900/40 border border-white/10 hover:border-red-500/50 rounded-xl py-3 px-3 text-xs font-semibold text-white/50 transition-colors text-center"
                     >
                       Walkover → {winnerName}
                     </button>
@@ -297,7 +297,7 @@ export default function RefereeMatchPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="bg-slate-800 rounded-2xl overflow-hidden"
+              className="bg-white/5 rounded-2xl overflow-hidden"
             >
               <CoinTossAnimation
                 player1Name={p1Name}
@@ -305,7 +305,7 @@ export default function RefereeMatchPage() {
                 onResult={handleCoinTossResult}
               />
               <div className="px-5 pb-5">
-                <p className="text-xs text-slate-500 text-center mb-2">Or manually assign server:</p>
+                <p className="text-xs text-white/30 text-center mb-2">Or manually assign server:</p>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { label: p1Name, val: 'player1' as const },
@@ -314,7 +314,7 @@ export default function RefereeMatchPage() {
                     <button
                       key={val}
                       onClick={() => { setOverrideServer(val); handleCoinTossResult(val); }}
-                      className="bg-slate-700 hover:bg-slate-600 rounded-xl py-2.5 text-sm font-semibold text-slate-300 transition-colors"
+                      className="bg-white/5 hover:bg-white/10 rounded-xl py-2.5 text-sm font-semibold text-white/60 transition-colors"
                     >
                       {label} serves
                     </button>
@@ -334,8 +334,8 @@ export default function RefereeMatchPage() {
               className="space-y-4"
             >
               <div className="text-center">
-                <p className="text-slate-300 font-semibold">Declare the winner</p>
-                <p className="text-slate-500 text-sm mt-1">Tap the player who won the point</p>
+                <p className="text-white/80 font-semibold">Declare the winner</p>
+                <p className="text-white/40 text-sm mt-1">Tap the player who won the point</p>
               </div>
 
               <AnimatePresence>
@@ -344,17 +344,17 @@ export default function RefereeMatchPage() {
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.9 }}
-                    className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-6"
+                    className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-6"
                   >
-                    <div className="bg-slate-800 rounded-3xl p-7 max-w-sm w-full text-center space-y-4 shadow-2xl">
+                    <div className="bg-slate-900 border border-white/10 rounded-3xl p-7 max-w-sm w-full text-center space-y-4 shadow-2xl">
                       <p className="text-xl font-black">Confirm Winner?</p>
-                      <p className="text-slate-300">
+                      <p className="text-white/60">
                         {confirming === player1?.id ? p1Name : p2Name}
                       </p>
                       <div className="grid grid-cols-2 gap-3">
                         <button
                           onClick={() => setConfirming(null)}
-                          className="py-3 rounded-xl border border-slate-600 text-slate-300 font-semibold hover:bg-slate-700 transition-colors"
+                          className="py-3 rounded-xl border border-white/10 text-white/50 font-semibold hover:bg-white/5 transition-colors"
                         >
                           Cancel
                         </button>
@@ -379,11 +379,10 @@ export default function RefereeMatchPage() {
                   <button
                     key={player?.id}
                     onClick={() => player?.id && setConfirming(player.id)}
-                    className="tap-target w-full rounded-2xl transition-all active:scale-95"
+                    className="tap-target w-full rounded-2xl transition-all active:scale-95 font-black text-2xl tracking-tight"
                     style={{
-                      background: 'var(--tenant-primary)',
+                      background: 'linear-gradient(135deg, var(--tenant-primary), var(--tenant-secondary, var(--tenant-primary)))',
                       minHeight: '100px',
-                      fontSize: '1.5rem',
                     }}
                   >
                     {name} Wins
@@ -391,7 +390,7 @@ export default function RefereeMatchPage() {
                 ))}
               </div>
 
-              <div className="text-center text-xs text-slate-600 pb-2">
+              <div className="text-center text-xs text-white/20 pb-2">
                 {tournament?.settings?.serveRuleProfile === 'one_serve_sudden_death'
                   ? '1 Serve · Sudden Death'
                   : tournament?.settings?.serveRuleProfile === 'skill_based'
@@ -407,11 +406,11 @@ export default function RefereeMatchPage() {
               key="done"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="bg-emerald-900/30 border border-emerald-500/30 rounded-2xl p-8 text-center space-y-3"
+              className="rounded-2xl p-8 text-center space-y-3 border border-white/10 bg-white/5"
             >
               <div className="text-4xl">✅</div>
-              <p className="text-xl font-black text-emerald-400">Match Finalized</p>
-              <p className="text-slate-400 text-sm">Winner recorded. Bracket updated.</p>
+              <p className="text-xl font-black" style={{ color: 'var(--tenant-primary)' }}>Match Finalized</p>
+              <p className="text-white/40 text-sm">Winner recorded. Bracket updated.</p>
               <button
                 onClick={() => router.push('/referee')}
                 className="btn-primary px-6 py-3 rounded-xl font-bold text-sm mt-2"
