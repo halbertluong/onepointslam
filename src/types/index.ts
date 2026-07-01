@@ -39,6 +39,7 @@ export interface TournamentSettings {
   registrationDeadline?: string;
   playerRegistrationCap?: number;
   minimumRegistrants?: number;
+  numberOfCourts?: number;
   tournamentDate?: string;
   prizePlaces?: PrizePlace[];
 }

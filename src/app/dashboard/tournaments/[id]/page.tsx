@@ -358,6 +358,22 @@ export default function TournamentAdminPage() {
     setSaving(true);
     const supabase = createClient();
     await supabase.from('tournaments').update({ status: 'live_play' }).eq('id', id);
+
+    // Auto-assign courts to first-round matches that have two real players
+    const courts = tournament?.settings?.numberOfCourts ?? 0;
+    if (courts > 0) {
+      const round0 = matches
+        .filter((m) => m.roundIndex === 0 && m.player1Id && m.player2Id && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
+        .sort((a, b) => a.matchIndex - b.matchIndex);
+      await Promise.all(
+        round0.map((m, i) =>
+          supabase.from('matches')
+            .update({ court_number: (i % courts) + 1, status: 'court_assigned' })
+            .eq('id', m.id)
+        )
+      );
+    }
+
     setMessage('Tournament is now live!');
     load();
     setSaving(false);
@@ -444,6 +460,19 @@ export default function TournamentAdminPage() {
               className="px-3 py-2 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors flex items-center gap-1.5"
             >
               {linkCopied ? '✓ Copied!' : '🔗 Copy Registration Link'}
+            </button>
+          )}
+          {tenantSlug && (tournament.status === 'live_play' || tournament.status === 'bracket_generated') && (
+            <button
+              onClick={() => {
+                const link = `${window.location.origin}/t/${tenantSlug}/${id}/live`;
+                navigator.clipboard.writeText(link);
+                setMessage('📺 Live scoreboard link copied! Open on a TV or share with spectators.');
+                setTimeout(() => setMessage(''), 4000);
+              }}
+              className="px-3 py-2 rounded-xl border-2 border-emerald-200 text-emerald-700 font-semibold text-sm hover:bg-emerald-50 transition-colors flex items-center gap-1.5"
+            >
+              📺 Copy Live Scoreboard Link
             </button>
           )}
           {tournament.status === 'registration_open' && (
@@ -749,6 +778,7 @@ function SettingsEditor({
   const [deadline, setDeadline] = useState(s?.registrationDeadline ?? '');
   const [cap, setCap] = useState(String(s?.playerRegistrationCap ?? ''));
   const [minReg, setMinReg] = useState(String(s?.minimumRegistrants ?? ''));
+  const [courts, setCourts] = useState(String(s?.numberOfCourts ?? ''));
   const [prizePlaces, setPrizePlaces] = useState(s?.prizePlaces ?? []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -762,6 +792,8 @@ function SettingsEditor({
     patch.playerRegistrationCap = (!isNaN(capNum) && capNum > 0) ? capNum : undefined;
     const minNum = parseInt(minReg);
     patch.minimumRegistrants = (!isNaN(minNum) && minNum > 0) ? minNum : undefined;
+    const courtsNum = parseInt(courts);
+    patch.numberOfCourts = (!isNaN(courtsNum) && courtsNum > 0) ? courtsNum : undefined;
     patch.prizePlaces = prizePlaces.length > 0 ? prizePlaces : undefined;
     await onSave(patch);
   }
@@ -840,6 +872,22 @@ function SettingsEditor({
             className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
           />
           <p className="text-xs text-slate-400 mt-1">Tournament will be flagged if registrations fall below this number.</p>
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+            Number of Courts
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="20"
+            value={courts}
+            onChange={(e) => setCourts(e.target.value)}
+            placeholder="e.g. 4"
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+          />
+          <p className="text-xs text-slate-400 mt-1">Courts are auto-assigned to matches when you start live play.</p>
         </div>
       </div>
 
