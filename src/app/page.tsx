@@ -6,20 +6,27 @@ import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 
 // ─── Waitlist Form ────────────────────────────────────────────────────────────
 
+const TITLE_OPTIONS = ['Head Coach', 'Assistant Coach', 'Sports Administrator', 'Director of Operations', 'Other'];
+
 function WaitlistForm() {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [school, setSchool] = useState('');
+  const [title, setTitle] = useState('');
+  const [titleOther, setTitleOther] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'duplicate' | 'error'>('idle');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!title) return;
+    if (title === 'Other' && !titleOther.trim()) return;
     setStatus('loading');
+    const resolvedTitle = title === 'Other' ? titleOther.trim() : title;
     try {
       const res = await fetch('/api/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, school, role: 'coach' }),
+        body: JSON.stringify({ email, name, school, role: 'coach', title: resolvedTitle }),
       });
       const data = await res.json();
       if (res.ok) setStatus('success');
@@ -70,6 +77,25 @@ function WaitlistForm() {
           className="w-full rounded-xl px-4 py-3 text-sm text-slate-900 bg-white border border-white/20 focus:outline-none focus:ring-2"
         />
       </div>
+      <select
+        required
+        value={title}
+        onChange={(e) => { setTitle(e.target.value); setTitleOther(''); }}
+        className="w-full rounded-xl px-4 py-3 text-sm text-slate-900 bg-white border border-white/20 focus:outline-none focus:ring-2"
+      >
+        <option value="">Your title…</option>
+        {TITLE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+      </select>
+      {title === 'Other' && (
+        <input
+          type="text"
+          required
+          value={titleOther}
+          onChange={(e) => setTitleOther(e.target.value)}
+          placeholder="Please specify your title"
+          className="w-full rounded-xl px-4 py-3 text-sm text-slate-900 bg-white border border-white/20 focus:outline-none focus:ring-2"
+        />
+      )}
       <input
         type="email"
         required

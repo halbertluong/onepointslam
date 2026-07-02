@@ -7,6 +7,7 @@ import Link from 'next/link';
 import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 
 const INVITE_CODE = 'onepoint';
+const TITLE_OPTIONS = ['Head Coach', 'Assistant Coach', 'Sports Administrator', 'Director of Operations', 'Other'];
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -17,6 +18,8 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [school, setSchool] = useState('');
+  const [title, setTitle] = useState('');
+  const [titleOther, setTitleOther] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -37,11 +40,12 @@ export default function RegisterPage() {
     const supabase = createClient();
 
     // Sign up the user
+    const resolvedTitle = title === 'Other' ? titleOther.trim() : title;
     const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: name, school },
+        data: { full_name: name, school, title: resolvedTitle },
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     });
@@ -157,6 +161,35 @@ export default function RegisterPage() {
                   />
                 </div>
               ))}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+                  Title
+                </label>
+                <select
+                  required
+                  value={title}
+                  onChange={(e) => { setTitle(e.target.value); setTitleOther(''); }}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                >
+                  <option value="">Select your title…</option>
+                  {TITLE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              {title === 'Other' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+                    Please specify
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={titleOther}
+                    onChange={(e) => setTitleOther(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                    placeholder="Your title"
+                  />
+                </div>
+              )}
               {error && (
                 <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{error}</p>
               )}
