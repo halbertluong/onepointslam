@@ -39,6 +39,10 @@ export default function RegisterPage() {
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
+    if (!email.toLowerCase().endsWith('.edu')) {
+      setError('A .edu email address is required to confirm your school affiliation. Please use your university email.');
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -148,11 +152,11 @@ export default function RegisterPage() {
                 <p className="text-sm font-semibold text-slate-700">Create your account</p>
               </div>
               {[
-                { label: 'Full Name', value: name, set: setName, type: 'text', placeholder: 'Coach Jane Smith' },
-                { label: 'School / Program', value: school, set: setSchool, type: 'text', placeholder: 'Stanford University' },
-                { label: 'Email', value: email, set: setEmail, type: 'email', placeholder: 'coach@university.edu' },
-                { label: 'Password', value: password, set: setPassword, type: 'password', placeholder: '••••••••' },
-              ].map(({ label, value, set, type, placeholder }) => (
+                { label: 'Full Name', value: name, set: setName, type: 'text', placeholder: 'Coach Jane Smith', hint: '' },
+                { label: 'School / Program', value: school, set: setSchool, type: 'text', placeholder: 'Stanford University', hint: '' },
+                { label: 'Email', value: email, set: setEmail, type: 'email', placeholder: 'coach@university.edu', hint: 'Must be a .edu address to verify school affiliation.' },
+                { label: 'Password', value: password, set: setPassword, type: 'password', placeholder: '••••••••', hint: '' },
+              ].map(({ label, value, set, type, placeholder, hint }) => (
                 <div key={label}>
                   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
                     {label}
@@ -165,6 +169,7 @@ export default function RegisterPage() {
                     className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
                     placeholder={placeholder}
                   />
+                  {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
                 </div>
               ))}
               <div>
