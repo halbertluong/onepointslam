@@ -7,6 +7,8 @@ import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 // ─── Waitlist Form ────────────────────────────────────────────────────────────
 
 const TITLE_OPTIONS = ['Head Coach', 'Assistant Coach', 'Sports Administrator', 'Director of Operations', 'Other'];
+const SPORT_OPTIONS = ['Tennis', 'Basketball', 'Soccer', 'Other'];
+const PROGRAM_OPTIONS = ["Men's", "Women's", 'Both'];
 
 function WaitlistForm() {
   const [email, setEmail] = useState('');
@@ -14,19 +16,25 @@ function WaitlistForm() {
   const [school, setSchool] = useState('');
   const [title, setTitle] = useState('');
   const [titleOther, setTitleOther] = useState('');
+  const [sport, setSport] = useState('Tennis');
+  const [sportOther, setSportOther] = useState('');
+  const [program, setProgram] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'duplicate' | 'error'>('idle');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title) return;
     if (title === 'Other' && !titleOther.trim()) return;
+    if (!sport) return;
+    if (sport === 'Other' && !sportOther.trim()) return;
     setStatus('loading');
     const resolvedTitle = title === 'Other' ? titleOther.trim() : title;
+    const resolvedSport = sport === 'Other' ? sportOther.trim() : sport;
     try {
       const res = await fetch('/api/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, school, role: 'coach', title: resolvedTitle }),
+        body: JSON.stringify({ email, name, school, role: 'coach', title: resolvedTitle, sport: resolvedSport, program }),
       });
       const data = await res.json();
       if (res.ok) setStatus('success');
@@ -96,6 +104,40 @@ function WaitlistForm() {
           className="w-full rounded-xl px-4 py-3 text-sm text-slate-900 bg-white border border-white/20 focus:outline-none focus:ring-2"
         />
       )}
+      <select
+        required
+        value={sport}
+        onChange={(e) => { setSport(e.target.value); setSportOther(''); }}
+        className="w-full rounded-xl px-4 py-3 text-sm text-slate-900 bg-white border border-white/20 focus:outline-none focus:ring-2"
+      >
+        <option value="">Your sport…</option>
+        {SPORT_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+      </select>
+      {sport === 'Other' && (
+        <input
+          type="text"
+          required
+          value={sportOther}
+          onChange={(e) => setSportOther(e.target.value)}
+          placeholder="Please specify your sport"
+          className="w-full rounded-xl px-4 py-3 text-sm text-slate-900 bg-white border border-white/20 focus:outline-none focus:ring-2"
+        />
+      )}
+      <div className="grid grid-cols-3 gap-2">
+        {PROGRAM_OPTIONS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => setProgram(program === p ? '' : p)}
+            className={`py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${
+              program === p ? 'text-white border-transparent' : 'border-white/30 text-white/70 bg-transparent hover:bg-white/10'
+            }`}
+            style={program === p ? { backgroundColor: 'var(--tenant-primary)', borderColor: 'var(--tenant-primary)' } : {}}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
       <input
         type="email"
         required
@@ -116,7 +158,7 @@ function WaitlistForm() {
         {status === 'loading' ? 'Submitting…' : 'Request Early Access →'}
       </button>
       <p className="text-white/40 text-xs text-center">
-        No spam. Invite-only. D1 tennis programs only.
+        No spam. Invite-only. D1 programs only.
       </p>
     </form>
   );
@@ -510,6 +552,19 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Other sports */}
+      <section className="py-10 px-6 bg-white border-t border-slate-100">
+        <div className="max-w-3xl mx-auto text-center">
+          <p className="text-slate-400 text-sm font-semibold">
+            Not into tennis?{' '}
+            <Link href="/basketball" className="text-slate-700 font-bold hover:underline">🏀 One Point Bowl for Basketball</Link>
+            {' '}and{' '}
+            <Link href="/soccer" className="text-slate-700 font-bold hover:underline">⚽ One Point Bowl for Soccer</Link>
+            {' '}are also available.
+          </p>
+        </div>
+      </section>
+
       {/* Waitlist CTA */}
       <section
         id="waitlist"
@@ -543,7 +598,8 @@ export default function HomePage() {
           </div>
           <div className="flex gap-6">
             <a href="#how-it-works" className="hover:text-white/60 transition-colors">How It Works</a>
-            <a href="#best-practices" className="hover:text-white/60 transition-colors">Best Practices</a>
+            <Link href="/basketball" className="hover:text-white/60 transition-colors">🏀 Basketball</Link>
+            <Link href="/soccer" className="hover:text-white/60 transition-colors">⚽ Soccer</Link>
             <Link href="/auth/login" className="hover:text-white/60 transition-colors">Sign In</Link>
           </div>
           <p>© {new Date().getFullYear()} One Point Bowl</p>

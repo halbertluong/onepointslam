@@ -3,13 +3,15 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { email, name, school, role, notes, title } = body as {
+  const { email, name, school, role, notes, title, sport, program } = body as {
     email: string;
     name?: string;
     school?: string;
     role?: string;
     notes?: string;
     title?: string;
+    sport?: string;
+    program?: string;
   };
 
   if (!email || !email.includes('@')) {
@@ -24,6 +26,8 @@ export async function POST(req: NextRequest) {
     role: role || 'coach',
     notes: notes?.trim() || null,
     title: title?.trim() || null,
+    sport: sport?.trim() || null,
+    program: program?.trim() || null,
   });
 
   if (error) {
