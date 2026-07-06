@@ -88,6 +88,19 @@ export default function RegisterPage() {
       return;
     }
 
+    // Create a tenant for this tournament director (school + sport + program)
+    const tenantRes = await fetch('/api/auth/provision-tenant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, school, sport: resolvedSport, program }),
+    });
+
+    if (!tenantRes.ok) {
+      setError('Account created but tenant setup failed — contact support.');
+      setLoading(false);
+      return;
+    }
+
     // If email confirmation is required, show the confirm step with resend option
     if (signUpData.session) {
       router.push('/dashboard');
