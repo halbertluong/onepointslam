@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import OnePointBowlLogo from '@/components/OnePointBowlLogo';
+import SportsDropdown, { SportsDropdownMobile } from '@/components/SportsDropdown';
 
 // ─── Waitlist Form ────────────────────────────────────────────────────────────
 
@@ -234,6 +235,7 @@ export default function HomePage() {
             <a href="#value" className="hover:text-slate-900 transition-colors">Value</a>
             <a href="#best-practices" className="hover:text-slate-900 transition-colors">Best Practices</a>
             <a href="#waitlist" className="hover:text-slate-900 transition-colors">Early Access</a>
+            <SportsDropdown current="tennis" />
             <Link
               href="/auth/register"
               className="px-4 py-2 rounded-xl text-white font-bold text-sm transition-opacity hover:opacity-90"
@@ -261,6 +263,7 @@ export default function HomePage() {
                 {href.replace('#', '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
               </a>
             ))}
+            <SportsDropdownMobile current="tennis" onNavigate={() => setMobileMenuOpen(false)} />
             <Link
               href="/auth/register"
               className="block py-2 text-center rounded-xl text-white font-bold"

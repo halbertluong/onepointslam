@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import OnePointBowlLogo from '@/components/OnePointBowlLogo';
+import SportsDropdown, { SportsDropdownMobile } from '@/components/SportsDropdown';
 
 const PRIMARY = '#f97316'; // orange
 const SECONDARY = '#dc2626'; // red
@@ -134,8 +135,7 @@ export default function BasketballPage() {
             <a href="#how-it-works" className="hover:text-slate-900 transition-colors">How It Works</a>
             <a href="#value" className="hover:text-slate-900 transition-colors">Value</a>
             <a href="#waitlist" className="hover:text-slate-900 transition-colors">Early Access</a>
-            <Link href="/" className="hover:text-slate-900 transition-colors text-slate-400">🎾 Tennis</Link>
-            <Link href="/soccer" className="hover:text-slate-900 transition-colors text-slate-400">⚽ Soccer</Link>
+            <SportsDropdown current="basketball" color={PRIMARY} />
             <Link href="/auth/register"
               className="px-4 py-2 rounded-xl text-white font-bold text-sm transition-opacity hover:opacity-90"
               style={{ backgroundColor: PRIMARY }}>
@@ -153,8 +153,7 @@ export default function BasketballPage() {
                 {href.replace('#', '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
               </a>
             ))}
-            <Link href="/" className="block py-1 text-slate-400">🎾 Tennis</Link>
-            <Link href="/soccer" className="block py-1 text-slate-400">⚽ Soccer</Link>
+            <SportsDropdownMobile current="basketball" onNavigate={() => setMobileMenuOpen(false)} />
             <Link href="/auth/register"
               className="block py-2 text-center rounded-xl text-white font-bold"
               style={{ backgroundColor: PRIMARY }}
