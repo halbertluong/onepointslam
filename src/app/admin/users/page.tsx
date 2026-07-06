@@ -109,6 +109,7 @@ export default function AdminUsersPage() {
   const [editing, setEditing] = useState<EditState | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+  const [resending, setResending] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('tenant');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -151,6 +152,28 @@ export default function AdminUsersPage() {
 
   function startEdit(u: UserRow) {
     setEditing({ userId: u.id, role: u.role, tenantIds: u.assigned_tenant_ids ?? [] });
+  }
+
+  async function handleResendConfirmation(email: string) {
+    setResending(email);
+    setMsg('');
+    try {
+      const res = await fetch('/api/admin/resend-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMsg(`Confirmation email resent to ${email}.`);
+      } else {
+        setMsg(`Error: ${data.error ?? 'Failed to resend'}`);
+      }
+    } catch (e) {
+      setMsg(`Failed to contact resend API: ${e}`);
+    }
+    setResending(null);
+    setTimeout(() => setMsg(''), 5000);
   }
 
   async function handleSaveEdit() {
@@ -386,6 +409,14 @@ export default function AdminUsersPage() {
                             className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors"
                           >
                             {isEditing ? 'Cancel' : 'Edit'}
+                          </button>
+                          <button
+                            onClick={() => handleResendConfirmation(u.email)}
+                            disabled={resending === u.email}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-60 transition-colors"
+                            title="Resend confirmation email"
+                          >
+                            {resending === u.email ? 'Sending…' : '✉ Resend'}
                           </button>
                           {DEMO_ACCOUNTS.find((d) => d.email === u.email) && (
                             <button

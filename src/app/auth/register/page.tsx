@@ -13,7 +13,8 @@ const PROGRAM_OPTIONS = ["Men's", "Women's", 'Both'];
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [step, setStep] = useState<'code' | 'details'>('code');
+  const [step, setStep] = useState<'code' | 'details' | 'confirm'>('code');
+  const [confirmedEmail, setConfirmedEmail] = useState('');
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState('');
   const [email, setEmail] = useState('');
@@ -57,7 +58,7 @@ export default function RegisterPage() {
       password,
       options: {
         data: { full_name: name, school, title: resolvedTitle, sport: resolvedSport, program },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${window.location.origin}/auth/confirm`,
       },
     });
 
@@ -87,11 +88,12 @@ export default function RegisterPage() {
       return;
     }
 
-    // If email confirmation is required, send them to login; otherwise redirect
+    // If email confirmation is required, show the confirm step with resend option
     if (signUpData.session) {
       router.push('/dashboard');
     } else {
-      router.push('/auth/login?message=Check+your+email+to+confirm+your+account');
+      setConfirmedEmail(email);
+      setStep('confirm');
     }
     setLoading(false);
   }
@@ -110,7 +112,9 @@ export default function RegisterPage() {
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-          {step === 'code' ? (
+          {step === 'confirm' ? (
+            <ConfirmPending email={confirmedEmail} />
+          ) : step === 'code' ? (
             <form onSubmit={handleCodeSubmit} className="space-y-4">
               <div>
                 <p className="text-sm font-semibold text-slate-700 mb-1">Enter your invite code</p>
@@ -270,6 +274,55 @@ export default function RegisterPage() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ConfirmPending({ email }: { email: string }) {
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+
+  async function resend() {
+    setStatus('sending');
+    const supabase = createClient();
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/auth/confirm` },
+    });
+    setStatus(error ? 'error' : 'sent');
+    if (status === 'sent') setTimeout(() => setStatus('idle'), 5000);
+  }
+
+  return (
+    <div className="text-center space-y-4 py-2">
+      <div className="text-5xl">📧</div>
+      <div>
+        <p className="font-black text-lg text-slate-900">Check your email</p>
+        <p className="text-sm text-slate-500 mt-1">
+          We sent a confirmation link to <strong className="text-slate-700">{email}</strong>. Click it to activate your account.
+        </p>
+      </div>
+      <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-400 text-left space-y-1">
+        <p>• Check your spam / junk folder</p>
+        <p>• The link expires after 24 hours</p>
+        <p>• Make sure to click it from the same device</p>
+      </div>
+      {status === 'sent' ? (
+        <p className="text-sm text-emerald-600 font-semibold">✓ Confirmation email resent!</p>
+      ) : status === 'error' ? (
+        <p className="text-sm text-red-500">Failed to resend — try again in a moment.</p>
+      ) : null}
+      <button
+        onClick={resend}
+        disabled={status === 'sending' || status === 'sent'}
+        className="w-full py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+      >
+        {status === 'sending' ? 'Sending…' : 'Resend confirmation email'}
+      </button>
+      <p className="text-xs text-slate-400">
+        Wrong email?{' '}
+        <Link href="/auth/register" className="underline hover:text-slate-600">Start over</Link>
+      </p>
     </div>
   );
 }
