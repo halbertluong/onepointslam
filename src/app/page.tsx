@@ -237,6 +237,12 @@ export default function HomePage() {
             <a href="#waitlist" className="hover:text-slate-900 transition-colors">Early Access</a>
             <SportsDropdown current="tennis" />
             <Link
+              href="/auth/login"
+              className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              Log In
+            </Link>
+            <Link
               href="/auth/register"
               className="px-4 py-2 rounded-xl text-white font-bold text-sm transition-opacity hover:opacity-90"
               style={{ backgroundColor: 'var(--tenant-primary)' }}
@@ -264,6 +270,13 @@ export default function HomePage() {
               </a>
             ))}
             <SportsDropdownMobile current="tennis" onNavigate={() => setMobileMenuOpen(false)} />
+            <Link
+              href="/auth/login"
+              className="block py-2 text-center rounded-xl font-bold border border-slate-200 text-slate-700"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Log In
+            </Link>
             <Link
               href="/auth/register"
               className="block py-2 text-center rounded-xl text-white font-bold"
@@ -312,12 +325,18 @@ export default function HomePage() {
             >
               Request Early Access
             </a>
-            <a
-              href="#how-it-works"
-              className="px-8 py-4 rounded-2xl font-bold text-base border border-white/20 text-white/80 hover:bg-white/5 transition-colors"
+            <Link
+              href="/auth/register"
+              className="px-8 py-4 rounded-2xl font-bold text-base border border-white/20 text-white/80 hover:bg-white/10 transition-colors"
             >
-              See How It Works ↓
-            </a>
+              Have an Invite Code?
+            </Link>
+            <Link
+              href="/auth/login"
+              className="px-8 py-4 rounded-2xl font-bold text-base border border-white/10 text-white/50 hover:bg-white/5 transition-colors"
+            >
+              Log In
+            </Link>
           </div>
         </div>
       </section>
