@@ -39,7 +39,8 @@ export default function RegisterPage() {
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
-    if (!email.toLowerCase().endsWith('.edu')) {
+    const emailLower = email.toLowerCase();
+    if (!emailLower.endsWith('.edu') && !emailLower.endsWith('@onepointbowl.com')) {
       setError('A .edu email address is required to confirm your school affiliation. Please use your university email.');
       return;
     }
