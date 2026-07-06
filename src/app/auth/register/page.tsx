@@ -74,13 +74,14 @@ export default function RegisterPage() {
       return;
     }
 
-    // Upsert the user row with tenant_admin role
-    const { error: upsertErr } = await supabase.from('users').upsert({
-      id: userId,
-      role: 'tenant_admin',
+    // Assign tenant_admin role via server-side API (bypasses RLS for new users with no session yet)
+    const roleRes = await fetch('/api/auth/set-role', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, role: 'tenant_admin' }),
     });
 
-    if (upsertErr) {
+    if (!roleRes.ok) {
       setError('Account created but role assignment failed — contact support.');
       setLoading(false);
       return;
