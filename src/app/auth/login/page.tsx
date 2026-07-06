@@ -22,9 +22,9 @@ export default function LoginPage() {
     if (mode === 'magic') {
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        options: { emailRedirectTo: `${window.location.origin}/auth/confirm` },
       });
-      if (error) setMessage(error.message);
+      if (error) setMessage(error.message || 'Something went wrong — please try again.');
       else setMessage('Check your email for a login link.');
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
