@@ -1,9 +1,13 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import BracketView from '@/components/BracketView';
-import type { Match } from '@/types';
+import TournamentStatsPanel from '@/components/TournamentStatsPanel';
+import PlayerRegistrationForm from '@/components/PlayerRegistrationForm';
+import RefereeQueueClient, { type MatchRow } from '@/app/referee/RefereeQueueClient';
+import RefereeMatchClient from '@/components/RefereeMatchClient';
+import type { Match, Player } from '@/types';
 import {
   generatePlayers,
   buildBracket,
@@ -331,121 +335,31 @@ function DirectorView({
   config,
   players,
   matches,
-  mobile,
 }: {
   config: TournamentConfig;
   players: DemoPlayer[];
   matches: Match[];
-  mobile: boolean;
 }) {
-  const stats = getTournamentStats(players, config.fundraisingGoal);
-  const completed = matches.filter((m) => m.status === 'finalized' || m.status === 'walkover').length;
-  const total = matches.length;
+  const demoTournament = {
+    name: config.name,
+    status: 'live_play',
+    settings: {
+      ticketPriceForFundraiser: config.entryFee,
+      systemTechFee: 0,
+      maxPlayers: config.drawSize,
+      fundraisingGoal: config.fundraisingGoal,
+    },
+  };
 
   return (
-    <div className={`bg-slate-50 min-h-full ${mobile ? 'text-sm' : ''}`}>
-      <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-        <div>
-          <h2 className="font-black text-slate-900 text-lg">{config.name}</h2>
-          <div className="flex items-center gap-2 mt-0.5">
-            <StatusPill status="live_play" />
-            <span className="text-slate-400 text-xs">{fmtDate(config.date)}</span>
-          </div>
-        </div>
-        <div className="text-right">
-          <p className="text-xs text-slate-400">Revenue</p>
-          <p className="font-black text-xl" style={{ color: PRIMARY }}>{fmt$(stats.revenue)}</p>
-        </div>
-      </div>
-
-      <div className="px-6 py-6 max-w-4xl mx-auto space-y-6">
-        {/* Stat cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { label: 'Registered', value: players.length, sub: `of ${config.drawSize} draw`, color: '#1d4ed8' },
-            { label: 'Revenue', value: fmt$(stats.revenue), sub: `${fmt$(config.entryFee)} entry`, color: '#16a34a' },
-            { label: 'Goal Progress', value: `${stats.goalPct}%`, sub: `of ${fmt$(config.fundraisingGoal)}`, color: '#d97706' },
-            { label: 'Matches Done', value: completed, sub: `of ${total} total`, color: '#7c3aed' },
-          ].map((s) => (
-            <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-4">
-              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wide">{s.label}</p>
-              <p className="text-2xl font-black mt-1" style={{ color: s.color }}>{s.value}</p>
-              <p className="text-xs text-slate-400 mt-0.5">{s.sub}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Fundraising progress */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5">
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="font-bold text-slate-800 text-sm">Fundraising Progress</h3>
-            <span className="text-sm font-bold" style={{ color: PRIMARY }}>
-              {fmt$(stats.revenue)} / {fmt$(config.fundraisingGoal)}
-            </span>
-          </div>
-          <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{ width: `${stats.goalPct}%`, backgroundColor: PRIMARY }}
-            />
-          </div>
-          <div className="flex justify-between text-xs text-slate-400 mt-1.5">
-            <span>$0</span>
-            <span>{fmt$(config.fundraisingGoal)} goal</span>
-          </div>
-        </div>
-
-        {/* Recent registrants */}
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
-            <h3 className="font-bold text-slate-800 text-sm">Recent Registrants</h3>
-            <span className="text-xs text-slate-400">{players.length} total</span>
-          </div>
-          <div className="divide-y divide-slate-50">
-            {players.slice(0, 8).map((p) => (
-              <div key={p.id} className="flex items-center px-5 py-3 gap-3">
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                  style={{ backgroundColor: PRIMARY }}
-                >
-                  {p.fullName[0]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-800 truncate">{p.fullName}</p>
-                  <p className="text-xs text-slate-400 truncate">{p.email}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-sm font-bold text-green-600">{fmt$(p.paidAmount)}</p>
-                  <p className="text-xs text-slate-400">paid</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          {players.length > 8 && (
-            <div className="px-5 py-3 border-t border-slate-100 text-xs text-slate-400 text-center">
-              + {players.length - 8} more registrants
-            </div>
-          )}
-        </div>
-
-        {/* Prize breakdown */}
-        {config.prizeMoney > 0 && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-5">
-            <h3 className="font-bold text-slate-800 text-sm mb-3">Prize Breakdown</h3>
-            <div className="space-y-2">
-              {[
-                { place: '🥇 1st', pct: 0.6 },
-                { place: '🥈 2nd', pct: 0.3 },
-                { place: '🥉 3rd', pct: 0.1 },
-              ].map(({ place, pct }) => (
-                <div key={place} className="flex justify-between text-sm">
-                  <span className="text-slate-700">{place}</span>
-                  <span className="font-bold">{fmt$(config.prizeMoney * pct)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+    <div className="bg-slate-50 min-h-full px-4 py-6" style={{ '--tenant-primary': PRIMARY } as React.CSSProperties}>
+      <div className="max-w-4xl mx-auto">
+        <TournamentStatsPanel
+          tournament={demoTournament}
+          players={players}
+          matches={matches}
+          fundraisingGoal={config.fundraisingGoal}
+        />
       </div>
     </div>
   );
@@ -454,222 +368,109 @@ function DirectorView({
 // ── View: Referee ─────────────────────────────────────────────────────────────
 
 function RefereeView({
+  config,
   matches,
   players,
   onDeclareWinner,
-  mobile,
 }: {
+  config: TournamentConfig;
   matches: Match[];
   players: DemoPlayer[];
   onDeclareWinner: (matchId: string, winnerId: string) => void;
-  mobile: boolean;
 }) {
-  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
-  const [tossRunning, setTossRunning] = useState(false);
-  const [tossWinner, setTossWinner] = useState<string | null>(null);
-  const tossRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
 
-  const activeMatches = matches.filter(
-    (m) =>
-      !m.winnerId &&
-      m.status !== 'walkover' &&
-      m.player1Id &&
-      m.player1Id !== 'BYE' &&
-      m.player2Id &&
-      m.player2Id !== 'BYE',
+  // Convert camelCase Match[] to snake_case MatchRow[] for RefereeQueueClient
+  const matchRows: MatchRow[] = matches
+    .filter((m) => !m.winnerId && m.status !== 'walkover' && m.player1Id && m.player1Id !== 'BYE' && m.player2Id && m.player2Id !== 'BYE')
+    .map((m) => ({
+      id: m.id,
+      tournament_id: m.tournamentId,
+      round_index: m.roundIndex,
+      match_index: m.matchIndex,
+      player1_id: m.player1Id,
+      player2_id: m.player2Id,
+      winner_id: m.winnerId,
+      status: m.status,
+      court_number: m.courtNumber ?? null,
+    }));
+
+  const playerRecords: Record<string, Record<string, unknown>> = Object.fromEntries(
+    players.map((p) => [p.id, {
+      id: p.id, full_name: p.fullName, email: p.email,
+      seed_rating: p.seedRating, ntrp_rating: p.ntrpRating,
+      utr_rating: p.utrRating, gender: p.gender, age: p.age,
+      tournament_id: p.tournamentId, status: p.status, skill_tier: p.skillTier,
+    }]),
   );
 
-  function startToss(match: Match) {
-    setSelectedMatch(match);
-    setTossWinner(null);
-    setTossRunning(true);
-    let count = 0;
-    tossRef.current = setInterval(() => {
-      count++;
-      setTossWinner(Math.random() < 0.5 ? match.player1Id! : match.player2Id!);
-      if (count >= 15) {
-        clearInterval(tossRef.current!);
-        setTossRunning(false);
-      }
-    }, 100);
-  }
+  const demoTournament = {
+    id: 'demo', name: config.name, tenant_id: 'demo',
+    settings: {} as Record<string, unknown>,
+    tenants: { display_name: 'Demo School', primary_color: PRIMARY },
+  };
 
-  function declareWinner(match: Match, winnerId: string) {
-    onDeclareWinner(match.id, winnerId);
-    setSelectedMatch(null);
-    setTossWinner(null);
-  }
+  if (selectedMatchId) {
+    const match = matches.find((m) => m.id === selectedMatchId);
+    const p1 = match ? playerMap[match.player1Id ?? ''] : null;
+    const p2 = match ? playerMap[match.player2Id ?? ''] : null;
 
-  if (selectedMatch) {
-    const p1 = playerMap[selectedMatch.player1Id ?? ''];
-    const p2 = playerMap[selectedMatch.player2Id ?? ''];
-    const tossWinnerPlayer = tossWinner ? playerMap[tossWinner] : null;
-
-    return (
-      <div className="bg-slate-950 min-h-full text-white flex flex-col">
-        <div className="px-4 py-4 border-b border-white/10 flex items-center gap-3">
-          <button
-            onClick={() => setSelectedMatch(null)}
-            className="text-white/50 hover:text-white text-sm"
-          >
-            ← Back
-          </button>
-          <div>
-            <p className="font-bold text-sm">R{selectedMatch.roundIndex + 1} · M{selectedMatch.matchIndex + 1}</p>
-            <p className="text-xs text-white/40">Referee Scoring</p>
-          </div>
+    if (match && p1 && p2) {
+      return (
+        <div style={{ '--tenant-primary': PRIMARY } as React.CSSProperties}>
+          <RefereeMatchClient
+            match={match}
+            player1={p1 as Player}
+            player2={p2 as Player}
+            tournamentName={config.name}
+            onDeclareWinner={(winnerId) => { onDeclareWinner(match.id, winnerId); setSelectedMatchId(null); }}
+            onWalkover={(winnerId) => { onDeclareWinner(match.id, winnerId); setSelectedMatchId(null); }}
+            onBack={() => setSelectedMatchId(null)}
+            onNext={() => setSelectedMatchId(null)}
+          />
         </div>
-
-        <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 gap-8">
-          {/* Coin toss */}
-          {!tossRunning && !tossWinner && (
-            <div className="text-center space-y-4">
-              <p className="text-white/40 text-sm">Start with a coin toss to determine server</p>
-              <button
-                onClick={() => startToss(selectedMatch)}
-                className="px-6 py-3 rounded-xl font-bold text-sm text-white border border-white/20 hover:bg-white/10 transition-colors"
-              >
-                🪙 Coin Toss
-              </button>
-            </div>
-          )}
-
-          {(tossRunning || tossWinner) && (
-            <div className="text-center space-y-3">
-              <p className="text-white/40 text-xs uppercase tracking-widest">Server</p>
-              <div
-                className={`text-2xl font-black transition-all ${tossRunning ? 'opacity-50 scale-95' : 'scale-100'}`}
-                style={{ color: tossRunning ? '#94a3b8' : '#fbbf24' }}
-              >
-                {tossWinnerPlayer?.fullName ?? '…'}
-              </div>
-              {!tossRunning && <p className="text-white/40 text-xs">won the toss — serves first</p>}
-            </div>
-          )}
-
-          {/* Player buttons */}
-          <div className="w-full max-w-sm space-y-3">
-            <p className="text-center text-xs text-white/30 uppercase tracking-widest mb-4">Declare Winner</p>
-            {[
-              { player: p1, id: selectedMatch.player1Id! },
-              { player: p2, id: selectedMatch.player2Id! },
-            ].map(({ player, id }) => (
-              <button
-                key={id}
-                onClick={() => declareWinner(selectedMatch, id)}
-                className="w-full py-5 rounded-2xl border-2 border-white/10 hover:border-white/30 bg-white/5 hover:bg-white/10 transition-all active:scale-[0.98] text-left px-6"
-              >
-                <p className="font-black text-xl">{player?.fullName ?? 'Player'}</p>
-                <p className="text-white/40 text-xs mt-0.5">
-                  NTRP {player?.ntrpRating} · {player?.gender === 'male' ? '♂' : '♀'}
-                </p>
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={() => {
-              setSelectedMatch(null);
-              setTossWinner(null);
-            }}
-            className="text-xs text-white/30 hover:text-white/60 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
+      );
+    }
   }
 
   return (
-    <div className="bg-slate-950 min-h-full text-white">
-      <div className="px-4 py-6 max-w-2xl mx-auto">
-        <h2 className="text-2xl font-black">Referee Console</h2>
-        <p className="text-white/40 text-sm mt-1">
-          {activeMatches.length === 0
-            ? 'All matches complete!'
-            : `${activeMatches.length} match${activeMatches.length !== 1 ? 'es' : ''} awaiting result`}
-        </p>
-
-        <div className="mt-6 space-y-3">
-          {activeMatches.length === 0 ? (
-            <div className="text-center py-16 text-white/20">
-              <p className="text-4xl mb-3">🏆</p>
-              <p className="font-medium text-white/40">Tournament complete</p>
-            </div>
-          ) : (
-            activeMatches.slice(0, 10).map((m) => {
-              const p1 = playerMap[m.player1Id ?? ''];
-              const p2 = playerMap[m.player2Id ?? ''];
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => setSelectedMatch(m)}
-                  className="w-full text-left rounded-2xl p-4 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 transition-all"
-                >
-                  <p className="text-xs text-white/30 mb-2">
-                    R{m.roundIndex + 1} · M{m.matchIndex + 1}
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-sm flex-1">{p1?.fullName ?? 'TBD'}</span>
-                    <span className="text-white/20 text-xs">vs</span>
-                    <span className="font-bold text-sm flex-1 text-right">{p2?.fullName ?? 'TBD'}</span>
-                  </div>
-                </button>
-              );
-            })
-          )}
-          {activeMatches.length > 10 && (
-            <p className="text-center text-xs text-white/30 py-2">
-              + {activeMatches.length - 10} more matches
-            </p>
-          )}
-        </div>
-      </div>
+    <div style={{ '--tenant-primary': PRIMARY } as React.CSSProperties}>
+      <RefereeQueueClient
+        matches={matchRows}
+        tournaments={[demoTournament]}
+        players={playerRecords}
+        onMatchClick={(row) => setSelectedMatchId(row.id)}
+      />
     </div>
   );
 }
 
 // ── View: Participant Sign-Up ─────────────────────────────────────────────────
 
-function SignupView({ config, mobile }: { config: TournamentConfig; mobile: boolean }) {
-  const [step, setStep] = useState<'form' | 'payment' | 'done'>('form');
-  const [form, setForm] = useState({ name: '', email: '', ntrp: '3.5', gender: 'prefer_not_to_say' });
+function SignupView({
+  config,
+  playerCount,
+}: {
+  config: TournamentConfig;
+  playerCount: number;
+}) {
+  const [registeredName, setRegisteredName] = useState<string | null>(null);
 
-  function setF(k: string, v: string) {
-    setForm((f) => ({ ...f, [k]: v }));
-  }
-
-  if (step === 'done') {
+  if (registeredName) {
     return (
       <div className="min-h-full bg-slate-50 flex items-center justify-center px-4">
         <div className="text-center space-y-4 max-w-sm">
-          <div className="text-6xl">🎉</div>
+          <div className="text-6xl">🎾</div>
           <h2 className="text-2xl font-black text-slate-900">You&apos;re In!</h2>
           <p className="text-slate-500 text-sm">
-            Registration confirmed for <strong>{config.name}</strong>.
-            A confirmation email would be sent to <strong>{form.email || 'your email'}</strong>.
+            Welcome to <strong>{config.name}</strong>, {registeredName}!
+            We&apos;d send match details to your email.
           </p>
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 text-sm text-left space-y-2">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Player</span>
-              <span className="font-medium">{form.name || 'Demo Player'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Entry Fee</span>
-              <span className="font-bold text-green-600">{fmt$(config.entryFee)} ✓ paid</span>
-            </div>
-            {config.date && (
-              <div className="flex justify-between">
-                <span className="text-slate-500">Date</span>
-                <span className="font-medium">{fmtDate(config.date)}</span>
-              </div>
-            )}
-          </div>
+          <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-2">Demo mode — no data was saved</p>
           <button
-            onClick={() => { setStep('form'); setForm({ name: '', email: '', ntrp: '3.5', gender: 'prefer_not_to_say' }); }}
+            onClick={() => setRegisteredName(null)}
             className="text-sm text-blue-600 underline"
           >
             Register another player
@@ -679,120 +480,23 @@ function SignupView({ config, mobile }: { config: TournamentConfig; mobile: bool
     );
   }
 
-  if (step === 'payment') {
-    return (
-      <div className="min-h-full bg-slate-50 px-4 py-8">
-        <div className="max-w-sm mx-auto space-y-4">
-          <button onClick={() => setStep('form')} className="text-sm text-slate-500 hover:text-slate-700">← Back</button>
-          <h2 className="text-xl font-black text-slate-900">Payment</h2>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800 space-y-1">
-            <p className="font-bold">{config.name}</p>
-            <p className="text-blue-600">Entry fee: {fmt$(config.entryFee)}</p>
-            {config.prizeMoney > 0 && <p className="text-blue-600">Prize pool: {fmt$(config.prizeMoney)}</p>}
-          </div>
-
-          {/* Mock Stripe form */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Card Details (Demo)</p>
-            <div className="border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-400 font-mono bg-slate-50">
-              4242 4242 4242 4242
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-400 bg-slate-50">12 / 28</div>
-              <div className="border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-400 bg-slate-50">123</div>
-            </div>
-            <button
-              onClick={() => setStep('done')}
-              className="w-full py-3 rounded-xl font-bold text-sm text-white"
-              style={{ backgroundColor: PRIMARY }}
-            >
-              Pay {fmt$(config.entryFee)} →
-            </button>
-            <p className="text-center text-xs text-slate-400">Demo only — no real charge</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-full bg-slate-50 px-4 py-8">
-      <div className="max-w-sm mx-auto space-y-5">
-        <div>
-          <h2 className="text-xl font-black text-slate-900">{config.name}</h2>
-          <p className="text-slate-500 text-sm mt-1">Player Registration</p>
-          {config.date && <p className="text-slate-400 text-xs mt-0.5">{fmtDate(config.date)}</p>}
-        </div>
-
-        {config.entryFee > 0 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex justify-between items-center">
-            <div>
-              <p className="text-sm font-bold text-blue-900">Entry Fee</p>
-              {config.prizeMoney > 0 && <p className="text-xs text-blue-600">Prize pool: {fmt$(config.prizeMoney)}</p>}
-            </div>
-            <p className="text-2xl font-black text-blue-700">{fmt$(config.entryFee)}</p>
-          </div>
-        )}
-
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Full Name *</label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setF('name', e.target.value)}
-              placeholder="Jane Smith"
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Email *</label>
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => setF('email', e.target.value)}
-              placeholder="jane@school.edu"
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">NTRP Rating</label>
-              <select
-                value={form.ntrp}
-                onChange={(e) => setF('ntrp', e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-              >
-                {['2.0','2.5','3.0','3.5','4.0','4.5','5.0','5.5'].map((v) => (
-                  <option key={v} value={v}>{v}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Gender</label>
-              <select
-                value={form.gender}
-                onChange={(e) => setF('gender', e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-              >
-                <option value="male">♂ Male</option>
-                <option value="female">♀ Female</option>
-                <option value="non_binary">Non-binary</option>
-                <option value="prefer_not_to_say">Prefer not to say</option>
-              </select>
-            </div>
-          </div>
-
-          <button
-            onClick={() => config.entryFee > 0 ? setStep('payment') : setStep('done')}
-            disabled={!form.name.trim() || !form.email.trim()}
-            className="w-full py-3 rounded-xl font-bold text-sm text-white disabled:opacity-40 transition-all"
-            style={{ backgroundColor: PRIMARY }}
-          >
-            {config.entryFee > 0 ? `Continue to Payment →` : 'Register Free →'}
-          </button>
-        </div>
+    <div
+      className="min-h-full bg-slate-50 py-10 px-4"
+      style={{ '--tenant-primary': PRIMARY } as React.CSSProperties}
+    >
+      <div className="max-w-md mx-auto">
+        <PlayerRegistrationForm
+          tournamentName={config.name}
+          entranceFee={config.entryFee}
+          platformFee={0}
+          playerCount={playerCount}
+          maxPlayers={config.drawSize}
+          onSubmit={async (data) => {
+            setRegisteredName(data.fullName);
+            return {};
+          }}
+        />
       </div>
     </div>
   );
@@ -1096,9 +800,9 @@ function BracketStage({
 
   const viewContent = (
     <div className="flex-1 overflow-auto" style={mobile ? { maxWidth: 390, margin: '0 auto' } : {}}>
-      {view === 'director' && <DirectorView config={config} players={players} matches={matches} mobile={mobile} />}
-      {view === 'referee' && <RefereeView matches={matches} players={players} onDeclareWinner={declareWinner} mobile={mobile} />}
-      {view === 'signup' && <SignupView config={config} mobile={mobile} />}
+      {view === 'director' && <DirectorView config={config} players={players} matches={matches} />}
+      {view === 'referee' && <RefereeView config={config} matches={matches} players={players} onDeclareWinner={declareWinner} />}
+      {view === 'signup' && <SignupView config={config} playerCount={players.length} />}
       {view === 'spectator' && <SpectatorView config={config} matches={matches} players={players} />}
       {view === 'stats' && <StatsView config={config} players={players} matches={matches} />}
       {view === 'results' && <ResultsView config={config} matches={matches} players={players} />}

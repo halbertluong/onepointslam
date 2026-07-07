@@ -25,10 +25,14 @@ interface TournamentRow {
   tenants: Record<string, unknown> | undefined;
 }
 
+export type { MatchRow, TournamentRow };
+
 interface Props {
   matches: MatchRow[];
   tournaments: TournamentRow[];
   players: Record<string, Record<string, unknown>>;
+  /** When provided, renders match cards as buttons instead of Links */
+  onMatchClick?: (match: MatchRow) => void;
 }
 
 function toMatchType(m: MatchRow): Match {
@@ -62,7 +66,7 @@ function toPlayerType(p: Record<string, unknown>): Player {
   };
 }
 
-export default function RefereeQueueClient({ matches, tournaments, players }: Props) {
+export default function RefereeQueueClient({ matches, tournaments, players, onMatchClick }: Props) {
   const [view, setView] = useState<'list' | 'bracket'>('list');
 
   const tournamentMap = Object.fromEntries(tournaments.map((t) => [t.id, t]));
@@ -137,16 +141,8 @@ export default function RefereeQueueClient({ matches, tournaments, players }: Pr
                 const p2 = players[m.player2_id ?? ''];
                 const isLive = m.status === 'playing';
 
-                return (
-                  <Link
-                    key={m.id}
-                    href={`/referee/${m.id}`}
-                    className="block rounded-2xl p-4 transition-all active:scale-[0.98] bg-white/5 hover:bg-white/10 border"
-                    style={{
-                      borderColor: isLive ? tenantColor : 'transparent',
-                      boxShadow: isLive ? `0 0 0 1px ${tenantColor}22` : undefined,
-                    }}
-                  >
+                const cardInner = (
+                  <>
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-xs text-white/30">
                         R{m.round_index + 1} · M{m.match_index + 1}
@@ -166,12 +162,27 @@ export default function RefereeQueueClient({ matches, tournaments, players }: Pr
                         {isLive ? '● LIVE' : m.status === 'warmup' ? 'Warmup' : m.status === 'court_assigned' ? 'Court Assigned' : 'Scheduled'}
                       </span>
                     </div>
-
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                       <PlayerBadge player={p1} tenantColor={tenantColor} />
                       <span className="text-white/20 font-bold text-sm">vs</span>
                       <PlayerBadge player={p2} tenantColor={tenantColor} align="right" />
                     </div>
+                  </>
+                );
+
+                const cardClass = "block w-full text-left rounded-2xl p-4 transition-all active:scale-[0.98] bg-white/5 hover:bg-white/10 border";
+                const cardStyle = {
+                  borderColor: isLive ? tenantColor : 'transparent',
+                  boxShadow: isLive ? `0 0 0 1px ${tenantColor}22` : undefined,
+                };
+
+                return onMatchClick ? (
+                  <button key={m.id} onClick={() => onMatchClick(m)} className={cardClass} style={cardStyle}>
+                    {cardInner}
+                  </button>
+                ) : (
+                  <Link key={m.id} href={`/referee/${m.id}`} className={cardClass} style={cardStyle}>
+                    {cardInner}
                   </Link>
                 );
               })}
