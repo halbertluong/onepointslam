@@ -1,7 +1,6 @@
-import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import OnePointBowlLogo from '@/components/OnePointBowlLogo';
+import DashboardShell from './DashboardShell';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -30,42 +29,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {tenant && (
-        <style>{`:root { --tenant-primary: ${tenant.primary_color}; --tenant-secondary: ${tenant.secondary_color}; }`}</style>
-      )}
-      <nav
-        className="bg-white border-b h-14 flex items-center px-6 justify-between"
-        style={{ borderBottomColor: 'var(--tenant-primary)' }}
-      >
-        <div className="flex items-center gap-3">
-          {tenant?.logo_url ? (
-            <img src={tenant.logo_url} alt={tenant.display_name} className="h-7 w-auto object-contain" />
-          ) : (
-            <OnePointBowlLogo size={28} color="var(--tenant-primary)" />
-          )}
-          <span className="font-black text-lg" style={{ color: 'var(--tenant-primary)' }}>
-            {tenant?.display_name ?? 'Dashboard'}
-          </span>
-        </div>
-        <div className="flex items-center gap-4 text-sm">
-          <Link href="/dashboard" className="text-slate-600 hover:text-slate-900 font-medium">
-            Tournaments
-          </Link>
-          <Link href="/dashboard/settings" className="text-slate-600 hover:text-slate-900 font-medium">
-            Settings
-          </Link>
-          {appUser.role === 'super_admin' && (
-            <Link href="/admin" className="text-slate-600 hover:text-slate-900 font-medium">
-              Admin
-            </Link>
-          )}
-          <span className="text-xs text-slate-400 border border-slate-200 rounded-full px-2.5 py-1 font-mono hidden sm:inline">
-            {user.email}
-          </span>
-        </div>
-      </nav>
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">{children}</main>
-    </div>
+    <DashboardShell
+      tenant={tenant ? {
+        display_name: tenant.display_name,
+        logo_url: tenant.logo_url ?? null,
+        primary_color: tenant.primary_color,
+        secondary_color: tenant.secondary_color,
+      } : null}
+      userEmail={user.email ?? ''}
+      isSuperAdmin={appUser.role === 'super_admin'}
+      tenantIds={appUser.assigned_tenant_ids ?? []}
+    >
+      {children}
+    </DashboardShell>
   );
 }
