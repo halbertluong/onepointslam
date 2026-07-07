@@ -4,9 +4,9 @@ import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 
 const SPORTS = [
-  { href: '/', emoji: '🎾', label: 'Tennis' },
+  { href: '/', emoji: '🎾', label: 'One Point Bowl (Tennis)' },
   { href: '/basketball', emoji: '🏀', label: 'Basketball' },
-  { href: '/soccer', emoji: '⚽', label: 'Soccer' },
+  { href: '/soccer', emoji: '⚽', label: 'One Goal Bowl (Soccer)' },
 ];
 
 export default function SportsDropdown({

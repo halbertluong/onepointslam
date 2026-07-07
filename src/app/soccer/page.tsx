@@ -126,9 +126,9 @@ export default function SoccerPage() {
       {/* Nav */}
       <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
+          <Link href="/soccer" className="flex items-center gap-2">
             <OnePointBowlLogo size={28} color={PRIMARY} />
-            <span className="font-black text-lg" style={{ color: PRIMARY }}>One Point Bowl</span>
+            <span className="font-black text-lg" style={{ color: PRIMARY }}>One Goal Bowl</span>
             <span className="ml-1 px-2 py-0.5 rounded-full text-xs font-bold text-white" style={{ backgroundColor: PRIMARY }}>Soccer</span>
           </Link>
           <div className="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-600">
@@ -171,11 +171,11 @@ export default function SoccerPage() {
         <div className="relative max-w-5xl mx-auto px-6 py-24 sm:py-36 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest mb-6 text-white"
             style={{ backgroundColor: `${PRIMARY}33`, border: `1px solid ${PRIMARY}44` }}>
-            ⚽ One Point Bowl — Soccer Edition
+            ⚽ One Goal Bowl — Soccer Edition
           </div>
           <h1 className="text-5xl sm:text-7xl font-black mb-6 leading-none tracking-tight">
             One Penalty Kick.<br />
-            <span style={{ color: PRIMARY }}>One Point.</span><br />
+            <span style={{ color: PRIMARY }}>One Goal.</span><br />
             One Champion.
           </h1>
           <p className="text-white/60 text-xl sm:text-2xl max-w-3xl mx-auto leading-relaxed mb-10">
@@ -272,7 +272,7 @@ export default function SoccerPage() {
             <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest text-white mb-4"
               style={{ backgroundColor: PRIMARY }}>NIL &amp; Donor Value</span>
             <h2 className="text-4xl font-black text-slate-900 mb-4">Soccer + NIL = a natural fit</h2>
-            <p className="text-slate-500 text-xl max-w-2xl mx-auto">Soccer is already the most-watched college sport globally. One Point Bowl gives your athletes a stage that matches that reach.</p>
+            <p className="text-slate-500 text-xl max-w-2xl mx-auto">Soccer is already the most-watched college sport globally. One Goal Bowl gives your athletes a stage that matches that reach.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {[
@@ -303,7 +303,7 @@ export default function SoccerPage() {
           </div>
           <div className="bg-white rounded-2xl border border-slate-100 p-8 space-y-6 text-slate-600 leading-relaxed">
             <p>
-              <strong className="text-slate-900">The One Point Bowl format for soccer</strong> is built around the penalty kick — the most dramatic individual moment in the sport. The ball is placed on the spot. Everyone watches. One shot. No second chance.
+              <strong className="text-slate-900">The One Goal Bowl format</strong> is built around the penalty kick — the most dramatic individual moment in the sport. The ball is placed on the spot. Everyone watches. One shot. No second chance.
             </p>
             <p>
               Each match plays out in 90 seconds. Two competitors, one spot, one goal. Win or go home. A 64-player bracket closes in under 2 hours on a single pitch, or faster across multiple pitches simultaneously.
@@ -327,7 +327,7 @@ export default function SoccerPage() {
         <div className="max-w-xl mx-auto text-center">
           <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest text-white mb-4"
             style={{ backgroundColor: PRIMARY }}>Early Access</span>
-          <h2 className="text-4xl font-black mb-4">Join the soccer waitlist</h2>
+          <h2 className="text-4xl font-black mb-4">Join the One Goal Bowl waitlist</h2>
           <p className="text-white/60 text-lg mb-10 leading-relaxed">
             We&apos;re onboarding D1 soccer programs now. Tell us about your program and we&apos;ll reach out to get you set up — free for founding programs.
           </p>
@@ -340,7 +340,7 @@ export default function SoccerPage() {
           </p>
           <p className="mt-4 text-white/20 text-xs">
             Also available:{' '}
-            <Link href="/" className="underline hover:text-white/40">🎾 Tennis</Link>
+            <Link href="/" className="underline hover:text-white/40">🎾 One Point Bowl (Tennis)</Link>
             {' · '}
             <Link href="/basketball" className="underline hover:text-white/40">🏀 Basketball</Link>
           </p>
@@ -352,7 +352,7 @@ export default function SoccerPage() {
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-white/30">
           <div className="flex items-center gap-2">
             <OnePointBowlLogo size={20} color={PRIMARY} />
-            <span className="font-bold text-white/50">One Point Bowl</span>
+            <span className="font-bold text-white/50">One Goal Bowl</span>
             <span className="text-white/20">· Soccer</span>
           </div>
           <div className="flex gap-6">
@@ -360,7 +360,7 @@ export default function SoccerPage() {
             <Link href="/basketball" className="hover:text-white/60 transition-colors">🏀 Basketball</Link>
             <Link href="/auth/login" className="hover:text-white/60 transition-colors">Sign In</Link>
           </div>
-          <p>© {new Date().getFullYear()} One Point Bowl</p>
+          <p>© {new Date().getFullYear()} One Goal Bowl</p>
         </div>
       </footer>
     </div>
