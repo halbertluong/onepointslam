@@ -326,10 +326,10 @@ export default function HomePage() {
               Request Early Access
             </a>
             <Link
-              href="/auth/register"
-              className="px-8 py-4 rounded-2xl font-bold text-base border border-white/20 text-white/80 hover:bg-white/10 transition-colors"
+              href="/demo"
+              className="px-8 py-4 rounded-2xl font-bold text-base bg-white/10 border border-white/20 text-white hover:bg-white/20 transition-colors"
             >
-              Have an Invite Code?
+              ⚡ Try Live Demo
             </Link>
             <Link
               href="/auth/login"
