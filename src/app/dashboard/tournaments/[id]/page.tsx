@@ -379,12 +379,16 @@ export default function TournamentAdminPage() {
     setSaving(false);
   }
 
-  async function handleSaveSettings(patch: Partial<Tournament['settings']>) {
+  async function handleSaveSettings(patch: Partial<Tournament['settings']>, newName?: string) {
     if (!tournament) return;
     setSaving(true);
     const supabase = createClient();
     const merged = { ...tournament.settings, ...patch };
-    await supabase.from('tournaments').update({ settings: merged }).eq('id', id);
+    const update: Record<string, unknown> = { settings: merged };
+    if (newName && newName.trim() && newName.trim() !== tournament.name) {
+      update.name = newName.trim();
+    }
+    await supabase.from('tournaments').update(update).eq('id', id);
     setSettingsSaved(true);
     setTimeout(() => setSettingsSaved(false), 2000);
     load();
@@ -638,7 +642,7 @@ export default function TournamentAdminPage() {
             tournament={tournament}
             saving={saving}
             saved={settingsSaved}
-            onSave={handleSaveSettings}
+            onSave={(patch, newName) => handleSaveSettings(patch, newName)}
           />
 
           <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
@@ -770,15 +774,20 @@ function SettingsEditor({
   tournament: Tournament;
   saving: boolean;
   saved: boolean;
-  onSave: (patch: Partial<Tournament['settings']>) => Promise<void>;
+  onSave: (patch: Partial<Tournament['settings']>, newName?: string) => Promise<void>;
 }) {
   const s = tournament.settings;
+  const [name, setName] = useState(tournament.name);
   const [ticketPrice, setTicketPrice] = useState(String(s?.ticketPriceForFundraiser ?? ''));
+  const [maxPlayers, setMaxPlayers] = useState(String(s?.maxPlayers ?? 32));
   const [tournamentDate, setTournamentDate] = useState(s?.tournamentDate ?? '');
   const [deadline, setDeadline] = useState(s?.registrationDeadline ?? '');
   const [cap, setCap] = useState(String(s?.playerRegistrationCap ?? ''));
   const [minReg, setMinReg] = useState(String(s?.minimumRegistrants ?? ''));
   const [courts, setCourts] = useState(String(s?.numberOfCourts ?? ''));
+  const [serveRule, setServeRule] = useState<Tournament['settings']['serveRuleProfile']>(s?.serveRuleProfile ?? 'one_serve_sudden_death');
+  const [serverDetermination, setServerDetermination] = useState<Tournament['settings']['serverDetermination']>(s?.serverDetermination ?? 'random_coin_toss');
+  const [receivingSide, setReceivingSide] = useState<Tournament['settings']['receivingSideSelection']>(s?.receivingSideSelection ?? 'server_choice');
   const [prizePlaces, setPrizePlaces] = useState(s?.prizePlaces ?? []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -786,6 +795,8 @@ function SettingsEditor({
     const patch: Partial<Tournament['settings']> = {};
     const price = parseFloat(ticketPrice);
     if (!isNaN(price) && price >= 0) patch.ticketPriceForFundraiser = price;
+    const maxNum = parseInt(maxPlayers);
+    if (!isNaN(maxNum) && maxNum > 0) patch.maxPlayers = maxNum as Tournament['settings']['maxPlayers'];
     patch.tournamentDate = tournamentDate || undefined;
     patch.registrationDeadline = deadline || undefined;
     const capNum = parseInt(cap);
@@ -794,14 +805,126 @@ function SettingsEditor({
     patch.minimumRegistrants = (!isNaN(minNum) && minNum > 0) ? minNum : undefined;
     const courtsNum = parseInt(courts);
     patch.numberOfCourts = (!isNaN(courtsNum) && courtsNum > 0) ? courtsNum : undefined;
+    patch.serveRuleProfile = serveRule;
+    patch.serverDetermination = serverDetermination;
+    patch.receivingSideSelection = receivingSide;
     patch.prizePlaces = prizePlaces.length > 0 ? prizePlaces : undefined;
-    await onSave(patch);
+    await onSave(patch, name);
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
+    <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 p-6 space-y-6">
       <h2 className="font-bold text-slate-800">Tournament Settings</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+      {/* Basic details */}
+      <div className="space-y-4">
+        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Details</h3>
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+            Tournament Name
+          </label>
+          <input
+            type="text"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+            placeholder="Spring 2026 Charity Cup"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Draw Size
+            </label>
+            <select
+              value={maxPlayers}
+              onChange={(e) => setMaxPlayers(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            >
+              {[8, 16, 32, 48, 64, 96, 128, 192, 256].map((n) => (
+                <option key={n} value={n}>{n} players</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Player Cap (optional)
+            </label>
+            <input
+              type="number"
+              min="2"
+              max={parseInt(maxPlayers) || 64}
+              value={cap}
+              onChange={(e) => setCap(e.target.value)}
+              placeholder={`Max ${maxPlayers}`}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Tournament Date
+            </label>
+            <input
+              type="date"
+              value={tournamentDate}
+              onChange={(e) => setTournamentDate(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Registration Deadline
+            </label>
+            <input
+              type="datetime-local"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Minimum Registrants
+            </label>
+            <input
+              type="number"
+              min="2"
+              max={parseInt(maxPlayers) || 64}
+              value={minReg}
+              onChange={(e) => setMinReg(e.target.value)}
+              placeholder="No minimum"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            />
+            <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Number of Courts
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="20"
+              value={courts}
+              onChange={(e) => setCourts(e.target.value)}
+              placeholder="e.g. 4"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            />
+            <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Ticket price */}
+      <div className="border-t border-slate-100 pt-5 space-y-4">
+        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Fundraising</h3>
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
             Ticket Price / Player
@@ -818,85 +941,59 @@ function SettingsEditor({
             />
           </div>
         </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-            Tournament Date
-          </label>
-          <input
-            type="date"
-            value={tournamentDate}
-            onChange={(e) => setTournamentDate(e.target.value)}
-            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-            Registration Deadline
-          </label>
-          <input
-            type="datetime-local"
-            value={deadline}
-            onChange={(e) => setDeadline(e.target.value)}
-            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-            Player Cap (optional)
-          </label>
-          <input
-            type="number"
-            min="2"
-            max={s?.maxPlayers ?? 64}
-            value={cap}
-            onChange={(e) => setCap(e.target.value)}
-            placeholder={`Max ${s?.maxPlayers ?? 64}`}
-            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-          />
-        </div>
-
-        <div className="sm:col-span-2">
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-            Minimum Registrants to Run Tournament
-          </label>
-          <input
-            type="number"
-            min="2"
-            max={s?.maxPlayers ?? 64}
-            value={minReg}
-            onChange={(e) => setMinReg(e.target.value)}
-            placeholder="No minimum"
-            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-          />
-          <p className="text-xs text-slate-400 mt-1">Tournament will be flagged if registrations fall below this number.</p>
-        </div>
-
-        <div className="sm:col-span-2">
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-            Number of Courts
-          </label>
-          <input
-            type="number"
-            min="1"
-            max="20"
-            value={courts}
-            onChange={(e) => setCourts(e.target.value)}
-            placeholder="e.g. 4"
-            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-          />
-          <p className="text-xs text-slate-400 mt-1">Courts are auto-assigned to matches when you start live play.</p>
-        </div>
-      </div>
-
-      <div className="border-t border-slate-100 pt-4">
         <PrizePlacesEditor
           places={prizePlaces}
           ticketPrice={parseFloat(ticketPrice) || 0}
           onChange={setPrizePlaces}
         />
+      </div>
+
+      {/* Match rules */}
+      <div className="border-t border-slate-100 pt-5 space-y-4">
+        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Match Rules</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Serve Rule
+            </label>
+            <select
+              value={serveRule}
+              onChange={(e) => setServeRule(e.target.value as Tournament['settings']['serveRuleProfile'])}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            >
+              <option value="one_serve_sudden_death">1 Serve — Sudden Death</option>
+              <option value="two_serves_traditional">2 Serves — Traditional</option>
+              <option value="skill_based">Skill-Based (Pros 1, Amateurs 2)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Server Selection
+            </label>
+            <select
+              value={serverDetermination}
+              onChange={(e) => setServerDetermination(e.target.value as Tournament['settings']['serverDetermination'])}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            >
+              <option value="random_coin_toss">Random Coin Toss</option>
+              <option value="referee_manual_override">Referee Manual</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Receiving Side
+            </label>
+            <select
+              value={receivingSide}
+              onChange={(e) => setReceivingSide(e.target.value as Tournament['settings']['receivingSideSelection'])}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            >
+              <option value="server_choice">Server&apos;s Choice</option>
+              <option value="ad_court_fixed">Ad Court Fixed</option>
+              <option value="deuce_court_fixed">Deuce Court Fixed</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 pt-1">
