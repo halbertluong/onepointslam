@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:director": "playwright test tests/specs/director.spec.ts",
+    "test:referee": "playwright test tests/specs/referee.spec.ts",
+    "test:player": "playwright test tests/specs/player.spec.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -25,6 +31,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
