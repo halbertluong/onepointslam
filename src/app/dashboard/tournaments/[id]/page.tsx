@@ -2,12 +2,46 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/browser';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import BracketView from '@/components/BracketView';
 import { generateBracket } from '@/lib/bracket';
 import type { Tournament, Player, Match } from '@/types';
 import { mapPlayer } from '@/types';
 import { formatCurrency } from '@/lib/pricing';
+
+function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; isArchived: boolean }) {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+
+  async function toggle() {
+    setLoading(true);
+    const endpoint = isArchived ? 'unarchive' : 'archive';
+    await fetch(`/api/tournaments/${tournamentId}/${endpoint}`, { method: 'POST' });
+    router.push('/dashboard');
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+      <div>
+        <h2 className="font-bold text-slate-800">
+          {isArchived ? 'Unarchive Tournament' : 'Archive Tournament'}
+        </h2>
+        <p className="text-sm text-slate-500 mt-0.5">
+          {isArchived
+            ? 'Restores this tournament to your main dashboard view.'
+            : 'Hides this tournament from your main dashboard. You can unarchive it any time.'}
+        </p>
+      </div>
+      <button
+        onClick={toggle}
+        disabled={loading}
+        className="px-5 py-2.5 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-50 transition-colors text-slate-600 disabled:opacity-50"
+      >
+        {loading ? '…' : isArchived ? '↩ Unarchive' : '📦 Archive this tournament'}
+      </button>
+    </div>
+  );
+}
 
 type Tab = 'overview' | 'draw' | 'players' | 'settings';
 
@@ -644,6 +678,9 @@ export default function TournamentAdminPage() {
             saved={settingsSaved}
             onSave={(patch, newName) => handleSaveSettings(patch, newName)}
           />
+
+          {/* Archive / Danger Zone */}
+          <ArchiveSection tournamentId={id} isArchived={!!((tournament as unknown as Record<string, unknown>)?.archived_at)} />
 
           <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
             <div>

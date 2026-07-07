@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { formatCurrency } from '@/lib/pricing';
 import type { TournamentSettings } from '@/types';
 import CopyLinkButton from '@/components/CopyLinkButton';
+import TournamentArchiveButton from '@/components/TournamentArchiveButton';
 
 const STATUS_STYLES: Record<string, string> = {
   registration_open: 'bg-emerald-100 text-emerald-700',
@@ -46,6 +47,7 @@ interface TournamentRow {
   status: string;
   settings: TournamentSettings;
   created_at: string;
+  archived_at: string | null;
   player_count: number;
 }
 
@@ -62,7 +64,6 @@ export default async function DashboardPage() {
 
   const assignedTenantIds: string[] = appUser?.assigned_tenant_ids ?? [];
 
-  // Fetch tenant slug for registration link
   let tenantSlug = '';
   if (assignedTenantIds.length > 0) {
     const { data: tenantRow } = await supabase
@@ -76,10 +77,12 @@ export default async function DashboardPage() {
   let tournaments: TournamentRow[] = [];
 
   if (assignedTenantIds.length > 0) {
+    // Exclude soft-deleted; include archived (we'll separate them below)
     const { data: rows } = await supabase
       .from('tournaments')
-      .select('id, name, status, settings, created_at')
+      .select('id, name, status, settings, created_at, archived_at')
       .in('tenant_id', assignedTenantIds)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     const raw = rows ?? [];
@@ -96,10 +99,11 @@ export default async function DashboardPage() {
     }
   }
 
-  const active = tournaments.filter((t) => t.status !== 'completed');
-  const past = tournaments.filter((t) => t.status === 'completed');
+  const visible = tournaments.filter((t) => !t.archived_at);
+  const archived = tournaments.filter((t) => !!t.archived_at);
+  const active = visible.filter((t) => t.status !== 'completed');
+  const past = visible.filter((t) => t.status === 'completed');
 
-  // Aggregate stats across active tournaments
   const totalRegistered = active.reduce((s, t) => s + t.player_count, 0);
   const totalRevenue = active.reduce((s, t) => s + (t.settings?.ticketPriceForFundraiser ?? 0) * t.player_count, 0);
   const totalGoal = active.reduce((s, t) => {
@@ -117,6 +121,7 @@ export default async function DashboardPage() {
           <p className="text-slate-500 mt-1 text-sm">
             {liveCount > 0 && <span className="text-red-500 font-semibold">{liveCount} live · </span>}
             {active.length} active · {past.length} past
+            {archived.length > 0 && <span className="text-slate-400"> · {archived.length} archived</span>}
           </p>
         </div>
         {assignedTenantIds.length > 0 && (
@@ -183,7 +188,6 @@ export default async function DashboardPage() {
                 key={t.id}
                 className={`bg-white rounded-2xl border p-6 ${isLive ? 'border-red-200 shadow-sm' : 'border-slate-200'}`}
               >
-                {/* Title row */}
                 <div className="flex items-start justify-between gap-4 mb-5">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -198,40 +202,23 @@ export default async function DashboardPage() {
                     {tenantSlug && t.status !== 'completed' && (
                       <CopyLinkButton url={`/t/${tenantSlug}/${t.id}/register`} />
                     )}
-                  <Link
-                    href={`/dashboard/tournaments/${t.id}`}
-                    className="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-50 transition-colors text-slate-700"
-                  >
-                    Manage →
-                  </Link>
+                    <TournamentArchiveButton tournamentId={t.id} isArchived={false} />
+                    <Link
+                      href={`/dashboard/tournaments/${t.id}`}
+                      className="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-50 transition-colors text-slate-700"
+                    >
+                      Manage →
+                    </Link>
                   </div>
                 </div>
 
-                {/* Stats grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-                  <StatBox
-                    label="Registered"
-                    value={`${t.player_count} / ${cap}`}
-                    sub={`${fillPct}% full`}
-                  />
-                  <StatBox
-                    label="Price / player"
-                    value={formatCurrency(price)}
-                    sub={`+${formatCurrency(s.systemTechFee ?? 5)} platform fee`}
-                  />
-                  <StatBox
-                    label="Revenue"
-                    value={formatCurrency(revenue)}
-                    sub="collected so far"
-                  />
-                  <StatBox
-                    label="Goal"
-                    value={formatCurrency(goal)}
-                    sub={`${goalPct}% reached`}
-                  />
+                  <StatBox label="Registered" value={`${t.player_count} / ${cap}`} sub={`${fillPct}% full`} />
+                  <StatBox label="Price / player" value={formatCurrency(price)} sub={`+${formatCurrency(s.systemTechFee ?? 5)} platform fee`} />
+                  <StatBox label="Revenue" value={formatCurrency(revenue)} sub="collected so far" />
+                  <StatBox label="Goal" value={formatCurrency(goal)} sub={`${goalPct}% reached`} />
                 </div>
 
-                {/* Progress bars */}
                 <div className="space-y-2">
                   <div>
                     <div className="flex justify-between text-[11px] text-slate-400 mb-1">
@@ -292,6 +279,44 @@ export default async function DashboardPage() {
                       <p className="font-bold text-emerald-600">{formatCurrency(revenue)}</p>
                     </div>
                   </div>
+                  <TournamentArchiveButton tournamentId={t.id} isArchived={false} compact />
+                  <Link href={`/dashboard/tournaments/${t.id}`} className="text-xs font-semibold text-slate-400 hover:text-slate-700 shrink-0">
+                    View →
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Archived tournaments */}
+      {archived.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden opacity-75">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h2 className="font-bold text-slate-500">Archived</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Hidden from main view — unarchive to restore</p>
+            </div>
+            <span className="text-xs bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-semibold">{archived.length}</span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {archived.map((t) => {
+              const s = t.settings ?? {} as TournamentSettings;
+              const price = s.ticketPriceForFundraiser ?? 0;
+              const revenue = price * t.player_count;
+              return (
+                <div key={t.id} className="flex items-center gap-4 px-6 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-500 text-sm truncate">{t.name}</p>
+                    <p className="text-xs text-slate-400">
+                      {t.player_count} players · {formatCurrency(revenue)} raised ·{' '}
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${STATUS_STYLES[t.status] ?? 'bg-slate-100 text-slate-400'}`}>
+                        {STATUS_LABELS[t.status] ?? t.status}
+                      </span>
+                    </p>
+                  </div>
+                  <TournamentArchiveButton tournamentId={t.id} isArchived compact />
                   <Link href={`/dashboard/tournaments/${t.id}`} className="text-xs font-semibold text-slate-400 hover:text-slate-700 shrink-0">
                     View →
                   </Link>

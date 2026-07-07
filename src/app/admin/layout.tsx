@@ -6,6 +6,7 @@ import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 const NAV = [
   { href: '/admin', label: 'Overview' },
   { href: '/admin/tournaments', label: 'Tournaments' },
+  { href: '/admin/recycle-bin', label: '🗑 Recycle Bin' },
   { href: '/admin/users', label: 'Users' },
   { href: '/admin/admins', label: 'Admins' },
   { href: '/admin/waitlist', label: 'Waitlist' },
