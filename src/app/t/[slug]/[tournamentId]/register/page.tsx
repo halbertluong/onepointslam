@@ -47,6 +47,7 @@ export default function RegisterPage() {
   const [donateAmount, setDonateAmount] = useState(25);
   const [donateCustom, setDonateCustom] = useState('');
   const [donating, setDonating] = useState(false);
+  const [donationTotal, setDonationTotal] = useState(0);
 
   useEffect(() => {
     async function init() {
@@ -56,15 +57,19 @@ export default function RegisterPage() {
         { data: t },
         { count },
         { data: tenant },
+        { data: donations },
       ] = await Promise.all([
         supabase.auth.getUser(),
         supabase.from('tournaments').select('*, tenants(display_name, primary_color)').eq('id', tournamentId).single(),
         supabase.from('players').select('id', { count: 'exact', head: true }).eq('tournament_id', tournamentId),
         supabase.from('tenants').select('platform_fee').eq('slug', slug).single(),
+        supabase.from('donations').select('amount').eq('tournament_id', tournamentId),
       ]);
 
       setTournament(t);
       setPlayerCount(count ?? 0);
+      const donTotal = (donations ?? []).reduce((sum, d) => sum + Number(d.amount), 0);
+      setDonationTotal(donTotal);
       const settings = t?.settings as Record<string, unknown> | null;
       setPlatformFee((settings?.systemTechFee as number) ?? (tenant?.platform_fee as number) ?? DEFAULT_PLATFORM_FEE);
 
@@ -200,9 +205,14 @@ export default function RegisterPage() {
   }
 
   async function handleDonate() {
+    const effectiveAmount = donateCustom ? parseFloat(donateCustom) || 0 : donateAmount;
+    if (effectiveAmount <= 0) return;
     setDonating(true);
-    // Mock payment — in production this would call Stripe
-    await new Promise((r) => setTimeout(r, 1200));
+    const supabase = createClient();
+    // Mock payment delay — in production this would confirm a Stripe PaymentIntent first
+    await new Promise((r) => setTimeout(r, 1000));
+    await supabase.from('donations').insert({ tournament_id: tournamentId, amount: effectiveAmount });
+    setDonationTotal((prev) => prev + effectiveAmount);
     setDonating(false);
     setStep('donate_success');
   }
@@ -466,6 +476,7 @@ export default function RegisterPage() {
           fundraisingGoal={settings?.fundraisingGoal as number | undefined}
           ticketPrice={entranceFee}
           playerCount={playerCount}
+          donationTotal={donationTotal}
           maxPlayers={settings?.maxPlayers as number | undefined}
           prizePlaces={settings?.prizePlaces as Array<{ place: number; value: number; type: string }> | undefined}
           matchRules={{

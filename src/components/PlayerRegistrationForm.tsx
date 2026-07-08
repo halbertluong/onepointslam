@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { formatCurrency } from '@/lib/pricing';
 
-const SKILL_TIERS = ['Beginner', 'Intermediate', 'Advanced', 'Elite'];
+const SKILL_TIERS = ['Beginner', 'Intermediate', 'Advanced'];
 const GENDERS = [
   { value: 'male', label: '♂ Male' },
   { value: 'female', label: '♀ Female' },
@@ -252,18 +252,18 @@ export default function PlayerRegistrationForm({
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Skill Level *
+              Skill Level
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="flex gap-2">
               {SKILL_TIERS.map((tier) => (
                 <button
                   key={tier}
                   type="button"
                   onClick={() => setSkillTier(tier)}
-                  className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-colors ${
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                     skillTier === tier
                       ? 'text-white border-transparent'
-                      : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
+                      : 'border-slate-200 text-slate-500 bg-white hover:bg-slate-50'
                   }`}
                   style={
                     skillTier === tier

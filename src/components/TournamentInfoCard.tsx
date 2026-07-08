@@ -21,6 +21,8 @@ interface Props {
   fundraisingGoal?: number;
   ticketPrice: number;
   playerCount: number;
+  /** Sum of all donations for this tournament */
+  donationTotal?: number;
   maxPlayers?: number;
   prizePlaces?: PrizePlace[];
   matchRules?: MatchRules;
@@ -75,6 +77,7 @@ export default function TournamentInfoCard({
   fundraisingGoal,
   ticketPrice,
   playerCount,
+  donationTotal = 0,
   maxPlayers,
   prizePlaces = [],
   matchRules,
@@ -84,7 +87,7 @@ export default function TournamentInfoCard({
   const { timeLeft, withinSeven } = useCountdown(registrationDeadline);
 
   const goal = fundraisingGoal ?? (maxPlayers ? maxPlayers * ticketPrice : undefined);
-  const raised = playerCount * ticketPrice;
+  const raised = playerCount * ticketPrice + donationTotal;
   const progressPct = goal ? Math.min(100, Math.round((raised / goal) * 100)) : null;
 
   const topPrize = prizePlaces.find((p) => p.place === 1);
@@ -121,7 +124,12 @@ export default function TournamentInfoCard({
               }}
             />
           </div>
-          <p className="text-xs text-slate-400 mt-1.5">{progressPct ?? 0}% of goal reached</p>
+          <p className="text-xs text-slate-400 mt-1.5">
+            {progressPct ?? 0}% of goal reached
+            {donationTotal > 0 && (
+              <span className="ml-1 text-emerald-600 font-medium">· includes {formatCurrency(donationTotal)} in donations</span>
+            )}
+          </p>
         </div>
       )}
 
@@ -208,14 +216,15 @@ export default function TournamentInfoCard({
 
       {/* Donate CTA */}
       {onDonate && (
-        <div className="border-t border-slate-100 px-5 py-3 flex items-center justify-between">
-          <p className="text-xs text-slate-400">Can&apos;t play but want to support?</p>
+        <div className="border-t border-slate-100 px-5 py-4">
+          <p className="text-xs text-slate-500 mb-2.5">Can&apos;t participate? Your donation counts toward the fundraising goal.</p>
           <button
             type="button"
             onClick={onDonate}
-            className="text-xs font-semibold text-slate-500 hover:text-slate-800 underline underline-offset-2 transition-colors"
+            className="w-full py-2.5 rounded-xl border-2 text-sm font-bold transition-colors hover:opacity-80"
+            style={{ borderColor: 'var(--tenant-primary)', color: 'var(--tenant-primary)' }}
           >
-            Donate instead →
+            💚 Donate to Support the Team
           </button>
         </div>
       )}
