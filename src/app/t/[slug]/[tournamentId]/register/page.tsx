@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { useParams, useRouter } from 'next/navigation';
-import { DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
+import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
 import PlayerRegistrationForm, { type PlayerFormData } from '@/components/PlayerRegistrationForm';
+import TournamentInfoCard from '@/components/TournamentInfoCard';
 
 const CLOSE_REASON_TEXT: Record<string, string> = {
   manual_override: 'Registration has been manually closed by the organizer.',
@@ -12,7 +13,9 @@ const CLOSE_REASON_TEXT: Record<string, string> = {
   cap_reached: 'The player cap has been reached.',
 };
 
-type Step = 'loading' | 'form' | 'success' | 'closed' | 'already_registered';
+const DONATE_PRESETS = [10, 25, 50, 100];
+
+type Step = 'loading' | 'form' | 'success' | 'closed' | 'already_registered' | 'donate' | 'donate_success';
 
 export default function RegisterPage() {
   const { slug, tournamentId } = useParams<{ slug: string; tournamentId: string }>();
@@ -39,6 +42,11 @@ export default function RegisterPage() {
   const [savePasswordDone, setSavePasswordDone] = useState(false);
   const [savePasswordError, setSavePasswordError] = useState('');
   const [savePasswordSkipped, setSavePasswordSkipped] = useState(false);
+
+  // Donation flow state
+  const [donateAmount, setDonateAmount] = useState(25);
+  const [donateCustom, setDonateCustom] = useState('');
+  const [donating, setDonating] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -84,7 +92,6 @@ export default function RegisterPage() {
   async function handleEmailBlur(email: string) {
     if (!email || currentUser) return;
     const supabase = createClient();
-    // Check if this email belongs to an existing account in our users table
     const { data } = await supabase
       .from('users')
       .select('id')
@@ -101,27 +108,20 @@ export default function RegisterPage() {
     setWelcomeBackLoading(true);
     setWelcomeBackError('');
     const supabase = createClient();
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: welcomeBackEmail,
-      password,
-    });
+    const { data, error } = await supabase.auth.signInWithPassword({ email: welcomeBackEmail, password });
     setWelcomeBackLoading(false);
     if (error) {
       setWelcomeBackError('Incorrect password. Continue filling out the form or use another email.');
       return;
     }
     if (data.user) {
-      // Check if already registered for this tournament
       const { data: existing } = await supabase
         .from('players')
         .select('id')
         .eq('tournament_id', tournamentId)
         .eq('user_id', data.user.id)
         .maybeSingle();
-      if (existing) {
-        setStep('already_registered');
-        return;
-      }
+      if (existing) { setStep('already_registered'); return; }
       setCurrentUser({ id: data.user.id, email: data.user.email ?? '' });
       setWelcomeBackVisible(false);
     }
@@ -188,11 +188,7 @@ export default function RegisterPage() {
     setSavePasswordError('');
     const supabase = createClient();
     const { data, error } = await supabase.auth.signUp({ email: registeredEmail, password: savePassword });
-    if (error) {
-      setSavePasswordError(error.message);
-      setSavePasswordLoading(false);
-      return;
-    }
+    if (error) { setSavePasswordError(error.message); setSavePasswordLoading(false); return; }
     if (data.user) {
       await supabase.from('users').upsert(
         { id: data.user.id, email: registeredEmail, role: 'player', assigned_tenant_ids: [] },
@@ -203,10 +199,20 @@ export default function RegisterPage() {
     setSavePasswordDone(true);
   }
 
+  async function handleDonate() {
+    setDonating(true);
+    // Mock payment — in production this would call Stripe
+    await new Promise((r) => setTimeout(r, 1200));
+    setDonating(false);
+    setStep('donate_success');
+  }
+
   const settings = tournament?.settings as Record<string, unknown> | null;
   const entranceFee = (settings?.ticketPriceForFundraiser as number) ?? 0;
   const tenantName = (tournament?.tenants as Record<string, unknown> | null)?.display_name as string ?? '';
+  const tournamentName = tournament?.name as string ?? '';
 
+  // ── Closed ──────────────────────────────────────────────────────────────────
   if (step === 'loading') {
     return <div className="min-h-screen flex items-center justify-center text-slate-400">Loading…</div>;
   }
@@ -221,12 +227,20 @@ export default function RegisterPage() {
           <p className="text-slate-600">
             {reason ? CLOSE_REASON_TEXT[reason] : 'Registration is not currently open for this tournament.'}
           </p>
-          <button
-            onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
-            className="btn-secondary px-6 py-3 rounded-xl font-bold text-sm"
-          >
-            View Bracket
-          </button>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
+              className="btn-secondary px-6 py-3 rounded-xl font-bold text-sm"
+            >
+              View Bracket
+            </button>
+            <button
+              onClick={() => setStep('donate')}
+              className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2"
+            >
+              Donate to support the team
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -239,7 +253,7 @@ export default function RegisterPage() {
           <div className="text-5xl">✅</div>
           <h1 className="text-2xl font-black text-slate-900">Already Registered</h1>
           <p className="text-slate-600">
-            You&apos;re already signed up for <strong>{tournament?.name as string}</strong>.
+            You&apos;re already signed up for <strong>{tournamentName}</strong>.
           </p>
           <button
             onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
@@ -252,6 +266,7 @@ export default function RegisterPage() {
     );
   }
 
+  // ── Post-registration success ────────────────────────────────────────────────
   if (step === 'success') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
@@ -260,21 +275,18 @@ export default function RegisterPage() {
             <div className="text-6xl">🎾</div>
             <h1 className="text-2xl font-black text-slate-900">You&apos;re In!</h1>
             <p className="text-slate-600">
-              Welcome to <strong>{tournament?.name as string}</strong>, {registeredName}!
+              Welcome to <strong>{tournamentName}</strong>, {registeredName}!
               We&apos;ll be in touch with match details.
             </p>
           </div>
 
-          {/* Optional account creation — guests only, one-click skippable */}
           {wasGuest && !savePasswordSkipped && (
             <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
               {savePasswordDone ? (
                 <div className="text-center space-y-1">
                   <p className="text-2xl">🔐</p>
                   <p className="font-semibold text-slate-800 text-sm">Account created!</p>
-                  <p className="text-xs text-slate-500">
-                    Next time you register, signing in will autofill your details.
-                  </p>
+                  <p className="text-xs text-slate-500">Next time you register, signing in will autofill your details.</p>
                 </div>
               ) : (
                 <>
@@ -303,9 +315,7 @@ export default function RegisterPage() {
                       {savePasswordLoading ? '…' : 'Save'}
                     </button>
                   </div>
-                  {savePasswordError && (
-                    <p className="text-xs text-red-600">{savePasswordError}</p>
-                  )}
+                  {savePasswordError && <p className="text-xs text-red-600">{savePasswordError}</p>}
                   <button
                     type="button"
                     onClick={() => setSavePasswordSkipped(true)}
@@ -329,10 +339,143 @@ export default function RegisterPage() {
     );
   }
 
-  // step === 'form' — always shown directly, no auth gate
+  // ── Donation flow ────────────────────────────────────────────────────────────
+  if (step === 'donate') {
+    const effectiveAmount = donateCustom ? parseFloat(donateCustom) || 0 : donateAmount;
+    return (
+      <div className="min-h-screen bg-slate-50 py-10 px-4">
+        <div className="max-w-md mx-auto space-y-6">
+          <div>
+            <button
+              type="button"
+              onClick={() => setStep('form')}
+              className="text-sm text-slate-400 hover:text-slate-600 mb-3 block"
+            >
+              ← Back to registration
+            </button>
+            {tenantName && <p className="text-sm text-slate-400 mb-1">{tenantName}</p>}
+            <h1 className="text-2xl font-black text-slate-900">{tournamentName}</h1>
+            <p className="text-slate-500 mt-1 text-sm">Support the team without signing up to play.</p>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
+            <h2 className="font-bold text-slate-800">Choose an amount</h2>
+
+            <div className="grid grid-cols-4 gap-2">
+              {DONATE_PRESETS.map((amt) => (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => { setDonateAmount(amt); setDonateCustom(''); }}
+                  className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-colors ${
+                    !donateCustom && donateAmount === amt
+                      ? 'text-white border-transparent'
+                      : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
+                  }`}
+                  style={!donateCustom && donateAmount === amt
+                    ? { backgroundColor: 'var(--tenant-primary)', borderColor: 'var(--tenant-primary)' }
+                    : {}}
+                >
+                  {formatCurrency(amt)}
+                </button>
+              ))}
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+                Or enter a custom amount
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="0"
+                  value={donateCustom}
+                  onChange={(e) => setDonateCustom(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl pl-7 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2"
+                />
+              </div>
+            </div>
+
+            <div
+              className="flex justify-between px-4 py-3 rounded-xl text-sm"
+              style={{ backgroundColor: 'color-mix(in srgb, var(--tenant-primary) 8%, white)' }}
+            >
+              <span className="font-bold text-slate-800">Donation total</span>
+              <span className="font-black text-lg" style={{ color: 'var(--tenant-primary)' }}>
+                {effectiveAmount > 0 ? formatCurrency(effectiveAmount) : '—'}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            disabled={donating || effectiveAmount <= 0}
+            onClick={handleDonate}
+            className="btn-primary w-full py-4 rounded-2xl font-black text-base disabled:opacity-60"
+          >
+            {donating ? 'Processing…' : effectiveAmount > 0 ? `Donate ${formatCurrency(effectiveAmount)}` : 'Select an amount'}
+          </button>
+
+          <p className="text-center text-xs text-slate-400">
+            Donations go directly to <strong>{tenantName || 'the team'}</strong>.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'donate_success') {
+    const effectiveAmount = donateCustom ? parseFloat(donateCustom) || 0 : donateAmount;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <div className="max-w-sm w-full text-center space-y-4">
+          <div className="text-6xl">💚</div>
+          <h1 className="text-2xl font-black text-slate-900">Thank You!</h1>
+          <p className="text-slate-600">
+            Your donation of <strong>{formatCurrency(effectiveAmount)}</strong> to{' '}
+            <strong>{tenantName || tournamentName}</strong> is appreciated.
+          </p>
+          <button
+            onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
+            className="btn-primary w-full py-3 rounded-xl font-bold text-sm"
+          >
+            View Bracket
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main registration form ───────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4">
-      <div className="max-w-md mx-auto space-y-6">
+      <div className="max-w-md mx-auto space-y-5">
+        {/* Header */}
+        <div>
+          {tenantName && <p className="text-sm text-slate-400 mb-1">{tenantName}</p>}
+          <h1 className="text-2xl font-black text-slate-900">{tournamentName}</h1>
+        </div>
+
+        {/* Tournament details card */}
+        <TournamentInfoCard
+          tournamentDate={settings?.tournamentDate as string | undefined}
+          registrationDeadline={settings?.registrationDeadline as string | undefined}
+          fundraisingGoal={settings?.fundraisingGoal as number | undefined}
+          ticketPrice={entranceFee}
+          playerCount={playerCount}
+          maxPlayers={settings?.maxPlayers as number | undefined}
+          prizePlaces={settings?.prizePlaces as Array<{ place: number; value: number; type: string }> | undefined}
+          matchRules={{
+            serveRuleProfile: settings?.serveRuleProfile as string | undefined,
+            serverDetermination: settings?.serverDetermination as string | undefined,
+            receivingSideSelection: settings?.receivingSideSelection as string | undefined,
+          }}
+          onDonate={() => setStep('donate')}
+        />
+
         {currentUser && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center justify-between">
             <span>Signed in as <strong>{currentUser.email}</strong></span>
@@ -349,9 +492,10 @@ export default function RegisterPage() {
             </button>
           </div>
         )}
+
         <PlayerRegistrationForm
-          tournamentName={tournament?.name as string}
-          tenantName={tenantName}
+          tournamentName={tournamentName}
+          hideHeader
           entranceFee={entranceFee}
           platformFee={platformFee}
           playerCount={playerCount}
@@ -364,6 +508,7 @@ export default function RegisterPage() {
             onSignIn: handleWelcomeBackSignIn,
             onDismiss: () => { setWelcomeBackVisible(false); setWelcomeBackError(''); },
           } : undefined}
+          onDonate={() => setStep('donate')}
           onSubmit={handleRegister}
         />
       </div>

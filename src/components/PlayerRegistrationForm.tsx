@@ -35,12 +35,16 @@ interface Props {
   platformFee: number;
   playerCount?: number;
   maxPlayers?: number;
+  /** Suppress the built-in tournament name / spots header (use when the parent renders its own header) */
+  hideHeader?: boolean;
   /** Pre-filled, read-only email from a signed-in user */
   lockedEmail?: string;
   /** Called when the email field loses focus (for account-exists check) */
   onEmailBlur?: (email: string) => void;
   /** When set, renders the inline "Welcome back" sign-in prompt below the email field */
   welcomeBack?: WelcomeBackProps;
+  /** When set, renders a secondary "Donate instead" link below the submit button */
+  onDonate?: () => void;
   onSubmit: (data: PlayerFormData) => Promise<{ error?: string } | void>;
 }
 
@@ -51,9 +55,11 @@ export default function PlayerRegistrationForm({
   platformFee,
   playerCount,
   maxPlayers,
+  hideHeader,
   lockedEmail,
   onEmailBlur,
   welcomeBack,
+  onDonate,
   onSubmit,
 }: Props) {
   const [fullName, setFullName] = useState('');
@@ -84,15 +90,17 @@ export default function PlayerRegistrationForm({
 
   return (
     <div className="space-y-6">
-      <div>
-        {tenantName && <p className="text-sm text-slate-400 mb-1">{tenantName}</p>}
-        <h1 className="text-2xl font-black text-slate-900">{tournamentName}</h1>
-        {playerCount != null && maxPlayers != null && (
-          <p className="text-slate-500 mt-1 text-sm">
-            Player Registration · {playerCount} / {maxPlayers} spots filled
-          </p>
-        )}
-      </div>
+      {!hideHeader && (
+        <div>
+          {tenantName && <p className="text-sm text-slate-400 mb-1">{tenantName}</p>}
+          <h1 className="text-2xl font-black text-slate-900">{tournamentName}</h1>
+          {playerCount != null && maxPlayers != null && (
+            <p className="text-slate-500 mt-1 text-sm">
+              Player Registration · {playerCount} / {maxPlayers} spots filled
+            </p>
+          )}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
@@ -317,6 +325,19 @@ export default function PlayerRegistrationForm({
         <p className="text-center text-xs text-slate-400">
           No account required. You&apos;ll receive confirmation by email.
         </p>
+
+        {onDonate && (
+          <p className="text-center text-xs text-slate-400">
+            Can&apos;t participate?{' '}
+            <button
+              type="button"
+              onClick={onDonate}
+              className="underline underline-offset-2 text-slate-500 hover:text-slate-700 font-medium"
+            >
+              Donate instead
+            </button>
+          </p>
+        )}
       </form>
     </div>
   );
