@@ -831,7 +831,7 @@ function SettingsEditor({
     e.preventDefault();
     const patch: Partial<Tournament['settings']> = {};
     const price = parseFloat(ticketPrice);
-    if (!isNaN(price) && price >= 0) patch.ticketPriceForFundraiser = price;
+    if (!isNaN(price) && price >= 0) patch.ticketPriceForFundraiser = Math.round(price * 100) / 100;
     const maxNum = parseInt(maxPlayers);
     if (!isNaN(maxNum) && maxNum > 0) patch.maxPlayers = maxNum as Tournament['settings']['maxPlayers'];
     patch.tournamentDate = tournamentDate || undefined;
@@ -971,9 +971,13 @@ function SettingsEditor({
             <input
               type="number"
               min="0"
-              step="0.50"
+              step="0.01"
               value={ticketPrice}
               onChange={(e) => setTicketPrice(e.target.value)}
+              onBlur={(e) => {
+                const val = parseFloat(e.target.value);
+                if (!isNaN(val)) setTicketPrice(val.toFixed(2));
+              }}
               className="flex-1 px-3 py-2.5 text-sm focus:outline-none"
             />
           </div>

@@ -182,7 +182,7 @@ export default function FundraisingCalculator({ onPriceSet }: FundraisingCalcula
 
       {onPriceSet && (
         <button
-          onClick={() => onPriceSet(activeEntranceFee)}
+          onClick={() => onPriceSet(Math.round(activeEntranceFee * 100) / 100)}
           className="btn-primary w-full py-3 rounded-xl font-semibold text-sm"
         >
           Use This Price — {formatCurrency(activeEntranceFee)} per player
