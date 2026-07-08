@@ -449,10 +449,10 @@ export default function RegisterPage() {
             <strong>{tenantName || tournamentName}</strong> is appreciated.
           </p>
           <button
-            onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
+            onClick={() => setStep('form')}
             className="btn-primary w-full py-3 rounded-xl font-bold text-sm"
           >
-            View Bracket
+            Back to Registration
           </button>
         </div>
       </div>

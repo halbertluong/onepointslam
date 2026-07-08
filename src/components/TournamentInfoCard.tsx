@@ -87,8 +87,11 @@ export default function TournamentInfoCard({
   const { timeLeft, withinSeven } = useCountdown(registrationDeadline);
 
   const goal = fundraisingGoal ?? (maxPlayers ? maxPlayers * ticketPrice : undefined);
-  const raised = playerCount * ticketPrice + donationTotal;
-  const progressPct = goal ? Math.min(100, Math.round((raised / goal) * 100)) : null;
+  const registrationRaised = playerCount * ticketPrice;
+  const raised = registrationRaised + donationTotal;
+  const progressPct = goal ? Math.min(100, (raised / goal) * 100) : null;
+  const regPct = goal ? Math.min(100, (registrationRaised / goal) * 100) : null;
+  const donPct = goal ? Math.min(100 - (regPct ?? 0), (donationTotal / goal) * 100) : null;
 
   const topPrize = prizePlaces.find((p) => p.place === 1);
 
@@ -115,21 +118,38 @@ export default function TournamentInfoCard({
               <p className="text-sm font-bold text-slate-600">{formatCurrency(goal)}</p>
             </div>
           </div>
-          <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+          <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden flex">
+            {/* Registration revenue segment */}
             <div
-              className="h-full rounded-full transition-all duration-700"
+              className="h-full transition-all duration-700"
               style={{
-                width: `${progressPct ?? 0}%`,
+                width: `${regPct ?? 0}%`,
                 backgroundColor: 'var(--tenant-primary)',
               }}
             />
-          </div>
-          <p className="text-xs text-slate-400 mt-1.5">
-            {progressPct ?? 0}% of goal reached
-            {donationTotal > 0 && (
-              <span className="ml-1 text-emerald-600 font-medium">· includes {formatCurrency(donationTotal)} in donations</span>
+            {/* Donation segment */}
+            {donPct != null && donPct > 0 && (
+              <div
+                className="h-full transition-all duration-700 bg-emerald-400"
+                style={{ width: `${donPct}%` }}
+              />
             )}
-          </p>
+          </div>
+          <div className="flex items-center justify-between mt-1.5">
+            <p className="text-xs text-slate-400">{Math.round(progressPct ?? 0)}% of goal reached</p>
+            {donationTotal > 0 && (
+              <div className="flex items-center gap-3 text-xs">
+                <span className="flex items-center gap-1 text-slate-400">
+                  <span className="inline-block w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: 'var(--tenant-primary)' }} />
+                  Registrations
+                </span>
+                <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                  <span className="inline-block w-2 h-2 rounded-sm shrink-0 bg-emerald-400" />
+                  Donations
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
