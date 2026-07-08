@@ -21,21 +21,26 @@ export interface PlayerFormData {
   skillTier: string;
 }
 
+export interface WelcomeBackProps {
+  loading: boolean;
+  error: string;
+  onSignIn: (password: string) => Promise<void>;
+  onDismiss: () => void;
+}
+
 interface Props {
   tournamentName: string;
   tenantName?: string;
-  /** The school's cut of the entry fee */
   entranceFee: number;
-  /** Platform fee added on top */
   platformFee: number;
   playerCount?: number;
   maxPlayers?: number;
-  /** Pre-filled, read-only email from a logged-in user */
+  /** Pre-filled, read-only email from a signed-in user */
   lockedEmail?: string;
-  /**
-   * Called on submit. Return `{ error: string }` to surface a validation error,
-   * or nothing / `{}` on success.
-   */
+  /** Called when the email field loses focus (for account-exists check) */
+  onEmailBlur?: (email: string) => void;
+  /** When set, renders the inline "Welcome back" sign-in prompt below the email field */
+  welcomeBack?: WelcomeBackProps;
   onSubmit: (data: PlayerFormData) => Promise<{ error?: string } | void>;
 }
 
@@ -47,6 +52,8 @@ export default function PlayerRegistrationForm({
   playerCount,
   maxPlayers,
   lockedEmail,
+  onEmailBlur,
+  welcomeBack,
   onSubmit,
 }: Props) {
   const [fullName, setFullName] = useState('');
@@ -59,6 +66,9 @@ export default function PlayerRegistrationForm({
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Welcome-back inline sign-in state (local password field)
+  const [wbPassword, setWbPassword] = useState('');
+
   const totalPrice = entranceFee + platformFee;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -70,7 +80,6 @@ export default function PlayerRegistrationForm({
       setFormError(result.error);
       setSubmitting(false);
     }
-    // On success, parent controls the next step
   }
 
   return (
@@ -112,11 +121,60 @@ export default function PlayerRegistrationForm({
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={(e) => {
+                if (!lockedEmail && e.target.value) onEmailBlur?.(e.target.value);
+              }}
               readOnly={!!lockedEmail}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 disabled:bg-slate-50"
+              className={`w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${lockedEmail ? 'bg-slate-50 text-slate-500' : ''}`}
               placeholder="jane@school.edu"
             />
           </div>
+
+          {/* Inline "Welcome back" prompt — shown when email belongs to an existing account */}
+          {welcomeBack && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-blue-900">Welcome back!</p>
+                  <p className="text-xs text-blue-700 mt-0.5">
+                    Enter your password to sign in and speed through the form.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={welcomeBack.onDismiss}
+                  className="text-blue-400 hover:text-blue-600 text-lg leading-none shrink-0 mt-0.5"
+                  aria-label="Dismiss"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  placeholder="Your password"
+                  value={wbPassword}
+                  onChange={(e) => setWbPassword(e.target.value)}
+                  className="flex-1 border border-blue-200 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  disabled={welcomeBack.loading || !wbPassword}
+                  onClick={async () => {
+                    await welcomeBack.onSignIn(wbPassword);
+                    setWbPassword('');
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  {welcomeBack.loading ? '…' : 'Sign in'}
+                </button>
+              </div>
+              {welcomeBack.error && (
+                <p className="text-xs text-red-600">{welcomeBack.error}</p>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-3">
             <div>
@@ -255,6 +313,10 @@ export default function PlayerRegistrationForm({
             ? `Pay ${formatCurrency(totalPrice)} & Register`
             : 'Register Free'}
         </button>
+
+        <p className="text-center text-xs text-slate-400">
+          No account required. You&apos;ll receive confirmation by email.
+        </p>
       </form>
     </div>
   );

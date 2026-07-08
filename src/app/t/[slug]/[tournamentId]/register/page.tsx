@@ -12,7 +12,7 @@ const CLOSE_REASON_TEXT: Record<string, string> = {
   cap_reached: 'The player cap has been reached.',
 };
 
-type Step = 'loading' | 'auth' | 'form' | 'success' | 'closed' | 'already_registered';
+type Step = 'loading' | 'form' | 'success' | 'closed' | 'already_registered';
 
 export default function RegisterPage() {
   const { slug, tournamentId } = useParams<{ slug: string; tournamentId: string }>();
@@ -24,13 +24,21 @@ export default function RegisterPage() {
   const [playerCount, setPlayerCount] = useState(0);
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null);
   const [registeredName, setRegisteredName] = useState('');
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const [wasGuest, setWasGuest] = useState(false);
 
-  // Auth form
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [authEmail, setAuthEmail] = useState('');
-  const [authPassword, setAuthPassword] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [authLoading, setAuthLoading] = useState(false);
+  // Inline "Welcome back" prompt state
+  const [welcomeBackEmail, setWelcomeBackEmail] = useState('');
+  const [welcomeBackVisible, setWelcomeBackVisible] = useState(false);
+  const [welcomeBackLoading, setWelcomeBackLoading] = useState(false);
+  const [welcomeBackError, setWelcomeBackError] = useState('');
+
+  // Post-success account creation state (guests only)
+  const [savePassword, setSavePassword] = useState('');
+  const [savePasswordLoading, setSavePasswordLoading] = useState(false);
+  const [savePasswordDone, setSavePasswordDone] = useState(false);
+  const [savePasswordError, setSavePasswordError] = useState('');
+  const [savePasswordSkipped, setSavePasswordSkipped] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -65,54 +73,63 @@ export default function RegisterPage() {
           .eq('user_id', user.id)
           .maybeSingle();
         if (existing) { setStep('already_registered'); return; }
-
         setCurrentUser({ id: user.id, email: user.email ?? '' });
-        setStep('form');
-      } else {
-        setStep('auth');
       }
+
+      setStep('form');
     }
     init();
   }, [tournamentId, slug]);
 
-  async function handleAuth(e: React.FormEvent) {
-    e.preventDefault();
-    setAuthLoading(true);
-    setAuthError('');
+  async function handleEmailBlur(email: string) {
+    if (!email || currentUser) return;
     const supabase = createClient();
-
-    if (authMode === 'signup') {
-      const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
-      if (error) { setAuthError(error.message); setAuthLoading(false); return; }
-      if (data.user) {
-        await supabase.from('users').upsert(
-          { id: data.user.id, email: authEmail, role: 'player', assigned_tenant_ids: [] },
-          { onConflict: 'id' },
-        );
-        setCurrentUser({ id: data.user.id, email: authEmail });
-      }
-    } else {
-      const { data, error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
-      if (error) { setAuthError(error.message); setAuthLoading(false); return; }
-      if (data.user) {
-        const { data: existing } = await supabase
-          .from('players')
-          .select('id')
-          .eq('tournament_id', tournamentId)
-          .eq('user_id', data.user.id)
-          .maybeSingle();
-        if (existing) { setStep('already_registered'); return; }
-        setCurrentUser({ id: data.user.id, email: data.user.email ?? '' });
-      }
+    // Check if this email belongs to an existing account in our users table
+    const { data } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle();
+    if (data) {
+      setWelcomeBackEmail(email);
+      setWelcomeBackVisible(true);
+      setWelcomeBackError('');
     }
-    setAuthLoading(false);
-    setStep('form');
+  }
+
+  async function handleWelcomeBackSignIn(password: string) {
+    setWelcomeBackLoading(true);
+    setWelcomeBackError('');
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: welcomeBackEmail,
+      password,
+    });
+    setWelcomeBackLoading(false);
+    if (error) {
+      setWelcomeBackError('Incorrect password. Continue filling out the form or use another email.');
+      return;
+    }
+    if (data.user) {
+      // Check if already registered for this tournament
+      const { data: existing } = await supabase
+        .from('players')
+        .select('id')
+        .eq('tournament_id', tournamentId)
+        .eq('user_id', data.user.id)
+        .maybeSingle();
+      if (existing) {
+        setStep('already_registered');
+        return;
+      }
+      setCurrentUser({ id: data.user.id, email: data.user.email ?? '' });
+      setWelcomeBackVisible(false);
+    }
   }
 
   async function handleRegister(data: PlayerFormData): Promise<{ error?: string }> {
     const supabase = createClient();
 
-    // Re-check cap
     const { count: currentCount } = await supabase
       .from('players')
       .select('id', { count: 'exact', head: true })
@@ -123,7 +140,6 @@ export default function RegisterPage() {
       return { error: 'Sorry, the player cap has been reached.' };
     }
 
-    // Duplicate check for guests
     if (!currentUser) {
       const { data: byEmail } = await supabase
         .from('players')
@@ -157,8 +173,34 @@ export default function RegisterPage() {
     }
 
     setRegisteredName(data.fullName);
+    setRegisteredEmail(data.email);
+    setWasGuest(!currentUser);
     setStep('success');
     return {};
+  }
+
+  async function handleSavePassword() {
+    if (!savePassword || savePassword.length < 6) {
+      setSavePasswordError('Password must be at least 6 characters.');
+      return;
+    }
+    setSavePasswordLoading(true);
+    setSavePasswordError('');
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signUp({ email: registeredEmail, password: savePassword });
+    if (error) {
+      setSavePasswordError(error.message);
+      setSavePasswordLoading(false);
+      return;
+    }
+    if (data.user) {
+      await supabase.from('users').upsert(
+        { id: data.user.id, email: registeredEmail, role: 'player', assigned_tenant_ids: [] },
+        { onConflict: 'id' },
+      );
+    }
+    setSavePasswordLoading(false);
+    setSavePasswordDone(true);
   }
 
   const settings = tournament?.settings as Record<string, unknown> | null;
@@ -213,16 +255,72 @@ export default function RegisterPage() {
   if (step === 'success') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-        <div className="max-w-sm w-full text-center space-y-4">
-          <div className="text-6xl">🎾</div>
-          <h1 className="text-2xl font-black text-slate-900">You&apos;re In!</h1>
-          <p className="text-slate-600">
-            Welcome to <strong>{tournament?.name as string}</strong>, {registeredName}!
-            We&apos;ll be in touch with match details.
-          </p>
+        <div className="max-w-sm w-full space-y-5">
+          <div className="text-center space-y-3">
+            <div className="text-6xl">🎾</div>
+            <h1 className="text-2xl font-black text-slate-900">You&apos;re In!</h1>
+            <p className="text-slate-600">
+              Welcome to <strong>{tournament?.name as string}</strong>, {registeredName}!
+              We&apos;ll be in touch with match details.
+            </p>
+          </div>
+
+          {/* Optional account creation — guests only, one-click skippable */}
+          {wasGuest && !savePasswordSkipped && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+              {savePasswordDone ? (
+                <div className="text-center space-y-1">
+                  <p className="text-2xl">🔐</p>
+                  <p className="font-semibold text-slate-800 text-sm">Account created!</p>
+                  <p className="text-xs text-slate-500">
+                    Next time you register, signing in will autofill your details.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <p className="font-semibold text-slate-800 text-sm">Save your info for next time?</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Add a password to <span className="font-medium">{registeredEmail}</span> and skip this form at future tournaments.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      placeholder="Choose a password (min 6 chars)"
+                      value={savePassword}
+                      onChange={(e) => { setSavePassword(e.target.value); setSavePasswordError(''); }}
+                      minLength={6}
+                      className="flex-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 min-w-0"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      disabled={savePasswordLoading || !savePassword}
+                      onClick={handleSavePassword}
+                      className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50 transition-colors shrink-0"
+                    >
+                      {savePasswordLoading ? '…' : 'Save'}
+                    </button>
+                  </div>
+                  {savePasswordError && (
+                    <p className="text-xs text-red-600">{savePasswordError}</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSavePasswordSkipped(true)}
+                    className="text-xs text-slate-400 hover:text-slate-600 w-full text-center"
+                  >
+                    No thanks, skip
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           <button
             onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
-            className="btn-primary w-full py-3 rounded-xl font-bold text-sm mt-4"
+            className="btn-primary w-full py-3 rounded-xl font-bold text-sm"
           >
             View Bracket
           </button>
@@ -231,121 +329,43 @@ export default function RegisterPage() {
     );
   }
 
+  // step === 'form' — always shown directly, no auth gate
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4">
       <div className="max-w-md mx-auto space-y-6">
-        {/* Auth step */}
-        {step === 'auth' && (
-          <div className="space-y-6">
-            <div>
-              {tenantName && <p className="text-sm text-slate-400 mb-1">{tenantName}</p>}
-              <h1 className="text-2xl font-black text-slate-900">{tournament?.name as string}</h1>
-            </div>
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
-              <div>
-                <h2 className="font-bold text-slate-800">Sign in to register</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Create a free account or sign in to secure your spot.</p>
-              </div>
-
-              <div className="flex rounded-xl overflow-hidden border border-slate-200">
-                {(['signin', 'signup'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => { setAuthMode(mode); setAuthError(''); }}
-                    className={`flex-1 py-2 text-sm font-semibold transition-colors ${
-                      authMode === mode ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'
-                    }`}
-                  >
-                    {mode === 'signin' ? 'Sign In' : 'Create Account'}
-                  </button>
-                ))}
-              </div>
-
-              <form onSubmit={handleAuth} className="space-y-3">
-                <input
-                  type="email"
-                  required
-                  placeholder="Email address"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
-                />
-                <input
-                  type="password"
-                  required
-                  placeholder={authMode === 'signup' ? 'Create a password (min 6 chars)' : 'Password'}
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  minLength={authMode === 'signup' ? 6 : undefined}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
-                />
-                {authError && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{authError}</p>}
-                <button
-                  type="submit"
-                  disabled={authLoading}
-                  className="btn-primary w-full py-3 rounded-xl font-bold text-sm disabled:opacity-60"
-                >
-                  {authLoading
-                    ? 'Please wait…'
-                    : authMode === 'signin'
-                    ? 'Sign In & Continue'
-                    : 'Create Account & Continue'}
-                </button>
-              </form>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-200" />
-                </div>
-                <div className="relative text-center">
-                  <span className="bg-white px-3 text-xs text-slate-400">or</span>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setStep('form')}
-                className="w-full py-2.5 text-sm text-slate-500 hover:text-slate-700 font-medium"
-              >
-                Continue as guest (no account needed)
-              </button>
-            </div>
+        {currentUser && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center justify-between">
+            <span>Signed in as <strong>{currentUser.email}</strong></span>
+            <button
+              type="button"
+              onClick={async () => {
+                const supabase = createClient();
+                await supabase.auth.signOut();
+                setCurrentUser(null);
+              }}
+              className="text-xs text-emerald-600 hover:text-emerald-800 font-semibold ml-3"
+            >
+              Sign out
+            </button>
           </div>
         )}
-
-        {/* Registration form */}
-        {step === 'form' && (
-          <>
-            {currentUser && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center justify-between">
-                <span>Signed in as <strong>{currentUser.email}</strong></span>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const supabase = createClient();
-                    await supabase.auth.signOut();
-                    setCurrentUser(null);
-                    setStep('auth');
-                  }}
-                  className="text-xs text-emerald-600 hover:text-emerald-800 font-semibold ml-3"
-                >
-                  Sign out
-                </button>
-              </div>
-            )}
-            <PlayerRegistrationForm
-              tournamentName={tournament?.name as string}
-              tenantName={tenantName}
-              entranceFee={entranceFee}
-              platformFee={platformFee}
-              playerCount={playerCount}
-              maxPlayers={settings?.maxPlayers as number | undefined}
-              lockedEmail={currentUser?.email}
-              onSubmit={handleRegister}
-            />
-          </>
-        )}
+        <PlayerRegistrationForm
+          tournamentName={tournament?.name as string}
+          tenantName={tenantName}
+          entranceFee={entranceFee}
+          platformFee={platformFee}
+          playerCount={playerCount}
+          maxPlayers={settings?.maxPlayers as number | undefined}
+          lockedEmail={currentUser?.email}
+          onEmailBlur={handleEmailBlur}
+          welcomeBack={welcomeBackVisible ? {
+            loading: welcomeBackLoading,
+            error: welcomeBackError,
+            onSignIn: handleWelcomeBackSignIn,
+            onDismiss: () => { setWelcomeBackVisible(false); setWelcomeBackError(''); },
+          } : undefined}
+          onSubmit={handleRegister}
+        />
       </div>
     </div>
   );
