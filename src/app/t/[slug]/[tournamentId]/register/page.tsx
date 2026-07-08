@@ -6,6 +6,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
 import PlayerRegistrationForm, { type PlayerFormData } from '@/components/PlayerRegistrationForm';
 import TournamentInfoCard from '@/components/TournamentInfoCard';
+import BracketView from '@/components/BracketView';
+import type { Match, Player } from '@/types';
 
 const CLOSE_REASON_TEXT: Record<string, string> = {
   manual_override: 'Registration has been manually closed by the organizer.',
@@ -42,6 +44,12 @@ export default function RegisterPage() {
   const [savePasswordDone, setSavePasswordDone] = useState(false);
   const [savePasswordError, setSavePasswordError] = useState('');
   const [savePasswordSkipped, setSavePasswordSkipped] = useState(false);
+
+  // Tab state for the main view
+  const [activeTab, setActiveTab] = useState<'register' | 'bracket'>('register');
+  const [bracketMatches, setBracketMatches] = useState<Match[] | null>(null);
+  const [bracketPlayers, setBracketPlayers] = useState<Player[]>([]);
+  const [bracketLoading, setBracketLoading] = useState(false);
 
   // Donation flow state
   const [donateAmount, setDonateAmount] = useState(25);
@@ -204,6 +212,47 @@ export default function RegisterPage() {
     setSavePasswordDone(true);
   }
 
+  async function loadBracket() {
+    if (bracketMatches !== null) return; // already loaded
+    setBracketLoading(true);
+    const supabase = createClient();
+    const [{ data: matches }, { data: players }] = await Promise.all([
+      supabase.from('matches').select('*').eq('tournament_id', tournamentId).order('round_index').order('match_index'),
+      supabase.from('players').select('*').eq('tournament_id', tournamentId),
+    ]);
+
+    const toMatch = (m: Record<string, unknown>): Match => ({
+      id: m.id as string,
+      tournamentId: m.tournament_id as string,
+      roundIndex: m.round_index as number,
+      matchIndex: m.match_index as number,
+      player1Id: m.player1_id as string | null,
+      player2Id: m.player2_id as string | null,
+      serverPlayerId: m.server_player_id as string | null,
+      winnerId: m.winner_id as string | null,
+      status: m.status as Match['status'],
+      courtNumber: m.court_number as number | undefined,
+    });
+
+    const toPlayer = (p: Record<string, unknown>): Player => ({
+      id: p.id as string,
+      tournamentId: p.tournament_id as string,
+      fullName: p.full_name as string,
+      email: p.email as string,
+      skillTier: p.skill_tier as string,
+      gender: p.gender as string | undefined,
+      ntrpRating: p.ntrp_rating as number | undefined,
+      utrRating: p.utr_rating as number | undefined,
+      age: p.age as number | undefined,
+      seedRating: p.seed_rating as number | undefined,
+      status: p.status as Player['status'],
+    });
+
+    setBracketMatches((matches ?? []).map(toMatch));
+    setBracketPlayers((players ?? []).map(toPlayer));
+    setBracketLoading(false);
+  }
+
   async function handleDonate() {
     const effectiveAmount = donateCustom ? parseFloat(donateCustom) || 0 : donateAmount;
     if (effectiveAmount <= 0) return;
@@ -339,10 +388,10 @@ export default function RegisterPage() {
           )}
 
           <button
-            onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
+            onClick={() => setStep('form')}
             className="btn-primary w-full py-3 rounded-xl font-bold text-sm"
           >
-            View Bracket
+            Back to Registration
           </button>
         </div>
       </div>
@@ -459,15 +508,75 @@ export default function RegisterPage() {
     );
   }
 
+  const bracketReady = tournament?.status !== 'registration_open' && tournament?.status !== 'registration_closed';
+
   // ── Main registration form ───────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4">
-      <div className="max-w-md mx-auto space-y-5">
+      <div className="max-w-4xl mx-auto space-y-5">
         {/* Header */}
         <div>
           {tenantName && <p className="text-sm text-slate-400 mb-1">{tenantName}</p>}
           <h1 className="text-2xl font-black text-slate-900">{tournamentName}</h1>
         </div>
+
+        {/* Tabs */}
+        <div className="flex rounded-xl overflow-hidden border border-slate-200 bg-white w-fit">
+          <button
+            type="button"
+            onClick={() => setActiveTab('register')}
+            className={`px-5 py-2 text-sm font-semibold transition-colors ${
+              activeTab === 'register' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            Register
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('bracket');
+              if (bracketReady) loadBracket();
+            }}
+            className={`px-5 py-2 text-sm font-semibold transition-colors ${
+              activeTab === 'bracket' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            Bracket
+            {bracketReady && <span className="ml-1.5 text-[10px] font-bold text-emerald-400 uppercase tracking-wide">Live</span>}
+          </button>
+        </div>
+
+        {/* Bracket tab */}
+        {activeTab === 'bracket' && (
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            {bracketLoading ? (
+              <div className="py-16 text-center text-slate-400 text-sm">Loading bracket…</div>
+            ) : !bracketReady ? (
+              <div className="py-16 text-center space-y-2">
+                <p className="text-3xl">🎾</p>
+                <p className="font-semibold text-slate-700">Bracket not generated yet</p>
+                <p className="text-sm text-slate-400">Check back once registration closes and the draw is seeded.</p>
+              </div>
+            ) : bracketMatches && bracketMatches.length === 0 ? (
+              <div className="py-16 text-center space-y-2">
+                <p className="text-3xl">🎾</p>
+                <p className="font-semibold text-slate-700">No matches found</p>
+                <p className="text-sm text-slate-400">The bracket may still be processing.</p>
+              </div>
+            ) : bracketMatches ? (
+              <BracketView
+                initialMatches={bracketMatches}
+                players={bracketPlayers}
+                maxPlayers={settings?.maxPlayers as number ?? bracketMatches.length * 2}
+                tournamentId={tournamentId}
+                liveUpdates
+              />
+            ) : null}
+          </div>
+        )}
+
+        {/* Register tab */}
+        {activeTab === 'register' && (<>
 
         {/* Tournament details card */}
         <TournamentInfoCard
@@ -522,6 +631,7 @@ export default function RegisterPage() {
           onDonate={() => setStep('donate')}
           onSubmit={handleRegister}
         />
+        </>)}
       </div>
     </div>
   );

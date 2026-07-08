@@ -370,8 +370,9 @@ export default function TournamentAdminPage() {
         tournament_id: id,
         round_index: m.roundIndex,
         match_index: m.matchIndex,
-        player1_id: m.player1Id,
-        player2_id: m.player2Id,
+        // 'BYE' is a sentinel in the bracket lib — store as null in the DB (uuid column)
+        player1_id: m.player1Id === 'BYE' ? null : m.player1Id,
+        player2_id: m.player2Id === 'BYE' ? null : m.player2Id,
         server_player_id: m.serverPlayerId,
         winner_id: m.winnerId,
         status: m.status,
