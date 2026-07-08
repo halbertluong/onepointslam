@@ -12,20 +12,20 @@ interface BracketViewProps {
   liveUpdates?: boolean;
 }
 
-function getPlayer(id: string | null | 'BYE', players: Player[]): Player | null {
-  if (!id || id === 'BYE') return null;
+function getPlayer(id: string | null, players: Player[]): Player | null {
+  if (!id) return null;
   return players.find((p) => p.id === id) ?? null;
 }
 
-function getPlayerName(id: string | null | 'BYE', players: Player[]): string {
+function getPlayerName(id: string | null, players: Player[], isBye?: boolean): string {
+  if (isBye) return 'BYE';
   if (!id) return 'TBD';
-  if (id === 'BYE') return 'BYE';
   return players.find((p) => p.id === id)?.fullName ?? 'TBD';
 }
 
-function PlayerSlot({ id, players, isWinner }: { id: string | null | 'BYE'; players: Player[]; isWinner: boolean }) {
-  const name = getPlayerName(id, players);
-  const p = id && id !== 'BYE' ? getPlayer(id, players) : null;
+function PlayerSlot({ id, players, isWinner, isBye }: { id: string | null; players: Player[]; isWinner: boolean; isBye?: boolean }) {
+  const name = getPlayerName(id, players, isBye);
+  const p = id ? getPlayer(id, players) : null;
   return (
     <div className={`px-3 py-2 flex items-center justify-between gap-1 border-b border-slate-100 ${isWinner ? 'bg-emerald-50' : ''}`}>
       <div className="flex-1 min-w-0">
@@ -62,8 +62,8 @@ function MatchCard({ match, players }: { match: Match; players: Player[] }) {
       {match.status === 'playing' && (
         <div className="h-1 w-full" style={{ backgroundColor: 'var(--tenant-primary)' }} />
       )}
-      <PlayerSlot id={match.player1Id} players={players} isWinner={isP1Winner} />
-      <PlayerSlot id={match.player2Id} players={players} isWinner={isP2Winner} />
+      <PlayerSlot id={match.player1Id} players={players} isWinner={isP1Winner} isBye={match.status === 'walkover' && match.player1Id == null} />
+      <PlayerSlot id={match.player2Id} players={players} isWinner={isP2Winner} isBye={match.status === 'walkover' && match.player2Id == null} />
       {match.status === 'playing' && (
         <div className="px-3 py-1 bg-slate-50">
           <span
