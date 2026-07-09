@@ -117,3 +117,18 @@ export interface Match {
   status: MatchStatus;
   courtNumber?: number;
 }
+
+export function mapMatch(row: Record<string, unknown>): Match {
+  return {
+    id: row.id as string,
+    tournamentId: (row.tournament_id ?? row.tournamentId) as string,
+    roundIndex: (row.round_index ?? row.roundIndex) as number,
+    matchIndex: (row.match_index ?? row.matchIndex) as number,
+    player1Id: (row.player1_id ?? row.player1Id) as string | null,
+    player2Id: (row.player2_id ?? row.player2Id) as string | null,
+    serverPlayerId: (row.server_player_id ?? row.serverPlayerId) as string | null,
+    winnerId: (row.winner_id ?? row.winnerId) as string | null,
+    status: (row.status as MatchStatus) ?? 'scheduled',
+    courtNumber: (row.court_number ?? row.courtNumber) as number | undefined,
+  };
+}

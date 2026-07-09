@@ -33,6 +33,15 @@ export function calcPlayerBased(
   };
 }
 
+/** Single source of truth: registration revenue + any donation contributions. */
+export function calcRaised(
+  playerCount: number,
+  ticketPrice: number,
+  donationTotal: number = 0,
+): number {
+  return playerCount * ticketPrice + donationTotal;
+}
+
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }

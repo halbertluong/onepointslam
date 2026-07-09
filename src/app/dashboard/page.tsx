@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { formatCurrency } from '@/lib/pricing';
+import { calcRaised, formatCurrency } from '@/lib/pricing';
 import type { TournamentSettings } from '@/types';
 import CopyLinkButton from '@/components/CopyLinkButton';
 import TournamentArchiveButton from '@/components/TournamentArchiveButton';
@@ -49,6 +49,7 @@ interface TournamentRow {
   created_at: string;
   archived_at: string | null;
   player_count: number;
+  donation_total: number;
 }
 
 export default async function DashboardPage() {
@@ -87,15 +88,19 @@ export default async function DashboardPage() {
 
     const raw = rows ?? [];
     if (raw.length > 0) {
-      const { data: counts } = await supabase
-        .from('players')
-        .select('tournament_id')
-        .in('tournament_id', raw.map((r) => r.id));
+      const [{ data: counts }, { data: donationRows }] = await Promise.all([
+        supabase.from('players').select('tournament_id').in('tournament_id', raw.map((r) => r.id)),
+        supabase.from('donations').select('amount, tournament_id').in('tournament_id', raw.map((r) => r.id)),
+      ]);
       const countMap: Record<string, number> = {};
       (counts ?? []).forEach((r: { tournament_id: string }) => {
         countMap[r.tournament_id] = (countMap[r.tournament_id] ?? 0) + 1;
       });
-      tournaments = raw.map((r) => ({ ...r, player_count: countMap[r.id] ?? 0 }));
+      const donationMap: Record<string, number> = {};
+      (donationRows ?? []).forEach((r: { tournament_id: string; amount: string | number }) => {
+        donationMap[r.tournament_id] = (donationMap[r.tournament_id] ?? 0) + Number(r.amount);
+      });
+      tournaments = raw.map((r) => ({ ...r, player_count: countMap[r.id] ?? 0, donation_total: donationMap[r.id] ?? 0 }));
     }
   }
 
@@ -105,7 +110,7 @@ export default async function DashboardPage() {
   const past = visible.filter((t) => t.status === 'completed');
 
   const totalRegistered = active.reduce((s, t) => s + t.player_count, 0);
-  const totalRevenue = active.reduce((s, t) => s + (t.settings?.ticketPriceForFundraiser ?? 0) * t.player_count, 0);
+  const totalRevenue = active.reduce((s, t) => s + calcRaised(t.player_count, t.settings?.ticketPriceForFundraiser ?? 0, t.donation_total), 0);
   const totalGoal = active.reduce((s, t) => {
     const cap = t.settings?.playerRegistrationCap ?? t.settings?.maxPlayers ?? 0;
     return s + (t.settings?.ticketPriceForFundraiser ?? 0) * cap;
@@ -172,7 +177,7 @@ export default async function DashboardPage() {
             const s = t.settings ?? {} as TournamentSettings;
             const cap = s.playerRegistrationCap ?? s.maxPlayers ?? 32;
             const price = s.ticketPriceForFundraiser ?? 0;
-            const revenue = price * t.player_count;
+            const revenue = calcRaised(t.player_count, price, t.donation_total);
             const goal = price * cap;
             const goalPct = goal > 0 ? Math.round((revenue / goal) * 100) : 0;
             const fillPct = cap > 0 ? Math.round((t.player_count / cap) * 100) : 0;
@@ -259,7 +264,7 @@ export default async function DashboardPage() {
             {past.map((t) => {
               const s = t.settings ?? {} as TournamentSettings;
               const price = s.ticketPriceForFundraiser ?? 0;
-              const revenue = price * t.player_count;
+              const revenue = calcRaised(t.player_count, price, t.donation_total);
               const date = s.tournamentDate
                 ? new Date(s.tournamentDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                 : new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -304,7 +309,7 @@ export default async function DashboardPage() {
             {archived.map((t) => {
               const s = t.settings ?? {} as TournamentSettings;
               const price = s.ticketPriceForFundraiser ?? 0;
-              const revenue = price * t.player_count;
+              const revenue = calcRaised(t.player_count, price, t.donation_total);
               return (
                 <div key={t.id} className="flex items-center gap-4 px-6 py-3">
                   <div className="flex-1 min-w-0">

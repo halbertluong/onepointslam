@@ -2,7 +2,7 @@
 
 import BracketView from './BracketView';
 import type { Player, Match } from '@/types';
-import { formatCurrency } from '@/lib/pricing';
+import { calcRaised, formatCurrency } from '@/lib/pricing';
 
 interface TournamentMeta {
   name: string;
@@ -22,6 +22,8 @@ interface Props {
   isSuperAdmin?: boolean;
   /** Override the fundraising goal displayed (falls back to tournament.settings.fundraisingGoal) */
   fundraisingGoal?: number;
+  /** Donation contributions to include in raised total */
+  donationTotal?: number;
 }
 
 export default function TournamentStatsPanel({
@@ -30,11 +32,12 @@ export default function TournamentStatsPanel({
   matches,
   isSuperAdmin = false,
   fundraisingGoal: goalOverride,
+  donationTotal = 0,
 }: Props) {
   const ticketPrice = tournament.settings?.ticketPriceForFundraiser ?? 0;
   const systemFee = tournament.settings?.systemTechFee ?? 0;
   const goal = goalOverride ?? tournament.settings?.fundraisingGoal ?? 0;
-  const revenue = ticketPrice * players.length;
+  const revenue = calcRaised(players.length, ticketPrice, donationTotal);
   const goalPct = goal > 0 ? Math.min(100, Math.round((revenue / goal) * 100)) : 0;
   const maxPlayers = tournament.settings?.maxPlayers ?? 32;
   const completed = matches.filter((m) => m.status === 'finalized' || m.status === 'walkover').length;
@@ -42,7 +45,7 @@ export default function TournamentStatsPanel({
   const stats: { label: string; value: string | number }[] = [
     { label: 'Players', value: players.length },
     { label: 'Ticket Price', value: formatCurrency(ticketPrice) },
-    { label: 'School Revenue', value: formatCurrency(revenue) },
+    { label: 'Total Raised', value: formatCurrency(revenue) },
     ...(isSuperAdmin ? [{ label: 'Platform Fees', value: formatCurrency(systemFee * players.length) }] : []),
     { label: 'Matches Done', value: `${completed} / ${matches.length}` },
   ];

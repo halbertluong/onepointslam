@@ -8,6 +8,7 @@ import PlayerRegistrationForm, { type PlayerFormData } from '@/components/Player
 import TournamentInfoCard from '@/components/TournamentInfoCard';
 import BracketView from '@/components/BracketView';
 import type { Match, Player } from '@/types';
+import { mapPlayer, mapMatch } from '@/types';
 
 const CLOSE_REASON_TEXT: Record<string, string> = {
   manual_override: 'Registration has been manually closed by the organizer.',
@@ -63,19 +64,21 @@ export default function RegisterPage() {
       const [
         { data: { user } },
         { data: t },
-        { count },
+        { data: playersData },
         { data: tenant },
         { data: donations },
       ] = await Promise.all([
         supabase.auth.getUser(),
         supabase.from('tournaments').select('*, tenants(display_name, primary_color)').eq('id', tournamentId).single(),
-        supabase.from('players').select('id', { count: 'exact', head: true }).eq('tournament_id', tournamentId),
+        supabase.from('players').select('*').eq('tournament_id', tournamentId),
         supabase.from('tenants').select('platform_fee').eq('slug', slug).single(),
         supabase.from('donations').select('amount').eq('tournament_id', tournamentId),
       ]);
 
+      const mappedPlayers = (playersData ?? []).map((p) => mapPlayer(p as Record<string, unknown>));
       setTournament(t);
-      setPlayerCount(count ?? 0);
+      setPlayerCount(mappedPlayers.length);
+      setBracketPlayers(mappedPlayers);
       const donTotal = (donations ?? []).reduce((sum, d) => sum + Number(d.amount), 0);
       setDonationTotal(donTotal);
       const settings = t?.settings as Record<string, unknown> | null;
@@ -216,40 +219,10 @@ export default function RegisterPage() {
     if (bracketMatches !== null) return; // already loaded
     setBracketLoading(true);
     const supabase = createClient();
-    const [{ data: matches }, { data: players }] = await Promise.all([
-      supabase.from('matches').select('*').eq('tournament_id', tournamentId).order('round_index').order('match_index'),
-      supabase.from('players').select('*').eq('tournament_id', tournamentId),
-    ]);
-
-    const toMatch = (m: Record<string, unknown>): Match => ({
-      id: m.id as string,
-      tournamentId: m.tournament_id as string,
-      roundIndex: m.round_index as number,
-      matchIndex: m.match_index as number,
-      player1Id: m.player1_id as string | null,
-      player2Id: m.player2_id as string | null,
-      serverPlayerId: m.server_player_id as string | null,
-      winnerId: m.winner_id as string | null,
-      status: m.status as Match['status'],
-      courtNumber: m.court_number as number | undefined,
-    });
-
-    const toPlayer = (p: Record<string, unknown>): Player => ({
-      id: p.id as string,
-      tournamentId: p.tournament_id as string,
-      fullName: p.full_name as string,
-      email: p.email as string,
-      skillTier: p.skill_tier as string,
-      gender: p.gender as string | undefined,
-      ntrpRating: p.ntrp_rating as number | undefined,
-      utrRating: p.utr_rating as number | undefined,
-      age: p.age as number | undefined,
-      seedRating: p.seed_rating as number | undefined,
-      status: p.status as Player['status'],
-    });
-
-    setBracketMatches((matches ?? []).map(toMatch));
-    setBracketPlayers((players ?? []).map(toPlayer));
+    const { data: matches } = await supabase
+      .from('matches').select('*').eq('tournament_id', tournamentId).order('round_index').order('match_index');
+    setBracketMatches((matches ?? []).map((m) => mapMatch(m as Record<string, unknown>)));
+    // bracketPlayers already populated from the initial players fetch in init()
     setBracketLoading(false);
   }
 

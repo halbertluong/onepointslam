@@ -6,8 +6,8 @@ import { useParams, useRouter } from 'next/navigation';
 import BracketView from '@/components/BracketView';
 import { generateBracket } from '@/lib/bracket';
 import type { Tournament, Player, Match } from '@/types';
-import { mapPlayer } from '@/types';
-import { formatCurrency } from '@/lib/pricing';
+import { mapPlayer, mapMatch } from '@/types';
+import { calcRaised, formatCurrency } from '@/lib/pricing';
 
 function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; isArchived: boolean }) {
   const router = useRouter();
@@ -313,14 +313,16 @@ export default function TournamentAdminPage() {
   const [emailBody, setEmailBody] = useState('');
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [donationTotal, setDonationTotal] = useState(0);
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const [{ data: t }, { data: p }, { data: m }, { data: me }] = await Promise.all([
+    const [{ data: t }, { data: p }, { data: m }, { data: me }, { data: donations }] = await Promise.all([
       supabase.from('tournaments').select('*, tenants(slug)').eq('id', id).single(),
       supabase.from('players').select('*').eq('tournament_id', id).order('created_at'),
       supabase.from('matches').select('*').eq('tournament_id', id).order('round_index').order('match_index'),
       supabase.from('users').select('role').eq('id', (await supabase.auth.getUser()).data.user?.id ?? '').single(),
+      supabase.from('donations').select('amount').eq('tournament_id', id),
     ]);
     if (t) {
       setTournament(t);
@@ -328,20 +330,8 @@ export default function TournamentAdminPage() {
     }
     setIsSuperAdmin((me as { role?: string } | null)?.role === 'super_admin');
     setPlayers((p ?? []).map((row) => mapPlayer(row as Record<string, unknown>)));
-    setMatches(
-      (m ?? []).map((x) => ({
-        id: x.id,
-        tournamentId: x.tournament_id,
-        roundIndex: x.round_index,
-        matchIndex: x.match_index,
-        player1Id: x.player1_id,
-        player2Id: x.player2_id,
-        serverPlayerId: x.server_player_id,
-        winnerId: x.winner_id,
-        status: x.status,
-        courtNumber: x.court_number,
-      }))
-    );
+    setMatches((m ?? []).map((x) => mapMatch(x as Record<string, unknown>)));
+    setDonationTotal((donations ?? []).reduce((sum, d) => sum + Number(d.amount), 0));
     setLoading(false);
   }, [id]);
 
@@ -543,7 +533,7 @@ export default function TournamentAdminPage() {
         {(([
           { label: 'Players', value: players.length },
           { label: 'Ticket Price', value: formatCurrency(tournament.settings?.ticketPriceForFundraiser ?? 0) },
-          { label: 'School Revenue', value: formatCurrency((tournament.settings?.ticketPriceForFundraiser ?? 0) * players.length) },
+          { label: 'Total Raised', value: formatCurrency(calcRaised(players.length, tournament.settings?.ticketPriceForFundraiser ?? 0, donationTotal)) },
           ...(isSuperAdmin ? [{ label: 'Platform Fees', value: formatCurrency((tournament.settings?.systemTechFee ?? 5) * players.length) }] : []),
         ]) as { label: string; value: string | number }[]).map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-4">
