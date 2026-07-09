@@ -123,11 +123,19 @@ export default function RefereeQueueClient({ matches, tournaments, players, onMa
           const t = tournamentMap[tournamentId];
           const tenant = t?.tenants;
           const tenantColor = (tenant?.primary_color as string | undefined) ?? '#3b82f6';
+          const logoUrl = tenant?.logo_url as string | undefined;
 
           return (
             <div key={tournamentId} className="space-y-2">
-              <div className="flex items-center gap-2 pb-2 border-b border-white/10">
-                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: tenantColor }} />
+              <div className="flex items-center gap-3 pb-3 border-b border-white/10">
+                {logoUrl && (
+                  <img src={logoUrl} alt="logo" className="h-8 w-8 object-contain rounded-lg bg-white/10 p-0.5 shrink-0" />
+                )}
+                {!logoUrl && (
+                  <div className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center" style={{ backgroundColor: `${tenantColor}30` }}>
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: tenantColor }} />
+                  </div>
+                )}
                 <div>
                   <p className="text-xs font-bold uppercase tracking-widest" style={{ color: tenantColor }}>
                     {tenant?.display_name as string ?? ''}
@@ -144,10 +152,18 @@ export default function RefereeQueueClient({ matches, tournaments, players, onMa
                 const cardInner = (
                   <>
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs text-white/30">
-                        R{m.round_index + 1} · M{m.match_index + 1}
-                        {m.court_number ? ` · Court ${m.court_number}` : ''}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-white/30">R{m.round_index + 1} · M{m.match_index + 1}</span>
+                        {m.court_number ? (
+                          <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-white/10 text-white/60">
+                            Court {m.court_number}
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-white/5 text-white/25 italic">
+                            Unassigned
+                          </span>
+                        )}
+                      </div>
                       <span
                         className={`px-2 py-0.5 rounded-full text-xs font-bold ${isLive ? 'animate-pulse' : ''}`}
                         style={isLive
@@ -194,6 +210,7 @@ export default function RefereeQueueClient({ matches, tournaments, players, onMa
           const t = tournamentMap[tournamentId];
           const tenant = t?.tenants;
           const tenantColor = (tenant?.primary_color as string | undefined) ?? '#3b82f6';
+          const logoUrl = tenant?.logo_url as string | undefined;
           const maxPlayers = (t?.settings?.maxPlayers as number | undefined) ?? 32;
 
           const allTournamentMatches = tMatches.map(toMatchType);
@@ -203,8 +220,14 @@ export default function RefereeQueueClient({ matches, tournaments, players, onMa
 
           return (
             <div key={tournamentId} className="space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-white/10">
-                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: tenantColor }} />
+              <div className="flex items-center gap-3 pb-3 border-b border-white/10">
+                {logoUrl ? (
+                  <img src={logoUrl} alt="logo" className="h-8 w-8 object-contain rounded-lg bg-white/10 p-0.5 shrink-0" />
+                ) : (
+                  <div className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center" style={{ backgroundColor: `${tenantColor}30` }}>
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: tenantColor }} />
+                  </div>
+                )}
                 <div>
                   <p className="text-xs font-bold uppercase tracking-widest" style={{ color: tenantColor }}>
                     {tenant?.display_name as string ?? ''}

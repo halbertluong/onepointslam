@@ -36,7 +36,7 @@ export default function RefereeView({ tenantIds }: { tenantIds: string[] }) {
 
     const tournamentsQuery = supabase
       .from('tournaments')
-      .select('id, name, tenant_id, settings, tenants(display_name, primary_color)')
+      .select('id, name, tenant_id, settings, tenants(display_name, primary_color, secondary_color, logo_url)')
       .in('status', ['live_play', 'bracket_generated']);
 
     if (tenantIds.length > 0) {
@@ -111,6 +111,9 @@ export default function RefereeView({ tenantIds }: { tenantIds: string[] }) {
         fetchData();
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'matches' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches' }, () => {
         fetchData();
       })
       .subscribe();
