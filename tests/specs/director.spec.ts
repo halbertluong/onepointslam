@@ -6,16 +6,23 @@ import { test, expect } from '@playwright/test';
 import { DashboardPage } from '../pages/DashboardPage';
 import { CreateTournamentPage } from '../pages/CreateTournamentPage';
 import { TournamentPage } from '../pages/TournamentPage';
-import { adminDb, registerPlayer, getTenantForUser, getUserByEmail } from '../fixtures/db';
+import { adminDb, registerPlayer, getTenantForUser, getUserByEmail, isSupabaseReachable } from '../fixtures/db';
 
 test.use({ storageState: 'tests/auth/director.json' });
 
 let tenantId: string;
 let createdTournamentIds: string[] = [];
+let supabaseOk = true;
 
 test.beforeAll(async () => {
+  supabaseOk = await isSupabaseReachable();
+  if (!supabaseOk) return;
   const user = await getUserByEmail('director.stanford@demo.onepointbowl.com');
   if (user) tenantId = await getTenantForUser(user.id);
+});
+
+test.beforeEach(() => {
+  if (!supabaseOk) test.skip(true, 'Supabase not reachable in this environment');
 });
 
 test.afterAll(async () => {

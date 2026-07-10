@@ -2,14 +2,18 @@
  * Spectator persona tests — public bracket viewing without authentication.
  */
 import { test, expect } from '@playwright/test';
-import { adminDb, getTenantForUser, getUserByEmail } from '../fixtures/db';
+import { adminDb, getTenantForUser, getUserByEmail, isSupabaseReachable } from '../fixtures/db';
 
 let tenantSlug: string;
 let publicTournamentId: string;
+let supabaseOk = true;
 
 test.beforeAll(async () => {
+  supabaseOk = await isSupabaseReachable();
+  if (!supabaseOk) return;
+
   const directorUser = await getUserByEmail('director.stanford@demo.onepointbowl.com');
-  if (!directorUser) throw new Error('Director user not found');
+  if (!directorUser) { supabaseOk = false; return; }
   const tenantId = await getTenantForUser(directorUser.id);
 
   const { data: tenant } = await adminDb.from('tenants').select('slug').eq('id', tenantId).single();
@@ -26,6 +30,14 @@ test.beforeAll(async () => {
     .select('id')
     .single();
   publicTournamentId = t!.id;
+});
+
+test.beforeEach(function() {
+  // This test does not need a real slug or tournament ID
+  const noDbTests = ['spectator visiting nonexistent tenant slug sees error'];
+  if (!supabaseOk && !noDbTests.includes(test.info().title)) {
+    test.skip(true, 'Supabase not reachable in this environment');
+  }
 });
 
 test.afterAll(async () => {

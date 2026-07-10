@@ -7,6 +7,17 @@ export const adminDb = createClient(supabaseUrl, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+/** Returns true if Supabase is reachable from this Node.js process. */
+export async function isSupabaseReachable(): Promise<boolean> {
+  try {
+    const { error } = await adminDb.from('waitlist').select('id').limit(1);
+    // A PostgREST error (e.g. 42P01) means we reached the DB — network is fine
+    return !error || error.code !== undefined;
+  } catch {
+    return false;
+  }
+}
+
 export async function createTestTournament(tenantId: string, overrides: Record<string, unknown> = {}) {
   const name = `Test Tournament ${Date.now()}`;
   const { data, error } = await adminDb

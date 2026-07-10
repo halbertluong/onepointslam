@@ -4,12 +4,13 @@
  */
 import { test, expect } from '@playwright/test';
 import { RefereePage } from '../pages/RefereePage';
-import { adminDb, registerPlayer, getTenantForUser, getUserByEmail } from '../fixtures/db';
+import { adminDb, registerPlayer, getTenantForUser, getUserByEmail, isSupabaseReachable } from '../fixtures/db';
 
 test.use({ storageState: 'tests/auth/referee.json' });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+let supabaseOk = true;
 let liveMatchId = '';
 let liveTournamentId = '';
 
@@ -47,6 +48,14 @@ async function ensureLiveMatch(): Promise<string> {
   liveMatchId = m!.id;
   return liveMatchId;
 }
+
+test.beforeAll(async () => {
+  supabaseOk = await isSupabaseReachable();
+});
+
+test.beforeEach(() => {
+  if (!supabaseOk) test.skip(true, 'Supabase not reachable in this environment');
+});
 
 test.afterAll(async () => {
   if (liveTournamentId.length) {
