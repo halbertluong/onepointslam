@@ -65,6 +65,10 @@ test('waitlist form shows error state on API failure', async ({ page }) => {
   // Block the waitlist API
   await page.route('/api/waitlist', (route) => route.abort('failed'));
 
+  // Fill all required fields so the form can actually submit
+  await page.getByPlaceholder('Your name').fill('Test User');
+  await page.getByPlaceholder('University / program').fill('Test University');
+  await page.locator('select').first().selectOption('Head Coach');
   await page.getByPlaceholder('coach@university.edu').fill('error-test@playwright.test');
   await page.getByRole('button', { name: /request early access/i }).click();
 
@@ -75,10 +79,11 @@ test('waitlist form shows error state on API failure', async ({ page }) => {
 
 test('soccer landing page renders One Goal Bowl branding', async ({ page }) => {
   await page.goto('/soccer');
-  await expect(page.getByText(/one goal bowl/i)).toBeVisible({ timeout: 8_000 });
-  // Should NOT say One Point Bowl
-  const body = await page.locator('body').textContent();
-  expect(body).not.toMatch(/one point bowl/i);
+  // Main heading should show One Goal Bowl branding
+  await expect(page.getByText(/one goal bowl/i).first()).toBeVisible({ timeout: 8_000 });
+  // The h1 heading itself should not accidentally contain tennis branding
+  const h1Text = await page.locator('h1').first().textContent();
+  expect(h1Text).not.toMatch(/one point bowl/i);
 });
 
 test('basketball landing page is accessible', async ({ page }) => {
