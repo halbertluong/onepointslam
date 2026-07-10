@@ -66,16 +66,37 @@ export default function TournamentStatsPanel({
       {goal > 0 && (
         <div className="bg-white rounded-2xl border border-slate-200 p-5">
           <div className="flex justify-between items-center mb-3">
-            <h3 className="font-bold text-slate-800 text-sm">Fundraising Progress</h3>
+            <div>
+              <h3 className="font-bold text-slate-800 text-sm">Fundraising Progress</h3>
+              {donationTotal > 0 && (
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="flex items-center gap-1 text-xs text-slate-500">
+                    <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'var(--tenant-primary)' }} />
+                    Registrations {formatCurrency(players.length * ticketPrice)}
+                  </span>
+                  <span className="flex items-center gap-1 text-xs text-slate-500">
+                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                    Donations {formatCurrency(donationTotal)}
+                  </span>
+                </div>
+              )}
+            </div>
             <span className="text-sm font-bold" style={{ color: 'var(--tenant-primary)' }}>
               {formatCurrency(revenue)} / {formatCurrency(goal)}
             </span>
           </div>
-          <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{ width: `${goalPct}%`, backgroundColor: 'var(--tenant-primary)' }}
-            />
+          {/* Stacked bar: registrations (primary) + donations (emerald) */}
+          <div className="h-3 bg-slate-100 rounded-full overflow-hidden flex">
+            {(() => {
+              const regPct = goal > 0 ? Math.min(100, (players.length * ticketPrice / goal) * 100) : 0;
+              const donPct = goal > 0 ? Math.min(100 - regPct, (donationTotal / goal) * 100) : 0;
+              return (
+                <>
+                  <div className="h-full transition-all" style={{ width: `${regPct}%`, backgroundColor: 'var(--tenant-primary)' }} />
+                  <div className="h-full transition-all bg-emerald-500" style={{ width: `${donPct}%` }} />
+                </>
+              );
+            })()}
           </div>
           <p className="text-xs text-slate-400 mt-1.5 text-right">{goalPct}% of goal</p>
         </div>

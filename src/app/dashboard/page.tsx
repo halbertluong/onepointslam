@@ -31,6 +31,19 @@ function ProgressBar({ value, max, color = 'var(--tenant-primary)' }: { value: n
   );
 }
 
+/** Two-segment fundraising bar: registrations (primary color) + donations (emerald). */
+function FundraisingBar({ regAmount, donationAmount, max }: { regAmount: number; donationAmount: number; max: number }) {
+  if (max <= 0) return null;
+  const regPct = Math.min(100, (regAmount / max) * 100);
+  const donPct = Math.min(100 - regPct, (donationAmount / max) * 100);
+  return (
+    <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden flex">
+      <div className="h-2 transition-all" style={{ width: `${regPct}%`, backgroundColor: 'var(--tenant-primary)' }} />
+      <div className="h-2 transition-all" style={{ width: `${donPct}%`, backgroundColor: '#10b981' }} />
+    </div>
+  );
+}
+
 function StatBox({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
     <div className="bg-slate-50 rounded-xl p-3">
@@ -232,13 +245,29 @@ export default async function DashboardPage() {
                     </div>
                     <ProgressBar value={t.player_count} max={cap} />
                   </div>
-                  <div>
-                    <div className="flex justify-between text-[11px] text-slate-400 mb-1">
-                      <span>Fundraising goal</span>
-                      <span>{formatCurrency(revenue)} / {formatCurrency(goal)}</span>
+                  {goal > 0 && (
+                    <div>
+                      <div className="flex justify-between text-[11px] text-slate-400 mb-1">
+                        <span className="flex items-center gap-2">
+                          Fundraising goal
+                          {t.donation_total > 0 && (
+                            <>
+                              <span className="flex items-center gap-1">
+                                <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--tenant-primary)' }} />
+                                <span>Reg {formatCurrency(t.player_count * price)}</span>
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                                <span>Donations {formatCurrency(t.donation_total)}</span>
+                              </span>
+                            </>
+                          )}
+                        </span>
+                        <span>{formatCurrency(revenue)} / {formatCurrency(goal)}</span>
+                      </div>
+                      <FundraisingBar regAmount={t.player_count * price} donationAmount={t.donation_total} max={goal} />
                     </div>
-                    <ProgressBar value={revenue} max={goal} color="#10b981" />
-                  </div>
+                  )}
                 </div>
               </div>
             );
