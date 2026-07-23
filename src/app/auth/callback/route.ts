@@ -7,7 +7,9 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code');
   const token_hash = searchParams.get('token_hash');
   const type = searchParams.get('type');
-  const next = searchParams.get('next') ?? '/';
+  const rawNext = searchParams.get('next') ?? '/';
+  // Only allow relative paths — prevent open redirect to external URLs
+  const next = rawNext.startsWith('/') ? rawNext : '/';
 
   const cookieStore = await cookies();
 

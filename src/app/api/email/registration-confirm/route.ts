@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
+  // Require an internal secret so this endpoint can't be used as an open email relay
+  const secret = process.env.INTERNAL_API_SECRET;
+  if (secret && req.headers.get('x-internal-secret') !== secret) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const resendApiKey = process.env.RESEND_API_KEY;
   if (!resendApiKey) {
     // No-op — email not configured. Registration still succeeds.

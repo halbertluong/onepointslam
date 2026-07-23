@@ -19,6 +19,10 @@ ALTER TABLE tournaments
 ALTER TABLE tenants
   ADD COLUMN IF NOT EXISTS platform_fee numeric(4,2) DEFAULT 5.0;
 
+-- ── Players: payment_status column ──────────────────────────────────────────
+ALTER TABLE players
+  ADD COLUMN IF NOT EXISTS payment_status text DEFAULT 'pending';
+
 -- ── Players: fix seed_rating constraint (was capped at 8, must allow any ≥1) ─
 ALTER TABLE players DROP CONSTRAINT IF EXISTS players_seed_rating_check;
 ALTER TABLE players ADD CONSTRAINT players_seed_rating_check CHECK (seed_rating >= 1);
@@ -55,6 +59,8 @@ CREATE TABLE IF NOT EXISTS waitlist (
   name text NOT NULL,
   email text NOT NULL UNIQUE,
   school text,
+  role text DEFAULT 'coach',
+  notes text,
   title text,
   sport text,
   program text,
@@ -69,5 +75,10 @@ BEGIN
     SELECT 1 FROM pg_policies WHERE tablename = 'waitlist' AND policyname = 'waitlist: anon insert'
   ) THEN
     CREATE POLICY "waitlist: anon insert" ON waitlist FOR INSERT WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'waitlist' AND policyname = 'waitlist: service role select'
+  ) THEN
+    CREATE POLICY "waitlist: service role select" ON waitlist FOR SELECT USING (true);
   END IF;
 END $$;
