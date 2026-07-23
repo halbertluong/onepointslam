@@ -1,4 +1,4 @@
-import type { Player, Match, TournamentSettings } from '@/types';
+import type { Player, Match, TournamentSettings, KickOutcome } from '@/types';
 
 function nextPowerOf2(n: number): number {
   let p = 1;
@@ -158,6 +158,19 @@ export function advanceWinner(
     }
     return m;
   });
+}
+
+/**
+ * One Goal Bowl (soccer): the winner follows directly from the kick outcome.
+ * A goal advances the kicker; a miss or a save advances the keeper. There is
+ * no tiebreaker — the outcome is always decisive.
+ */
+export function determineOneGoalBowlWinner(
+  kickerPlayerId: string,
+  keeperPlayerId: string,
+  outcome: KickOutcome,
+): string {
+  return outcome === 'goal' ? kickerPlayerId : keeperPlayerId;
 }
 
 export function getRoundsCount(maxPlayers: number): number {

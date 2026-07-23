@@ -23,6 +23,9 @@ export type ServeRuleProfile = 'one_serve_sudden_death' | 'two_serves_traditiona
 export type ServerDetermination = 'random_coin_toss' | 'referee_manual_override';
 export type ReceivingSideSelection = 'server_choice' | 'ad_court_fixed' | 'deuce_court_fixed';
 
+/** Which sport a tournament runs. Defaults to 'tennis' when unset, for backward compatibility. */
+export type Sport = 'tennis' | 'basketball' | 'soccer';
+
 export interface PrizePlace {
   place: number;
   type: 'fixed' | 'percentage';
@@ -30,6 +33,8 @@ export interface PrizePlace {
 }
 
 export interface TournamentSettings {
+  /** Defaults to 'tennis' when omitted (pre-dates multi-sport support). */
+  sport?: Sport;
   maxPlayers: MaxPlayers;
   ticketPriceForFundraiser: number;
   systemTechFee: number;
@@ -105,6 +110,9 @@ export type MatchStatus =
   | 'finalized'
   | 'walkover';
 
+/** Outcome of the single penalty-kick attempt in a One Goal Bowl (soccer) match. */
+export type KickOutcome = 'goal' | 'miss' | 'saved';
+
 export interface Match {
   id: string;
   tournamentId: string;
@@ -116,6 +124,12 @@ export interface Match {
   winnerId: string | null;
   status: MatchStatus;
   courtNumber?: number;
+  /** One Goal Bowl (soccer): the player who takes the penalty kick, chosen before the kick. */
+  kickerPlayerId?: string | null;
+  /** One Goal Bowl (soccer): the player defending the goal, auto-assigned as the remaining role. */
+  keeperPlayerId?: string | null;
+  /** One Goal Bowl (soccer): result of the single kick attempt. */
+  kickOutcome?: KickOutcome | null;
 }
 
 export function mapMatch(row: Record<string, unknown>): Match {
@@ -130,5 +144,8 @@ export function mapMatch(row: Record<string, unknown>): Match {
     winnerId: (row.winner_id ?? row.winnerId) as string | null,
     status: (row.status as MatchStatus) ?? 'scheduled',
     courtNumber: (row.court_number ?? row.courtNumber) as number | undefined,
+    kickerPlayerId: (row.kicker_player_id ?? row.kickerPlayerId) as string | null | undefined,
+    keeperPlayerId: (row.keeper_player_id ?? row.keeperPlayerId) as string | null | undefined,
+    kickOutcome: (row.kick_outcome ?? row.kickOutcome) as KickOutcome | null | undefined,
   };
 }

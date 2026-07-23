@@ -4,10 +4,11 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { useRouter } from 'next/navigation';
 import FundraisingCalculator from '@/components/FundraisingCalculator';
-import type { TournamentSettings, MaxPlayers, PrizePlace } from '@/types';
+import type { TournamentSettings, MaxPlayers, PrizePlace, Sport } from '@/types';
 import { DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
 
 const DEFAULT_SETTINGS: TournamentSettings = {
+  sport: 'tennis',
   maxPlayers: 32,
   ticketPriceForFundraiser: 20,
   systemTechFee: DEFAULT_PLATFORM_FEE,
@@ -15,6 +16,12 @@ const DEFAULT_SETTINGS: TournamentSettings = {
   serverDetermination: 'random_coin_toss',
   receivingSideSelection: 'server_choice',
 };
+
+const SPORT_OPTIONS: { value: Sport; label: string }[] = [
+  { value: 'tennis', label: '🎾 Tennis — One Point Bowl' },
+  { value: 'basketball', label: '🏀 Basketball' },
+  { value: 'soccer', label: '⚽ Soccer — One Goal Bowl' },
+];
 
 export default function NewTournamentPage() {
   const [name, setName] = useState('');
@@ -85,6 +92,21 @@ export default function NewTournamentPage() {
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
               placeholder="Spring 2026 Charity Cup"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Sport
+            </label>
+            <select
+              value={settings.sport ?? 'tennis'}
+              onChange={(e) => updateSettings('sport', e.target.value as Sport)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            >
+              {SPORT_OPTIONS.map(({ value, label }) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -160,6 +182,14 @@ export default function NewTournamentPage() {
         </div>
 
         {/* Rules */}
+        {settings.sport === 'soccer' ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-2">
+            <h2 className="font-bold text-slate-800">Match Rules — One Goal Bowl</h2>
+            <p className="text-sm text-slate-500 leading-relaxed">
+              Each match is a single penalty kick. Before the kick, one player chooses to be kicker or keeper and the other is auto-assigned the remaining role. Score the kick and the kicker advances; miss it or the keeper saves it and the keeper advances. No tiebreaker needed — the referee console will prompt for role selection, then the kick outcome.
+            </p>
+          </div>
+        ) : (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
           <h2 className="font-bold text-slate-800">Match Rules</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -206,6 +236,7 @@ export default function NewTournamentPage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Minimum registrants */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">

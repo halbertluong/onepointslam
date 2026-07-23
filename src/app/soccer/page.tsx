@@ -235,12 +235,12 @@ export default function SoccerPage() {
             <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest text-white mb-4"
               style={{ backgroundColor: PRIMARY }}>How It Works</span>
             <h2 className="text-4xl font-black text-slate-900 mb-4">One penalty kick. That&apos;s it.</h2>
-            <p className="text-slate-500 text-lg">Each match is a single penalty kick attempt. Score — you advance. Miss or the keeper saves it — you&apos;re out. One shot, one moment, no overtime.</p>
+            <p className="text-slate-500 text-lg">Before each match, players choose their role — kicker or keeper. Score the kick, you advance. Save it or force a miss as keeper, you advance. One shot decides it all.</p>
           </div>
           <div className="space-y-8">
             <Step n={1} title="Players pay a small entry fee" desc="Set your entry at $20–$50. Across 64 players that's $1,280–$3,200 raised before anyone steps on the pitch." />
             <Step n={2} title="Draw the bracket" desc="Our platform seeds players and generates the bracket automatically. Fans and families can watch it update live on their phones." />
-            <Step n={3} title="One penalty kick per match" desc="Player steps up. One shot at goal. Score and advance, miss and you're out. The referee records it instantly and the bracket updates in real time." />
+            <Step n={3} title="Choose a role, then one kick" desc="Before the whistle, one player picks kicker or keeper — the other gets the remaining role. One penalty kick decides it: score and the kicker advances, miss or save and the keeper advances. The referee records it instantly and the bracket updates in real time." />
             <Step n={4} title="Crown the champion" desc="64 players resolve in under 2 hours. Award ceremony, social media content, and NIL activation all happen same day." />
           </div>
         </div>
@@ -303,10 +303,10 @@ export default function SoccerPage() {
           </div>
           <div className="bg-white rounded-2xl border border-slate-100 p-8 space-y-6 text-slate-600 leading-relaxed">
             <p>
-              <strong className="text-slate-900">The One Goal Bowl format</strong> is built around the penalty kick — the most dramatic individual moment in the sport. The ball is placed on the spot. Everyone watches. One shot. No second chance.
+              <strong className="text-slate-900">The One Goal Bowl format</strong> is built around the penalty kick — the most dramatic individual moment in the sport. Before the match, the two players decide who kicks and who keeps: one player calls their role, and the other is automatically assigned the one that&apos;s left. Then the ball is placed on the spot. Everyone watches. One shot. No second chance.
             </p>
             <p>
-              Each match plays out in 90 seconds. Two competitors, one spot, one goal. Win or go home. A 64-player bracket closes in under 2 hours on a single pitch, or faster across multiple pitches simultaneously.
+              Each match plays out in 90 seconds. Score the kick and the kicker advances. Miss it, or the keeper saves it, and the keeper advances instead — the outcome is always decisive, so there&apos;s never a tiebreaker to run. A 64-player bracket closes in under 2 hours on a single pitch, or faster across multiple pitches simultaneously.
             </p>
             <p>
               <strong className="text-slate-900">Single elimination</strong> removes all cushion. Every kick carries the full weight of elimination. That pressure is what makes it riveting for spectators — even if the competitors are all friends.
@@ -315,7 +315,7 @@ export default function SoccerPage() {
               <strong className="text-slate-900">For fundraising:</strong> $20 entry across 64 players is $1,280 raised in one afternoon. Add a &quot;spot kick challenge&quot; for donors at $10 per attempt, coached by your players, and you&apos;re doubling that. The format is lean, repeatable, and deeply tied to your sport&apos;s identity.
             </p>
             <div className="rounded-xl p-5 text-white text-sm font-semibold" style={{ backgroundColor: PRIMARY }}>
-              💡 Pro tip: have your goalkeeper step in for the keeper side of each match. Donors love watching a D1 keeper in action up close. It&apos;s an experience money can&apos;t easily buy elsewhere.
+              💡 Pro tip: since either player can choose to keep instead of kick, encourage your goalkeeper to opt into the keeper role when they draw a match. Donors love watching a D1 keeper in action up close. It&apos;s an experience money can&apos;t easily buy elsewhere.
             </div>
           </div>
         </div>

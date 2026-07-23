@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { useParams, useRouter } from 'next/navigation';
 import RefereeMatchClient from '@/components/RefereeMatchClient';
-import type { Match, Player, Tournament } from '@/types';
+import SoccerMatchClient from '@/components/SoccerMatchClient';
+import type { Match, Player, Tournament, KickOutcome } from '@/types';
 import { mapPlayer } from '@/types';
-import { advanceWinner } from '@/lib/bracket';
+import { advanceWinner, determineOneGoalBowlWinner } from '@/lib/bracket';
 
 export default function RefereeMatchPage() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -35,6 +36,9 @@ export default function RefereeMatchPage() {
       winnerId: m.winner_id,
       status: m.status,
       courtNumber: m.court_number,
+      kickerPlayerId: m.kicker_player_id,
+      keeperPlayerId: m.keeper_player_id,
+      kickOutcome: m.kick_outcome,
     };
     setMatch(matchData);
 
@@ -90,6 +94,31 @@ export default function RefereeMatchPage() {
     }
   }
 
+  async function handleDeclareSoccerResult(kickerPlayerId: string, keeperPlayerId: string, outcome: KickOutcome) {
+    const supabase = createClient();
+    const winnerId = determineOneGoalBowlWinner(kickerPlayerId, keeperPlayerId, outcome);
+    await supabase
+      .from('matches')
+      .update({
+        kicker_player_id: kickerPlayerId,
+        keeper_player_id: keeperPlayerId,
+        kick_outcome: outcome,
+        winner_id: winnerId,
+        status: 'finalized',
+      })
+      .eq('id', matchId);
+
+    if (match) {
+      const slot = match.matchIndex % 2 === 0 ? 'player1_id' : 'player2_id';
+      await supabase
+        .from('matches')
+        .update({ [slot]: winnerId })
+        .eq('tournament_id', match.tournamentId)
+        .eq('round_index', match.roundIndex + 1)
+        .eq('match_index', Math.floor(match.matchIndex / 2));
+    }
+  }
+
   async function handleWalkover(winnerId: string) {
     const supabase = createClient();
     const loserId = winnerId === player1?.id ? player2?.id : player1?.id;
@@ -127,6 +156,21 @@ export default function RefereeMatchPage() {
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="text-white/30 animate-pulse">Loading match…</div>
       </div>
+    );
+  }
+
+  if (tournament?.settings?.sport === 'soccer') {
+    return (
+      <SoccerMatchClient
+        match={match}
+        player1={player1}
+        player2={player2}
+        tournamentName={tournament?.name ?? ''}
+        onDeclareResult={handleDeclareSoccerResult}
+        onWalkover={handleWalkover}
+        onBack={() => router.push('/referee')}
+        onNext={() => router.push('/referee')}
+      />
     );
   }
 
