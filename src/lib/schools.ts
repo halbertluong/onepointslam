@@ -173,5 +173,6 @@ export const D3_SCHOOLS: School[] = [
 
 export const ALL_SCHOOLS: School[] = [...D1_SCHOOLS, ...D2_SCHOOLS, ...D3_SCHOOLS];
 
+const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? 'support@onepointbowl.com';
 export const SUGGEST_CORRECTION_URL =
-  'mailto:support@onepointslam.com?subject=School%20Color%20Correction&body=School%20name%3A%0APrimary%20color%20(hex)%3A%0ASecondary%20color%20(hex)%3A%0ASource%3A';
+  `mailto:${SUPPORT_EMAIL}?subject=School%20Color%20Correction&body=School%20name%3A%0APrimary%20color%20(hex)%3A%0ASecondary%20color%20(hex)%3A%0ASource%3A`;

@@ -1,7 +1,31 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
+
+let ratelimit: Ratelimit | null = null;
+if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+  ratelimit = new Ratelimit({
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(20, '1 m'),
+  });
+}
 
 export async function middleware(request: NextRequest) {
+  const { pathname: reqPathname } = request.nextUrl;
+
+  if (
+    ratelimit &&
+    request.method === 'POST' &&
+    (reqPathname.startsWith('/api/waitlist') || reqPathname === '/api/auth/provision-tenant')
+  ) {
+    const ip = request.headers.get('x-forwarded-for') ?? 'anonymous';
+    const { success } = await ratelimit.limit(ip);
+    if (!success) {
+      return new NextResponse('Too many requests', { status: 429 });
+    }
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(

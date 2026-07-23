@@ -271,7 +271,8 @@ export default function AdminUsersPage() {
 
       {msg && <p className="text-sm bg-emerald-50 text-emerald-700 rounded-xl p-3">{msg}</p>}
 
-      {/* Demo Accounts Quick Panel */}
+      {/* Demo Accounts Quick Panel — hidden in production */}
+      {(process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_SHOW_DEMO_PANEL === 'true') && (
       <div className="bg-slate-900 rounded-2xl p-6 text-white space-y-4">
         <div>
           <h2 className="font-black text-lg">🎭 Impersonate Demo Accounts</h2>
@@ -319,6 +320,7 @@ export default function AdminUsersPage() {
           </ol>
         </div>
       </div>
+      )}
 
       {/* All Users Table */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">

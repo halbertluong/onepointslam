@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const base = origin ?? 'https://onepointbowl.vercel.app';
+  const base = origin ?? process.env.NEXT_PUBLIC_SITE_URL ?? '';
   const redirectTo = `${base}/auth/confirm?next=${encodeURIComponent(landingPath ?? '/')}`;
 
   const { data, error } = await admin.auth.admin.generateLink({

@@ -192,6 +192,19 @@ export default function RegisterPage() {
     setRegisteredEmail(data.email);
     setWasGuest(!currentUser);
     setStep('success');
+
+    // Fire-and-forget registration confirmation email (non-blocking)
+    fetch('/api/email/registration-confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: data.email,
+        playerName: data.fullName,
+        tournamentName: tournamentName,
+        tenantName,
+      }),
+    }).catch(() => { /* email failure must not affect registration */ });
+
     return {};
   }
 

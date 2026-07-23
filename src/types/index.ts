@@ -42,6 +42,8 @@ export interface TournamentSettings {
   numberOfCourts?: number;
   tournamentDate?: string;
   prizePlaces?: PrizePlace[];
+  fundraisingGoal?: number;
+  inviteCode?: string;
 }
 
 export type TournamentStatus =

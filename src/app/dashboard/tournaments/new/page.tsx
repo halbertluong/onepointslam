@@ -227,6 +227,31 @@ export default function NewTournamentPage() {
           </div>
         </div>
 
+        {/* Fundraising Goal */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+          <div>
+            <h2 className="font-bold text-slate-800">Fundraising Goal</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Optional — shown as a progress bar on the public registration page</p>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Goal Amount (USD)
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+              <input
+                type="number"
+                min="0"
+                step="100"
+                placeholder="e.g. 5000"
+                value={settings.fundraisingGoal ?? ''}
+                onChange={(e) => updateSettings('fundraisingGoal', e.target.value ? Number(e.target.value) : undefined)}
+                className="w-full border border-slate-200 rounded-xl pl-7 pr-3 py-2.5 text-sm focus:outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Prize money */}
         <PrizePlacesEditor
           places={settings.prizePlaces ?? []}

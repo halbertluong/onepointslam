@@ -351,6 +351,11 @@ export default function TournamentAdminPage() {
 
   async function handleGenerateBracket() {
     if (!tournament) return;
+    const minReg = tournament.settings?.minimumRegistrants;
+    if (minReg && players.length < minReg) {
+      setMessage(`Need at least ${minReg} registered players to generate the bracket. Currently have ${players.length}.`);
+      return;
+    }
     setSaving(true);
     const supabase = createClient();
     const generated = generateBracket(players, tournament.settings, id);

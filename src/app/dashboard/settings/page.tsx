@@ -64,13 +64,28 @@ export default function SettingsPage() {
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !tenant) return;
+
+    const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+    const MAX_SIZE_MB = 2;
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setMessage('Logo must be PNG, JPEG, WebP, or SVG.');
+      return;
+    }
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      setMessage(`Logo must be smaller than ${MAX_SIZE_MB} MB.`);
+      return;
+    }
+
     setUploading(true);
     const supabase = createClient();
-    const path = `logos/${tenant.id}/${file.name}`;
+    const ext = file.name.split('.').pop() ?? 'png';
+    const path = `logos/${tenant.id}/logo.${ext}`;
     const { error } = await supabase.storage.from('tenant-assets').upload(path, file, { upsert: true });
     if (!error) {
       const { data: { publicUrl } } = supabase.storage.from('tenant-assets').getPublicUrl(path);
       setLogoUrl(publicUrl);
+    } else {
+      setMessage(error.message);
     }
     setUploading(false);
   }
@@ -298,7 +313,7 @@ export default function SettingsPage() {
                     Remove
                   </button>
                 )}
-                <input ref={fileRef} type="file" accept=".svg,.png,.jpg,.jpeg" className="hidden" onChange={handleLogoUpload} />
+                <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={handleLogoUpload} />
               </div>
               <p className="text-xs text-slate-400 mt-1.5">Recommended: square SVG or PNG with transparent background</p>
             </div>
@@ -336,8 +351,27 @@ export default function SettingsPage() {
             </p>
           </div>
 
+          {/* Stripe Payments */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-3">
+            <h2 className="font-bold text-slate-800">Payment Collection</h2>
+            {tenant?.stripeConnectAccountId ? (
+              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">
+                <span>✓</span>
+                <span>Stripe account connected — entry fees will be collected and transferred to your account.</span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 rounded-xl px-4 py-3">
+                  <span className="mt-0.5">⚠</span>
+                  <span>No Stripe account connected. Entry fees will not be collected until Stripe is configured. Contact your One Point Bowl administrator to set up payments for your account.</span>
+                </div>
+                <p className="text-xs text-slate-400">Once connected, registration fees will transfer directly to your program&apos;s Stripe account minus the platform fee.</p>
+              </div>
+            )}
+          </div>
+
           {message && (
-            <p className={`text-sm text-center rounded-xl p-3 ${message.includes('error') || message.includes('Error') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+            <p className={`text-sm text-center rounded-xl p-3 ${message.includes('error') || message.includes('Error') || message.includes('must') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
               {message}
             </p>
           )}

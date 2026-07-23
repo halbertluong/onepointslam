@@ -15,12 +15,19 @@ function toSlug(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId, school, sport, program } = await req.json() as {
+  const { userId, school, sport, program, inviteCode } = await req.json() as {
     userId?: string;
     school?: string;
     sport?: string;
     program?: string;
+    inviteCode?: string;
   };
+
+  // Server-side invite code validation
+  const validCode = process.env.DIRECTOR_INVITE_CODE;
+  if (validCode && inviteCode !== validCode) {
+    return NextResponse.json({ error: 'Invalid invite code' }, { status: 401 });
+  }
 
   if (!userId || !school || !sport || !program) {
     return NextResponse.json({ error: 'userId, school, sport, and program are required' }, { status: 400 });

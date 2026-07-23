@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
             Authorization: `Bearer ${resendApiKey}`,
           },
           body: JSON.stringify({
-            from: `${tenantName} via One Point Bowl <noreply@onepointbowl.com>`,
+            from: `${tenantName} via One Point Bowl <${process.env.RESEND_FROM_EMAIL ?? 'noreply@onepointbowl.com'}>`,
             to: [email],
             subject,
             text: `${message}\n\n---\nSent by ${tenantName} via One Point Bowl`,

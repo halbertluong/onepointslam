@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 
-const INVITE_CODE = 'onepoint';
 const TITLE_OPTIONS = ['Head Coach', 'Assistant Coach', 'Sports Administrator', 'Director of Operations', 'Other'];
 const SPORT_OPTIONS = ['Tennis', 'Basketball', 'Soccer', 'Other'];
 const PROGRAM_OPTIONS = ["Men's", "Women's", 'Both'];
@@ -31,8 +30,8 @@ export default function RegisterPage() {
 
   function handleCodeSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (code.trim().toLowerCase() !== INVITE_CODE) {
-      setCodeError('Invalid invite code. Contact us to get early access.');
+    if (!code.trim()) {
+      setCodeError('Please enter your invite code.');
       return;
     }
     setStep('details');
@@ -92,7 +91,7 @@ export default function RegisterPage() {
     const tenantRes = await fetch('/api/auth/provision-tenant', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, school, sport: resolvedSport, program }),
+      body: JSON.stringify({ userId, school, sport: resolvedSport, program, inviteCode: code.trim() }),
     });
 
     if (!tenantRes.ok) {
