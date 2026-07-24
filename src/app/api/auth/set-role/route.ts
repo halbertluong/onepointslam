@@ -3,19 +3,19 @@ import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
-const adminClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
-
 export async function POST(req: NextRequest) {
+  const adminClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
   const { userId, role } = await req.json() as { userId?: string; role?: string };
 
   if (!userId || !role) {
     return NextResponse.json({ error: 'userId and role are required' }, { status: 400 });
   }
 
-  const allowedRoles = ['tenant_admin', 'referee', 'player'];
+  // tenant_admin is only assigned by provision-tenant (invite-code gated); never self-service
+  const allowedRoles = ['referee', 'player'];
   if (!allowedRoles.includes(role)) {
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
   }

@@ -3,12 +3,11 @@ import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
-const adminClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
-
 export async function POST(req: NextRequest) {
+  const adminClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
   // Only super_admins may resend confirmation emails
   const cookieStore = await cookies();
   const supabase = createServerClient(
@@ -42,7 +41,7 @@ export async function POST(req: NextRequest) {
     type: 'magiclink',
     email,
     options: {
-      redirectTo: `${req.headers.get('origin') ?? process.env.NEXT_PUBLIC_SITE_URL}/auth/confirm`,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/auth/confirm`,
     },
   });
 

@@ -79,6 +79,6 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies WHERE tablename = 'waitlist' AND policyname = 'waitlist: service role select'
   ) THEN
-    CREATE POLICY "waitlist: service role select" ON waitlist FOR SELECT USING (auth.role() = 'service_role');
+    CREATE POLICY "waitlist: service role select" ON waitlist FOR SELECT USING (true);
   END IF;
 END $$;

@@ -12,7 +12,9 @@ export async function createPaymentIntent(
   applicationFeeCents: number,
 ): Promise<PaymentIntentResult> {
   if (!STRIPE_SECRET_KEY) {
-    // Mock mode
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('STRIPE_SECRET_KEY is not set — cannot process payments in production');
+    }
     return {
       clientSecret: `mock_pi_${Date.now()}_secret_mock`,
       paymentIntentId: `mock_pi_${Date.now()}`,

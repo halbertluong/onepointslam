@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
             to: [email],
             subject,
             text: `${message}\n\n---\nSent by ${tenantName} via One Point Bowl`,
-            html: `<p>${message.replace(/\n/g, '<br/>')}</p><hr/><p style="color:#888;font-size:12px">Sent by ${tenantName} via One Point Bowl</p>`,
+            html: `<p>${message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br/>')}</p><hr/><p style="color:#888;font-size:12px">Sent by ${tenantName} via One Point Bowl</p>`,
           }),
         })
       )

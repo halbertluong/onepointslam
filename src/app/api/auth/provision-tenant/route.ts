@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const adminClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
-
 function toSlug(text: string): string {
   return text
     .toLowerCase()
@@ -15,6 +10,11 @@ function toSlug(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  const adminClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+
   const { userId, school, sport, program, inviteCode } = await req.json() as {
     userId?: string;
     school?: string;
@@ -33,10 +33,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid invite code' }, { status: 401 });
   }
 
-  // Verify the userId actually exists in auth.users (prevents hijacking other accounts)
-  if (!userId) {
-    return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+  // Verify the caller is authenticated and is provisioning for themselves
+  const { createServerClient } = await import('@supabase/ssr');
+  const { cookies } = await import('next/headers');
+  const cookieStore = await cookies();
+  const sessionClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (cs) => cs.forEach(({ name, value, options }) => cookieStore.set(name, value, options)),
+      },
+    },
+  );
+  const { data: { user: sessionUser } } = await sessionClient.auth.getUser();
+  if (!sessionUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!userId || sessionUser.id !== userId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+
+  // Verify the userId actually exists in auth.users
   const { data: authUser, error: authErr } = await adminClient.auth.admin.getUserById(userId);
   if (authErr || !authUser?.user) {
     return NextResponse.json({ error: 'User not found' }, { status: 400 });
