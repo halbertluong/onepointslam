@@ -23,13 +23,26 @@ export async function POST(req: NextRequest) {
     inviteCode?: string;
   };
 
-  // Server-side invite code validation
+  // Invite code must always be present and correct
   const validCode = process.env.DIRECTOR_INVITE_CODE;
-  if (validCode && inviteCode !== validCode) {
+  if (!validCode) {
+    console.error('[provision-tenant] DIRECTOR_INVITE_CODE env var is not set — rejecting all requests');
+    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
+  }
+  if (inviteCode !== validCode) {
     return NextResponse.json({ error: 'Invalid invite code' }, { status: 401 });
   }
 
-  if (!userId || !school || !sport || !program) {
+  // Verify the userId actually exists in auth.users (prevents hijacking other accounts)
+  if (!userId) {
+    return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+  }
+  const { data: authUser, error: authErr } = await adminClient.auth.admin.getUserById(userId);
+  if (authErr || !authUser?.user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 400 });
+  }
+
+  if (!school || !sport || !program) {
     return NextResponse.json({ error: 'userId, school, sport, and program are required' }, { status: 400 });
   }
 
@@ -59,11 +72,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: tenantErr?.message ?? 'Failed to create tenant' }, { status: 500 });
   }
 
-  // Assign the tenant to the user
+  // Assign the tenant and role to the user atomically
   const { error: userErr } = await adminClient
     .from('users')
-    .update({ assigned_tenant_ids: [tenant.id] })
-    .eq('id', userId);
+    .upsert({ id: userId, role: 'tenant_admin', assigned_tenant_ids: [tenant.id] }, { onConflict: 'id' });
 
   if (userErr) {
     return NextResponse.json({ error: userErr.message }, { status: 500 });

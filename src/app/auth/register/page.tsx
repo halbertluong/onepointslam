@@ -74,20 +74,7 @@ export default function RegisterPage() {
       return;
     }
 
-    // Assign tenant_admin role via server-side API (bypasses RLS for new users with no session yet)
-    const roleRes = await fetch('/api/auth/set-role', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, role: 'tenant_admin' }),
-    });
-
-    if (!roleRes.ok) {
-      setError('Account created but role assignment failed — contact support.');
-      setLoading(false);
-      return;
-    }
-
-    // Create a tenant for this tournament director (school + sport + program)
+    // Create a tenant and assign role in one server-side call
     const tenantRes = await fetch('/api/auth/provision-tenant', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

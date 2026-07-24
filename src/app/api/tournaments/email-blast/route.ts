@@ -40,6 +40,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Only send to emails of players actually registered for this tournament
+  const { data: players } = await supabase
+    .from('players')
+    .select('email')
+    .eq('tournament_id', tournamentId);
+  const registeredEmails = new Set((players ?? []).map((p) => p.email?.toLowerCase()).filter(Boolean));
+  const validatedRecipients = recipientEmails.filter((e) => registeredEmails.has(e.toLowerCase()));
+  if (validatedRecipients.length === 0) {
+    return NextResponse.json({ error: 'None of the provided emails are registered players for this tournament' }, { status: 400 });
+  }
+
   const tenantRaw = tournament.tenants as unknown;
   const tenantName = (tenantRaw && typeof tenantRaw === 'object' && 'display_name' in tenantRaw)
     ? (tenantRaw as { display_name: string }).display_name
@@ -52,7 +63,7 @@ export async function POST(req: NextRequest) {
   if (resendApiKey) {
     // Send via Resend
     const results = await Promise.allSettled(
-      recipientEmails.map((email) =>
+      validatedRecipients.map((email) =>
         fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
@@ -71,13 +82,13 @@ export async function POST(req: NextRequest) {
     );
     const failed = results.filter((r) => r.status === 'rejected').length;
     if (failed > 0) {
-      return NextResponse.json({ error: `${failed} of ${recipientEmails.length} emails failed to send` }, { status: 500 });
+      return NextResponse.json({ error: `${failed} of ${validatedRecipients.length} emails failed to send` }, { status: 500 });
     }
-    return NextResponse.json({ sent: recipientEmails.length });
+    return NextResponse.json({ sent: validatedRecipients.length });
   }
 
-  // No email provider — log and return a clear message for now
-  console.log(`[email-blast] Would send to ${recipientEmails.length} recipients:`, { subject, message, recipientEmails });
+  // No email provider — log recipient count only, not PII
+  console.log(`[email-blast] Would send to ${validatedRecipients.length} recipients (RESEND_API_KEY not configured)`);
   return NextResponse.json({
     sent: 0,
     warning: 'No email provider configured. Set RESEND_API_KEY in environment variables to enable sending. Recipients logged to server console.',

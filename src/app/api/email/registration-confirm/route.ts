@@ -1,27 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
 export async function POST(req: NextRequest) {
-  // Require an internal secret so this endpoint can't be used as an open email relay
-  const secret = process.env.INTERNAL_API_SECRET;
-  if (secret && req.headers.get('x-internal-secret') !== secret) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
   const resendApiKey = process.env.RESEND_API_KEY;
   if (!resendApiKey) {
-    // No-op — email not configured. Registration still succeeds.
     return NextResponse.json({ sent: false, reason: 'RESEND_API_KEY not configured' });
   }
 
-  const { to, playerName, tournamentName, tenantName } = await req.json() as {
+  const { to, playerName, tournamentName, tenantName, tournamentId } = await req.json() as {
     to?: string;
     playerName?: string;
     tournamentName?: string;
     tenantName?: string;
+    tournamentId?: string;
   };
 
-  if (!to || !playerName || !tournamentName) {
+  if (!to || !playerName || !tournamentName || !tournamentId) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
+
+  // Verify this email is actually registered as a player for this tournament
+  // This prevents the endpoint being used as an open email relay
+  const admin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+  const { data: player } = await admin
+    .from('players')
+    .select('id')
+    .eq('tournament_id', tournamentId)
+    .eq('email', to.toLowerCase())
+    .maybeSingle();
+
+  if (!player) {
+    return NextResponse.json({ error: 'Player not found for this tournament' }, { status: 403 });
   }
 
   const from = process.env.RESEND_FROM_EMAIL ?? 'noreply@onepointbowl.com';
