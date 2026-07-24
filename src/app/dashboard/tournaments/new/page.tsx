@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS: TournamentSettings = {
 
 const SPORT_OPTIONS: { value: Sport; label: string }[] = [
   { value: 'tennis', label: '🎾 Tennis — One Point Bowl' },
-  { value: 'basketball', label: '🏀 Basketball' },
+  { value: 'basketball', label: '🏀 Basketball — One Point Bowl' },
   { value: 'soccer', label: '⚽ Soccer — One Goal Bowl' },
 ];
 
@@ -187,6 +187,13 @@ export default function NewTournamentPage() {
             <h2 className="font-bold text-slate-800">Match Rules — One Goal Bowl</h2>
             <p className="text-sm text-slate-500 leading-relaxed">
               Each match is a single penalty kick. Before the kick, one player chooses to be kicker or keeper and the other is auto-assigned the remaining role. Score the kick and the kicker advances; miss it or the keeper saves it and the keeper advances. No tiebreaker needed — the referee console will prompt for role selection, then the kick outcome.
+            </p>
+          </div>
+        ) : settings.sport === 'basketball' ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-2">
+            <h2 className="font-bold text-slate-800">Match Rules — One Point Bowl</h2>
+            <p className="text-sm text-slate-500 leading-relaxed">
+              Each match is a single defended possession. A coin flip decides who chooses offense or defense — the other player is auto-assigned the remaining role. Make the shot and the offensive player advances; miss it, get stripped, or get blocked and the defensive player advances. No tiebreaker needed — the referee console will prompt for the coin flip, then role selection, then the possession outcome.
             </p>
           </div>
         ) : (

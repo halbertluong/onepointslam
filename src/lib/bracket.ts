@@ -1,4 +1,4 @@
-import type { Player, Match, TournamentSettings, KickOutcome } from '@/types';
+import type { Player, Match, TournamentSettings, KickOutcome, PossessionOutcome } from '@/types';
 
 function nextPowerOf2(n: number): number {
   let p = 1;
@@ -171,6 +171,20 @@ export function determineOneGoalBowlWinner(
   outcome: KickOutcome,
 ): string {
   return outcome === 'goal' ? kickerPlayerId : keeperPlayerId;
+}
+
+/**
+ * One Point Bowl (basketball): the winner follows directly from the
+ * possession outcome. A made shot advances the offensive player; a miss,
+ * steal, or block advances the defensive player. There is no tiebreaker —
+ * the outcome is always decisive.
+ */
+export function determineOnePointBowlWinner(
+  offensePlayerId: string,
+  defensePlayerId: string,
+  outcome: PossessionOutcome,
+): string {
+  return outcome === 'made' ? offensePlayerId : defensePlayerId;
 }
 
 export function getRoundsCount(maxPlayers: number): number {

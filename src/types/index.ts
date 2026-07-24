@@ -113,6 +113,9 @@ export type MatchStatus =
 /** Outcome of the single penalty-kick attempt in a One Goal Bowl (soccer) match. */
 export type KickOutcome = 'goal' | 'miss' | 'saved';
 
+/** Outcome of the single possession in a One Point Bowl (basketball) match. */
+export type PossessionOutcome = 'made' | 'missed' | 'stolen' | 'blocked';
+
 export interface Match {
   id: string;
   tournamentId: string;
@@ -130,6 +133,14 @@ export interface Match {
   keeperPlayerId?: string | null;
   /** One Goal Bowl (soccer): result of the single kick attempt. */
   kickOutcome?: KickOutcome | null;
+  /** One Point Bowl (basketball): the player who won the pre-possession coin flip and chose their role. */
+  coinFlipWinnerId?: string | null;
+  /** One Point Bowl (basketball): the player taking the shot, chosen (or auto-assigned) after the coin flip. */
+  offensePlayerId?: string | null;
+  /** One Point Bowl (basketball): the player defending the possession, auto-assigned as the remaining role. */
+  defensePlayerId?: string | null;
+  /** One Point Bowl (basketball): result of the single possession. */
+  possessionOutcome?: PossessionOutcome | null;
 }
 
 export function mapMatch(row: Record<string, unknown>): Match {
@@ -147,5 +158,9 @@ export function mapMatch(row: Record<string, unknown>): Match {
     kickerPlayerId: (row.kicker_player_id ?? row.kickerPlayerId) as string | null | undefined,
     keeperPlayerId: (row.keeper_player_id ?? row.keeperPlayerId) as string | null | undefined,
     kickOutcome: (row.kick_outcome ?? row.kickOutcome) as KickOutcome | null | undefined,
+    coinFlipWinnerId: (row.coin_flip_winner_id ?? row.coinFlipWinnerId) as string | null | undefined,
+    offensePlayerId: (row.offense_player_id ?? row.offensePlayerId) as string | null | undefined,
+    defensePlayerId: (row.defense_player_id ?? row.defensePlayerId) as string | null | undefined,
+    possessionOutcome: (row.possession_outcome ?? row.possessionOutcome) as PossessionOutcome | null | undefined,
   };
 }
