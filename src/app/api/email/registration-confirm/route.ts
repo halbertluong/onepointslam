@@ -9,14 +9,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ sent: false, reason: 'RESEND_API_KEY not configured' });
   }
 
-  const { to, tournamentId, playerId } = await req.json() as {
-    to?: string;
-    tournamentId?: string;
-    playerId?: string;
-    playerName?: string;
-    tournamentName?: string;
-    tenantName?: string;
-  };
+  let parsed: { to?: string; tournamentId?: string; playerId?: string };
+  try { parsed = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  const { to, tournamentId, playerId } = parsed;
 
   if (!to || !tournamentId || !playerId) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });

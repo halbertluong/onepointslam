@@ -13,8 +13,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Must be super_admin' }, { status: 403 });
   }
 
-  const body = await req.json();
-  const { targetEmail, origin, landingPath } = body as { targetEmail: string; origin: string; landingPath: string };
+  let body: { targetEmail: string; origin: string; landingPath: string };
+  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  const { targetEmail, origin, landingPath } = body;
   if (!targetEmail) return NextResponse.json({ error: 'Missing targetEmail' }, { status: 400 });
 
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

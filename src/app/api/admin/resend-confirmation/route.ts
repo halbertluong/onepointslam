@@ -31,7 +31,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { email } = await req.json() as { email?: string };
+  let parsed: { email?: string };
+  try { parsed = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  const { email } = parsed;
 
   if (!email) {
     return NextResponse.json({ error: 'email is required' }, { status: 400 });
