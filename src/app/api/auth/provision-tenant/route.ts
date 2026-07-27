@@ -61,6 +61,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'User not found' }, { status: 400 });
   }
 
+  // Enforce .edu email requirement server-side (client-side check is bypassable)
+  const email = authUser.user.email ?? '';
+  if (!email.toLowerCase().endsWith('.edu')) {
+    return NextResponse.json({ error: 'A .edu email address is required to register as a director' }, { status: 403 });
+  }
+
   // Prevent re-provisioning an already-provisioned account
   const { data: existingUser } = await adminClient.from('users').select('role').eq('id', userId).single();
   if (existingUser?.role === 'tenant_admin') {
