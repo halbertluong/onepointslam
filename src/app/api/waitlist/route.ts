@@ -17,6 +17,9 @@ export async function POST(req: NextRequest) {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: 'Valid email required' }, { status: 400 });
   }
+  if (!name?.trim()) {
+    return NextResponse.json({ error: 'name is required' }, { status: 400 });
+  }
   if ((name?.length ?? 0) > 200 || (school?.length ?? 0) > 200 || (notes?.length ?? 0) > 2000 ||
       (title?.length ?? 0) > 200 || (sport?.length ?? 0) > 100 || (program?.length ?? 0) > 200) {
     return NextResponse.json({ error: 'Input too long' }, { status: 400 });

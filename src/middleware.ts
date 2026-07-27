@@ -14,12 +14,13 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
 export async function middleware(request: NextRequest) {
   const { pathname: reqPathname } = request.nextUrl;
 
-  if (ratelimit && request.method === 'POST') {
+  if (ratelimit && request.method !== 'GET') {
     const rateLimitedPaths = [
       '/api/waitlist',
       '/api/auth/provision-tenant',
       '/api/email/registration-confirm',
       '/api/tournaments/email-blast',
+      '/api/tournaments/',
       '/api/admin/',
     ];
     if (rateLimitedPaths.some((p) => reqPathname.startsWith(p))) {
