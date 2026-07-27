@@ -75,15 +75,15 @@ export async function POST(req: NextRequest) {
   const displayName = `${school.trim()} - ${sport.trim()} - ${program.trim()}`;
   const baseSlug = toSlug(displayName);
 
-  // Ensure slug uniqueness by appending a short random suffix if needed
+  // Ensure slug uniqueness by appending a random suffix if needed (retry up to 5 times)
   let slug = baseSlug;
-  const { data: existing } = await adminClient
-    .from('tenants')
-    .select('id')
-    .eq('slug', slug)
-    .maybeSingle();
-
-  if (existing) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: existing } = await adminClient
+      .from('tenants')
+      .select('id')
+      .eq('slug', slug)
+      .maybeSingle();
+    if (!existing) break;
     slug = `${baseSlug}-${Math.random().toString(36).slice(2, 6)}`;
   }
 

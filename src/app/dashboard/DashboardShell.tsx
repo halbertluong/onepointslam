@@ -51,12 +51,14 @@ export default function DashboardShell({ tenant, userEmail, isSuperAdmin, tenant
     requestAnimationFrame(() => window.scrollTo({ top: target, behavior: 'instant' as ScrollBehavior }));
   }
 
-  const primary = tenant?.primary_color ?? '#1d4ed8';
+  const safeHex = (c: string | undefined | null) => /^#[0-9a-fA-F]{6}$/.test(c ?? '') ? c! : '#1d4ed8';
+  const primary = safeHex(tenant?.primary_color);
+  const secondary = safeHex(tenant?.secondary_color);
 
   return (
     <div className="min-h-screen bg-slate-50">
       {tenant && (
-        <style>{`:root { --tenant-primary: ${primary}; --tenant-secondary: ${tenant.secondary_color}; }`}</style>
+        <style>{`:root { --tenant-primary: ${primary}; --tenant-secondary: ${secondary}; }`}</style>
       )}
 
       <nav

@@ -17,20 +17,20 @@ export async function POST(req: NextRequest) {
     tournamentId?: string;
   };
 
-  if (!to || !playerName || !tournamentName || !tournamentId) {
+  if (!to || !tournamentId) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
-  // Verify this email is actually registered as a player for this tournament
-  // This prevents the endpoint being used as an open email relay
   const admin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
+
+  // Pull player + tournament + tenant names from DB — never trust caller-supplied display strings
   const { data: player } = await admin
     .from('players')
-    .select('id, last_confirmation_sent_at')
+    .select('id, full_name, last_confirmation_sent_at, tournaments(name, tenants(display_name))')
     .eq('tournament_id', tournamentId)
     .eq('email', to.toLowerCase())
     .maybeSingle();
@@ -48,8 +48,14 @@ export async function POST(req: NextRequest) {
   }
   await admin.from('players').update({ last_confirmation_sent_at: new Date().toISOString() }).eq('id', player.id);
 
+  // Use DB-sourced values — ignore any caller-supplied playerName/tournamentName/tenantName
+  const t = player.tournaments as unknown as { name: string; tenants: { display_name: string } } | null;
+  const resolvedPlayerName = player.full_name ?? 'Player';
+  const resolvedTournamentName = t?.name ?? 'the tournament';
+  const resolvedOrgName = t?.tenants?.display_name ?? 'One Point Bowl';
+
   const from = process.env.RESEND_FROM_EMAIL ?? 'noreply@onepointbowl.com';
-  const orgName = (tenantName ?? 'One Point Bowl').replace(/[\r\n]/g, ' ');
+  const orgName = resolvedOrgName;
 
   function escHtml(s: string) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
