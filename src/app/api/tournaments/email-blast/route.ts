@@ -23,6 +23,9 @@ export async function POST(req: NextRequest) {
   if (!tournamentId || !subject || !message || !recipientEmails?.length) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
+  if (message.length > 10_000) {
+    return NextResponse.json({ error: 'Message body exceeds 10,000 character limit' }, { status: 400 });
+  }
   // Prevent email header injection via subject line
   const cleanSubject = subject.replace(/[\r\n]/g, ' ').slice(0, 200);
   if (!cleanSubject.trim()) {

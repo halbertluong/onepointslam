@@ -20,6 +20,7 @@ export async function middleware(request: NextRequest) {
       '/api/auth/provision-tenant',
       '/api/email/registration-confirm',
       '/api/tournaments/email-blast',
+      '/api/admin/',
     ];
     if (rateLimitedPaths.some((p) => reqPathname.startsWith(p))) {
       const ip = request.headers.get('x-forwarded-for') ?? 'anonymous';

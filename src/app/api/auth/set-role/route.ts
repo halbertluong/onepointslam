@@ -8,7 +8,9 @@ export async function POST(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
-  const { userId, role } = await req.json() as { userId?: string; role?: string };
+  let body: { userId?: string; role?: string };
+  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  const { userId, role } = body;
 
   if (!userId || !role) {
     return NextResponse.json({ error: 'userId and role are required' }, { status: 400 });

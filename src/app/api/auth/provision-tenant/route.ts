@@ -15,7 +15,9 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
-  const { userId, school, sport, program, inviteCode } = await req.json() as {
+  let parsed: { userId?: string; school?: string; sport?: string; program?: string; inviteCode?: string };
+  try { parsed = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  const { userId, school, sport, program, inviteCode } = parsed as {
     userId?: string;
     school?: string;
     sport?: string;

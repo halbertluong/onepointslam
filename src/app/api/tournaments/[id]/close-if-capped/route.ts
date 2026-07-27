@@ -17,12 +17,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: tournament } = await admin
     .from('tournaments')
-    .select('id, status, settings')
+    .select('id, status, settings, tenant_id')
     .eq('id', tournamentId)
     .maybeSingle();
 
   if (!tournament || tournament.status !== 'registration_open') {
     return NextResponse.json({ closed: false });
+  }
+
+  // Verify caller is a director for this tournament's tenant or a super_admin
+  const { data: callerUser } = await admin.from('users').select('role, assigned_tenant_ids').eq('id', user.id).single();
+  const isSuperAdmin = callerUser?.role === 'super_admin';
+  const isDirector = callerUser?.role === 'tenant_admin' && (callerUser.assigned_tenant_ids ?? []).includes(tournament.tenant_id);
+  if (!isSuperAdmin && !isDirector) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const cap = (tournament.settings as Record<string, unknown>)?.maxPlayers as number | undefined;
