@@ -60,8 +60,8 @@ export async function POST(req: NextRequest) {
   function escHtml(s: string) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
-  const safePlayerName = escHtml(playerName!);
-  const safeTournamentName = escHtml(tournamentName!);
+  const safePlayerName = escHtml(resolvedPlayerName);
+  const safeTournamentName = escHtml(resolvedTournamentName);
   const safeOrgName = escHtml(orgName);
 
   try {
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
             </p>
           </div>
         `,
-        text: `Hi ${playerName},\n\nYour registration for ${tournamentName} hosted by ${orgName} is confirmed.\n\nThe organizer will be in touch with event details soon.\n\n—\nSent by ${orgName} via One Point Bowl`,
+        text: `Hi ${resolvedPlayerName},\n\nYour registration for ${resolvedTournamentName} hosted by ${orgName} is confirmed.\n\nThe organizer will be in touch with event details soon.\n\n—\nSent by ${orgName} via One Point Bowl`,
       }),
     });
 

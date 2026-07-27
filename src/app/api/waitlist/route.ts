@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     email: email.toLowerCase().trim(),
     name: name?.trim() || null,
     school: school?.trim() || null,
-    role: role || 'coach',
+    role: ['coach', 'director', 'player', 'admin', 'other'].includes(role ?? '') ? role : 'coach',
     notes: notes?.trim() || null,
     title: title?.trim() || null,
     sport: sport?.trim() || null,

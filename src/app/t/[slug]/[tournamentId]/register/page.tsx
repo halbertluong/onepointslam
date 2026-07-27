@@ -185,10 +185,7 @@ export default function RegisterPage() {
     }
 
     if (cap && (currentCount ?? 0) + 1 >= cap) {
-      await supabase
-        .from('tournaments')
-        .update({ status: 'registration_closed', registration_close_reason: 'cap_reached' })
-        .eq('id', tournamentId);
+      fetch(`/api/tournaments/${tournamentId}/close-if-capped`, { method: 'POST' }).catch(() => {});
     }
 
     setRegisteredName(data.fullName);

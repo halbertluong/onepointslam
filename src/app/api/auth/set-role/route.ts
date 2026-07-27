@@ -14,9 +14,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'userId and role are required' }, { status: 400 });
   }
 
-  // tenant_admin is only assigned by provision-tenant (invite-code gated); never self-service
-  const allowedRoles = ['referee', 'player'];
-  if (!allowedRoles.includes(role)) {
+  // Only 'player' is self-service; 'referee' and above require super_admin assignment
+  const selfServiceRoles = ['player'];
+  const adminOnlyRoles = ['referee', 'tenant_admin', 'super_admin'];
+  if (![...selfServiceRoles, ...adminOnlyRoles].includes(role)) {
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
   }
 
@@ -38,8 +39,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Only allow a user to set their own role, or a super_admin to set anyone's
-  if (user.id !== userId) {
+  // Self-service: only allowed for selfServiceRoles; admin-only roles require super_admin
+  if (adminOnlyRoles.includes(role)) {
+    const { data: caller } = await adminClient.from('users').select('role').eq('id', user.id).single();
+    if (caller?.role !== 'super_admin') {
+      return NextResponse.json({ error: 'Forbidden — only super_admin can assign this role' }, { status: 403 });
+    }
+  } else if (user.id !== userId) {
     const { data: caller } = await adminClient.from('users').select('role').eq('id', user.id).single();
     if (caller?.role !== 'super_admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
