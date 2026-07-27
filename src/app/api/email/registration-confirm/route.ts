@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Per-(tournament,email) cooldown — prevents spamming a player with repeated confirmation emails
-const recentlySent = new Map<string, number>();
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
 export async function POST(req: NextRequest) {
@@ -32,7 +30,7 @@ export async function POST(req: NextRequest) {
   );
   const { data: player } = await admin
     .from('players')
-    .select('id')
+    .select('id, last_confirmation_sent_at')
     .eq('tournament_id', tournamentId)
     .eq('email', to.toLowerCase())
     .maybeSingle();
@@ -41,13 +39,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Player not found for this tournament' }, { status: 403 });
   }
 
-  // Rate-limit: at most one confirmation email per (tournament, recipient) per 5 minutes
-  const cooldownKey = `${tournamentId}:${to.toLowerCase()}`;
-  const lastSent = recentlySent.get(cooldownKey);
-  if (lastSent && Date.now() - lastSent < COOLDOWN_MS) {
-    return NextResponse.json({ sent: false, reason: 'Email recently sent — please wait before retrying' });
+  // DB-backed rate-limit: at most one confirmation email per player per 5 minutes
+  if (player.last_confirmation_sent_at) {
+    const elapsed = Date.now() - new Date(player.last_confirmation_sent_at).getTime();
+    if (elapsed < COOLDOWN_MS) {
+      return NextResponse.json({ sent: false, reason: 'Email recently sent — please wait before retrying' });
+    }
   }
-  recentlySent.set(cooldownKey, Date.now());
+  await admin.from('players').update({ last_confirmation_sent_at: new Date().toISOString() }).eq('id', player.id);
 
   const from = process.env.RESEND_FROM_EMAIL ?? 'noreply@onepointbowl.com';
   const orgName = tenantName ?? 'One Point Bowl';

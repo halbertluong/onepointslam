@@ -21,7 +21,8 @@ ALTER TABLE tenants
 
 -- ── Players: payment_status column ──────────────────────────────────────────
 ALTER TABLE players
-  ADD COLUMN IF NOT EXISTS payment_status text DEFAULT 'pending';
+  ADD COLUMN IF NOT EXISTS payment_status text DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS last_confirmation_sent_at timestamptz;
 
 -- ── Players: fix seed_rating constraint (was capped at 8, must allow any ≥1) ─
 ALTER TABLE players DROP CONSTRAINT IF EXISTS players_seed_rating_check;

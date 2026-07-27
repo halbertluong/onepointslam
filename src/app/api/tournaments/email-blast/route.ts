@@ -12,12 +12,13 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { tournamentId, subject, body: message, recipientEmails } = body as {
+  const { tournamentId, subject, body: message } = body as {
     tournamentId: string;
     subject: string;
     body: string;
     recipientEmails: string[];
   };
+  const recipientEmails: string[] = (body.recipientEmails ?? []).slice(0, 10_000);
 
   if (!tournamentId || !subject || !message || !recipientEmails?.length) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
