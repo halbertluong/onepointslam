@@ -40,6 +40,13 @@ export async function POST(req: NextRequest) {
   const from = process.env.RESEND_FROM_EMAIL ?? 'noreply@onepointbowl.com';
   const orgName = tenantName ?? 'One Point Bowl';
 
+  function escHtml(s: string) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  const safePlayerName = escHtml(playerName!);
+  const safeTournamentName = escHtml(tournamentName!);
+  const safeOrgName = escHtml(orgName);
+
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -50,15 +57,15 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         from: `${orgName} via One Point Bowl <${from}>`,
         to: [to],
-        subject: `You're registered for ${tournamentName}`,
+        subject: `You're registered for ${safeTournamentName}`,
         html: `
           <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 16px">
             <h1 style="font-size:22px;font-weight:900;color:#1a2033;margin-bottom:8px">
-              You&rsquo;re in, ${playerName}!
+              You&rsquo;re in, ${safePlayerName}!
             </h1>
             <p style="color:#6b7590;font-size:15px;line-height:1.6">
-              Your registration for <strong style="color:#1a2033">${tournamentName}</strong>
-              hosted by <strong style="color:#1a2033">${orgName}</strong> is confirmed.
+              Your registration for <strong style="color:#1a2033">${safeTournamentName}</strong>
+              hosted by <strong style="color:#1a2033">${safeOrgName}</strong> is confirmed.
             </p>
             <p style="color:#6b7590;font-size:15px;line-height:1.6;margin-top:16px">
               The organizer will be in touch with event details, court assignments, and schedule.
@@ -66,7 +73,7 @@ export async function POST(req: NextRequest) {
             </p>
             <hr style="border:none;border-top:1px solid #dde1e9;margin:24px 0"/>
             <p style="color:#9ba8c0;font-size:12px">
-              Sent by ${orgName} via One Point Bowl
+              Sent by ${safeOrgName} via One Point Bowl
             </p>
           </div>
         `,

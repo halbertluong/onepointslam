@@ -96,11 +96,18 @@ export default function SettingsPage() {
     setSaving(true);
     setMessage('');
     const supabase = createClient();
+    const RESERVED_SLUGS = ['admin', 'api', 'auth', 'dashboard', 't', '_next', 'referee', 'favicon.ico', 'demo', 'soccer'];
+    const cleanSlug = slug.toLowerCase().replace(/\s+/g, '-');
+    if (RESERVED_SLUGS.includes(cleanSlug)) {
+      setMessage('That slug is reserved. Please choose a different one.');
+      setSaving(false);
+      return;
+    }
     const { error } = await supabase
       .from('tenants')
       .update({
         display_name: displayName,
-        slug: slug.toLowerCase().replace(/\s+/g, '-'),
+        slug: cleanSlug,
         primary_color: primary,
         secondary_color: secondary,
         logo_url: logoUrl || null,

@@ -52,9 +52,10 @@ export async function POST(req: NextRequest) {
   }
 
   const tenantRaw = tournament.tenants as unknown;
-  const tenantName = (tenantRaw && typeof tenantRaw === 'object' && 'display_name' in tenantRaw)
+  const tenantNameRaw = (tenantRaw && typeof tenantRaw === 'object' && 'display_name' in tenantRaw)
     ? (tenantRaw as { display_name: string }).display_name
     : 'One Point Bowl';
+  const tenantName = tenantNameRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   // Use Supabase Auth to send emails via their built-in SMTP
   // (or fall back to logging if no email provider configured)
