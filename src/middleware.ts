@@ -24,7 +24,8 @@ export async function middleware(request: NextRequest) {
       '/api/admin/',
     ];
     if (rateLimitedPaths.some((p) => reqPathname.startsWith(p))) {
-      const ip = request.headers.get('x-forwarded-for') ?? 'anonymous';
+      const forwarded = request.headers.get('x-forwarded-for') ?? '';
+      const ip = forwarded.split(',').at(-1)?.trim() || request.headers.get('x-real-ip') || 'anonymous';
       const { success } = await ratelimit.limit(ip);
       if (!success) {
         return new NextResponse('Too many requests', { status: 429 });

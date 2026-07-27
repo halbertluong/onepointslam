@@ -13,6 +13,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     .from('users').select('role').eq('id', user.id).single();
   if (appUser?.role !== 'super_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+  const { data: tournament } = await supabase
+    .from('tournaments').select('deleted_at').eq('id', id).single();
+  if (!tournament) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (!tournament.deleted_at) return NextResponse.json({ error: 'Tournament is not in the recycle bin' }, { status: 400 });
+
   const { error } = await supabase
     .from('tournaments').update({ deleted_at: null }).eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
