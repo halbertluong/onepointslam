@@ -59,6 +59,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'User not found' }, { status: 400 });
   }
 
+  // Prevent re-provisioning an already-provisioned account
+  const { data: existingUser } = await adminClient.from('users').select('role').eq('id', userId).single();
+  if (existingUser?.role === 'tenant_admin') {
+    return NextResponse.json({ error: 'Account is already provisioned as a director' }, { status: 409 });
+  }
+
   if (!school || !sport || !program) {
     return NextResponse.json({ error: 'userId, school, sport, and program are required' }, { status: 400 });
   }

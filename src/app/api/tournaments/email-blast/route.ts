@@ -22,6 +22,11 @@ export async function POST(req: NextRequest) {
   if (!tournamentId || !subject || !message || !recipientEmails?.length) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
+  // Prevent email header injection via subject line
+  const cleanSubject = subject.replace(/[\r\n]/g, ' ').slice(0, 200);
+  if (!cleanSubject.trim()) {
+    return NextResponse.json({ error: 'Subject is required' }, { status: 400 });
+  }
 
   // Verify the tournament belongs to a tenant the user manages
   const { data: tournament } = await supabase
@@ -74,7 +79,7 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             from: `${tenantName} via One Point Bowl <${process.env.RESEND_FROM_EMAIL ?? 'noreply@onepointbowl.com'}>`,
             to: [email],
-            subject,
+            subject: cleanSubject,
             text: `${message}\n\n---\nSent by ${tenantName} via One Point Bowl`,
             html: `<p>${message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br/>')}</p><hr/><p style="color:#888;font-size:12px">Sent by ${tenantName} via One Point Bowl</p>`,
           }),
