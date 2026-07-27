@@ -9,15 +9,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ sent: false, reason: 'RESEND_API_KEY not configured' });
   }
 
-  const { to, playerName, tournamentName, tenantName, tournamentId } = await req.json() as {
+  const { to, tournamentId, playerId } = await req.json() as {
     to?: string;
+    tournamentId?: string;
+    playerId?: string;
     playerName?: string;
     tournamentName?: string;
     tenantName?: string;
-    tournamentId?: string;
   };
 
-  if (!to || !tournamentId) {
+  if (!to || !tournamentId || !playerId) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
@@ -37,6 +38,11 @@ export async function POST(req: NextRequest) {
 
   if (!player) {
     return NextResponse.json({ error: 'Player not found for this tournament' }, { status: 403 });
+  }
+
+  // Verify the caller knows the player's UUID (unguessable — proves they just inserted this row)
+  if (player.id !== playerId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   // DB-backed rate-limit: at most one confirmation email per player per 5 minutes

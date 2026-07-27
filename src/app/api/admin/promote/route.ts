@@ -28,7 +28,8 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error || !target) {
-    return NextResponse.json({ error: error?.message ?? 'User not found' }, { status: 404 });
+    console.error('[promote] DB error:', error?.message);
+    return NextResponse.json({ error: 'User not found or could not be promoted' }, { status: 404 });
   }
 
   return NextResponse.json({ success: true });

@@ -166,7 +166,7 @@ export default function RegisterPage() {
       if (byEmail) return { error: 'This email is already registered for this tournament.' };
     }
 
-    const { error: err } = await supabase.from('players').insert({
+    const { data: insertedPlayer, error: err } = await supabase.from('players').insert({
       tournament_id: tournamentId,
       full_name: data.fullName,
       email: data.email,
@@ -177,7 +177,7 @@ export default function RegisterPage() {
       age: data.age ? parseInt(data.age) : null,
       status: 'registered',
       user_id: currentUser?.id ?? null,
-    });
+    }).select('id').single();
 
     if (err) {
       if (err.code === '23505') return { error: 'This email is already registered for this tournament.' };
@@ -199,9 +199,7 @@ export default function RegisterPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         to: data.email,
-        playerName: data.fullName,
-        tournamentName,
-        tenantName,
+        playerId: insertedPlayer?.id,
         tournamentId,
       }),
     }).catch(() => { /* email failure must not affect registration */ });

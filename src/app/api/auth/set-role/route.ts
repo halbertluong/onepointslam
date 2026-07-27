@@ -39,16 +39,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Self-service: only allowed for selfServiceRoles; admin-only roles require super_admin
+  // Fetch caller's current role once — used for multiple checks below
+  const { data: callerRecord } = await adminClient.from('users').select('role').eq('id', user.id).single();
+  const callerRole = callerRecord?.role;
+
+  // Admin-only roles require super_admin
   if (adminOnlyRoles.includes(role)) {
-    const { data: caller } = await adminClient.from('users').select('role').eq('id', user.id).single();
-    if (caller?.role !== 'super_admin') {
+    if (callerRole !== 'super_admin') {
       return NextResponse.json({ error: 'Forbidden — only super_admin can assign this role' }, { status: 403 });
     }
   } else if (user.id !== userId) {
-    const { data: caller } = await adminClient.from('users').select('role').eq('id', user.id).single();
-    if (caller?.role !== 'super_admin') {
+    // Setting someone else's role also requires super_admin
+    if (callerRole !== 'super_admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  } else {
+    // Self-service path: block demotion from privileged roles
+    if (callerRole && !selfServiceRoles.includes(callerRole)) {
+      return NextResponse.json({ error: 'Cannot self-demote from a privileged role' }, { status: 403 });
     }
   }
 
