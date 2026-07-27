@@ -103,6 +103,12 @@ export default function SettingsPage() {
       setSaving(false);
       return;
     }
+    const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+    if (!HEX_RE.test(primary) || !HEX_RE.test(secondary)) {
+      setMessage('Colors must be valid hex values (e.g. #1a2b3c).');
+      setSaving(false);
+      return;
+    }
     const { error } = await supabase
       .from('tenants')
       .update({
