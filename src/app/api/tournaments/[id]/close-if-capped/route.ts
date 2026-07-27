@@ -28,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Verify caller is a director for this tournament's tenant or a super_admin
   const { data: callerUser } = await admin.from('users').select('role, assigned_tenant_ids').eq('id', user.id).single();
   const isSuperAdmin = callerUser?.role === 'super_admin';
-  const isDirector = callerUser?.role === 'tenant_admin' && (callerUser.assigned_tenant_ids ?? []).includes(tournament.tenant_id);
+  const isDirector = callerUser?.role === 'tenant_admin' && (callerUser?.assigned_tenant_ids ?? []).includes(tournament.tenant_id);
   if (!isSuperAdmin && !isDirector) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

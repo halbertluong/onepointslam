@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { email, name, school, role, notes, title, sport, program } = body as {
+  let body: Record<string, unknown>;
+  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  const { email, name, school, role, notes, title, sport, program } = body as unknown as {
     email: string;
     name?: string;
     school?: string;

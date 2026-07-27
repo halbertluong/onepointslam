@@ -20,7 +20,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (tournament.archived_at) return NextResponse.json({ error: 'Tournament is already archived' }, { status: 400 });
 
   const isSuperAdmin = appUser.role === 'super_admin';
-  const isDirector = (appUser.assigned_tenant_ids ?? []).includes(tournament.tenant_id);
+  const isDirector = appUser.role === 'tenant_admin' && (appUser.assigned_tenant_ids ?? []).includes(tournament.tenant_id);
   if (!isSuperAdmin && !isDirector) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { error } = await supabase
