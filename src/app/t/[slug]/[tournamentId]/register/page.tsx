@@ -84,7 +84,7 @@ export default function RegisterPage() {
       const settings = t?.settings as Record<string, unknown> | null;
       setPlatformFee((settings?.systemTechFee as number) ?? (tenant?.platform_fee as number) ?? DEFAULT_PLATFORM_FEE);
 
-      if (t?.status !== 'registration_open') {
+      if (t?.status !== 'registration_open' || t?.deleted_at) {
         setStep('closed');
         return;
       }
@@ -179,7 +179,10 @@ export default function RegisterPage() {
       user_id: currentUser?.id ?? null,
     });
 
-    if (err) return { error: err.message };
+    if (err) {
+      if (err.code === '23505') return { error: 'This email is already registered for this tournament.' };
+      return { error: err.message };
+    }
 
     if (cap && (currentCount ?? 0) + 1 >= cap) {
       await supabase
@@ -224,6 +227,13 @@ export default function RegisterPage() {
         { id: data.user.id, email: registeredEmail, role: 'player', assigned_tenant_ids: [] },
         { onConflict: 'id' },
       );
+      // Link the player row (inserted while guest) back to the new account
+      await supabase
+        .from('players')
+        .update({ user_id: data.user.id })
+        .eq('tournament_id', tournamentId)
+        .eq('email', registeredEmail)
+        .is('user_id', null);
     }
     setSavePasswordLoading(false);
     setSavePasswordDone(true);

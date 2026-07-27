@@ -68,6 +68,9 @@ export async function POST(req: NextRequest) {
   if (!school || !sport || !program) {
     return NextResponse.json({ error: 'userId, school, sport, and program are required' }, { status: 400 });
   }
+  if (school.length > 100 || sport.length > 60 || program.length > 60) {
+    return NextResponse.json({ error: 'Input fields exceed maximum length' }, { status: 400 });
+  }
 
   const displayName = `${school.trim()} - ${sport.trim()} - ${program.trim()}`;
   const baseSlug = toSlug(displayName);
