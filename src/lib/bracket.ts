@@ -80,7 +80,7 @@ export function generateBracket(
     const p2: string | null = raw2 === 'BYE' ? null : raw2;
 
     matches.push({
-      id: `match-r0-${i}`,
+      id: `${tournamentId}-r0-${i}`,
       tournamentId,
       roundIndex: 0,
       matchIndex: i,
@@ -99,7 +99,7 @@ export function generateBracket(
     const count = P / Math.pow(2, r + 1);
     for (let i = 0; i < count; i++) {
       matches.push({
-        id: `match-r${r}-${i}`,
+        id: `${tournamentId}-r${r}-${i}`,
         tournamentId,
         roundIndex: r,
         matchIndex: i,
