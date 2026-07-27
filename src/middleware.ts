@@ -14,15 +14,19 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
 export async function middleware(request: NextRequest) {
   const { pathname: reqPathname } = request.nextUrl;
 
-  if (
-    ratelimit &&
-    request.method === 'POST' &&
-    (reqPathname.startsWith('/api/waitlist') || reqPathname === '/api/auth/provision-tenant')
-  ) {
-    const ip = request.headers.get('x-forwarded-for') ?? 'anonymous';
-    const { success } = await ratelimit.limit(ip);
-    if (!success) {
-      return new NextResponse('Too many requests', { status: 429 });
+  if (ratelimit && request.method === 'POST') {
+    const rateLimitedPaths = [
+      '/api/waitlist',
+      '/api/auth/provision-tenant',
+      '/api/email/registration-confirm',
+      '/api/tournaments/email-blast',
+    ];
+    if (rateLimitedPaths.some((p) => reqPathname.startsWith(p))) {
+      const ip = request.headers.get('x-forwarded-for') ?? 'anonymous';
+      const { success } = await ratelimit.limit(ip);
+      if (!success) {
+        return new NextResponse('Too many requests', { status: 429 });
+      }
     }
   }
 

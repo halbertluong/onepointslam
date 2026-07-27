@@ -29,10 +29,11 @@ export async function POST(req: NextRequest) {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // Never trust caller-supplied origin — use only the env var
   void origin;
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? '';
-  const redirectTo = `${base}/auth/confirm?next=${encodeURIComponent(landingPath ?? '/')}`;
+  const base = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!base) return NextResponse.json({ error: 'NEXT_PUBLIC_SITE_URL not configured' }, { status: 500 });
+  const safeLandingPath = (landingPath && landingPath.startsWith('/')) ? landingPath : '/';
+  const redirectTo = `${base}/auth/confirm?next=${encodeURIComponent(safeLandingPath)}`;
 
   const { data, error } = await admin.auth.admin.generateLink({
     type: 'magiclink',
