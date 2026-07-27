@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   await admin.from('players').update({ last_confirmation_sent_at: new Date().toISOString() }).eq('id', player.id);
 
   const from = process.env.RESEND_FROM_EMAIL ?? 'noreply@onepointbowl.com';
-  const orgName = tenantName ?? 'One Point Bowl';
+  const orgName = (tenantName ?? 'One Point Bowl').replace(/[\r\n]/g, ' ');
 
   function escHtml(s: string) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
