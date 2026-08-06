@@ -244,6 +244,19 @@ function ParticipantsStage({
   return (
     <div className="min-h-screen bg-slate-50 px-4 pt-8 pb-24">
       <div className="max-w-2xl mx-auto space-y-6">
+        {/* ⚠️ DEMO DISCLAIMER — very prominent, cannot be missed */}
+        <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-5 flex gap-4 items-start shadow-sm">
+          <div className="text-3xl shrink-0" aria-hidden>🧪</div>
+          <div>
+            <p className="font-black text-amber-900 text-base uppercase tracking-wide mb-1">
+              This page is NOT part of the platform
+            </p>
+            <p className="text-amber-800 text-sm leading-relaxed">
+              You are in <strong>demo mode only.</strong> This participant generator creates <strong>fake, randomised dummy data</strong> — it simulates what would happen if real athletes registered for your tournament. <em>No real registrations, emails, or payments occur.</em> This screen exists purely to give you a realistic preview of the platform.
+            </p>
+          </div>
+        </div>
+
         <div className="text-center space-y-1">
           <h2 className="text-2xl font-black text-slate-900">{config.name}</h2>
           <p className="text-slate-500 text-sm">Add participants to your tournament</p>
