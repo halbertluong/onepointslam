@@ -20,7 +20,7 @@ import { advanceWinner, getRoundName, getRoundsCount } from '@/lib/bracket';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Stage = 'setup' | 'participants' | 'bracket';
-type DemoView = 'director' | 'referee' | 'signup' | 'spectator' | 'stats' | 'results';
+type DemoView = 'director' | 'referee' | 'signup' | 'spectator' | 'bracket' | 'stats' | 'results';
 
 interface TournamentConfig {
   name: string;
@@ -750,6 +750,54 @@ function ResultsView({
   );
 }
 
+// ── View: Bracket Editor ──────────────────────────────────────────────────────
+
+function BracketEditorView({
+  config,
+  matches,
+  players,
+  onSwap,
+}: {
+  config: TournamentConfig;
+  matches: Match[];
+  players: DemoPlayer[];
+  onSwap: (aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') => void;
+}) {
+  const anyResults = matches.some((m) => m.winnerId);
+  return (
+    <div className="bg-slate-50 min-h-full">
+      <div className="bg-white border-b border-slate-200 px-4 py-3">
+        <h2 className="font-black text-slate-900 text-base">{config.name} — Bracket Editor</h2>
+        <p className="text-xs text-slate-500 mt-0.5">
+          {anyResults
+            ? 'Results are locked in — swap players before matches are played.'
+            : 'Drag any player to a different slot to rearrange the draw.'}
+        </p>
+      </div>
+      {!anyResults && (
+        <div className="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center gap-2">
+          <span className="text-base">🔀</span>
+          <span className="text-xs font-medium text-blue-700">
+            Drag &amp; drop player names to swap matchups. Changes take effect immediately.
+          </span>
+        </div>
+      )}
+      <div className="px-4 py-6 overflow-x-auto">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 min-w-max">
+          <BracketView
+            initialMatches={matches}
+            players={players}
+            maxPlayers={Math.max(8, players.length)}
+            liveUpdates={false}
+            editable={!anyResults}
+            onSwap={!anyResults ? onSwap : undefined}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Demo Shell ───────────────────────────────────────────────────────────
 
 const VIEWS: { id: DemoView; label: string; emoji: string }[] = [
@@ -757,6 +805,7 @@ const VIEWS: { id: DemoView; label: string; emoji: string }[] = [
   { id: 'referee', label: 'Referee', emoji: '🎾' },
   { id: 'signup', label: 'Registration', emoji: '📋' },
   { id: 'spectator', label: 'Spectator', emoji: '📺' },
+  { id: 'bracket', label: 'Bracket Editor', emoji: '🔀' },
   { id: 'stats', label: 'Stats', emoji: '📊' },
   { id: 'results', label: 'Results', emoji: '🥇' },
 ];
@@ -779,6 +828,23 @@ function BracketStage({
   const declareWinner = useCallback((matchId: string, winnerId: string) => {
     setMatches((prev) => advanceWinner(prev, matchId, winnerId));
   }, []);
+
+  const swapPlayers = useCallback(
+    (aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') => {
+      setMatches((prev) => {
+        const next = prev.map((m) => ({ ...m }));
+        const ma   = next.find((m) => m.id === aMatchId);
+        const mb   = next.find((m) => m.id === bMatchId);
+        if (!ma || !mb) return prev;
+        const aId = aSlot === 'p1' ? ma.player1Id : ma.player2Id;
+        const bId = bSlot === 'p1' ? mb.player1Id : mb.player2Id;
+        if (aSlot === 'p1') ma.player1Id = bId; else ma.player2Id = bId;
+        if (bSlot === 'p1') mb.player1Id = aId; else mb.player2Id = aId;
+        return next;
+      });
+    },
+    [],
+  );
 
   function runSpeedThrough() {
     setSpeeding(true);
@@ -817,6 +883,7 @@ function BracketStage({
       {view === 'referee' && <RefereeView config={config} matches={matches} players={players} onDeclareWinner={declareWinner} />}
       {view === 'signup' && <SignupView config={config} playerCount={players.length} />}
       {view === 'spectator' && <SpectatorView config={config} matches={matches} players={players} />}
+      {view === 'bracket' && <BracketEditorView config={config} matches={matches} players={players} onSwap={swapPlayers} />}
       {view === 'stats' && <StatsView config={config} players={players} matches={matches} />}
       {view === 'results' && <ResultsView config={config} matches={matches} players={players} />}
     </div>
