@@ -342,8 +342,6 @@ function DirectorView({
   matches: Match[];
   onSetWinner: (matchId: string, winnerId: string) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-
   const demoTournament = {
     name: config.name,
     status: 'live_play',
@@ -357,23 +355,12 @@ function DirectorView({
 
   return (
     <div className="bg-slate-50 min-h-full px-4 sm:px-6 py-6" style={{ '--tenant-primary': PRIMARY } as React.CSSProperties}>
-      <div className="max-w-[1600px] mx-auto space-y-4">
-        <div className="flex items-center justify-end">
-          <button
-            onClick={() => setEditing((e) => !e)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-              editing ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-200 text-slate-600 hover:border-slate-300 bg-white'
-            }`}
-          >
-            {editing ? '✓ Done Editing' : '✏️ Edit Bracket'}
-          </button>
-        </div>
+      <div className="max-w-[1600px] mx-auto">
         <TournamentStatsPanel
           tournament={demoTournament}
           players={players}
           matches={matches}
           fundraisingGoal={config.fundraisingGoal}
-          editable={editing}
           onSetWinner={(match, winnerId) => onSetWinner(match.id, winnerId)}
         />
       </div>

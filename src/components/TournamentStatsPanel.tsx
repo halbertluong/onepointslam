@@ -1,6 +1,6 @@
 'use client';
 
-import BracketView from './BracketView';
+import BracketPanel from './BracketPanel';
 import type { Player, Match } from '@/types';
 import { calcRaised, formatCurrency } from '@/lib/pricing';
 
@@ -24,9 +24,7 @@ interface Props {
   fundraisingGoal?: number;
   /** Donation contributions to include in raised total */
   donationTotal?: number;
-  /** When true, the bracket becomes clickable so a director can set/override match winners inline. */
-  editable?: boolean;
-  /** Called with the match and chosen player id when a director sets/overrides a winner in edit mode. */
+  /** When provided, a director can toggle edit mode to set/override match winners inline in the bracket. */
   onSetWinner?: (match: Match, winnerId: string) => void | Promise<void>;
 }
 
@@ -37,7 +35,6 @@ export default function TournamentStatsPanel({
   isSuperAdmin = false,
   fundraisingGoal: goalOverride,
   donationTotal = 0,
-  editable = false,
   onSetWinner,
 }: Props) {
   const ticketPrice = tournament.settings?.ticketPriceForFundraiser ?? 0;
@@ -111,20 +108,10 @@ export default function TournamentStatsPanel({
       {/* Bracket */}
       {matches.length > 0 && (
         <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-slate-800 text-sm">Bracket</h3>
-            {editable && (
-              <span className="text-xs text-blue-600 font-semibold flex items-center gap-1">
-                ✏️ Click a player to set the winner
-              </span>
-            )}
-          </div>
-          <BracketView
-            initialMatches={matches}
+          <BracketPanel
+            matches={matches}
             players={players}
             maxPlayers={maxPlayers}
-            liveUpdates={false}
-            editable={editable}
             onSetWinner={onSetWinner}
           />
         </div>
