@@ -33,7 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const cap = (tournament.settings as Record<string, unknown>)?.maxPlayers as number | undefined;
+  const cap = ((tournament.settings as Record<string, unknown>)?.playerRegistrationCap ?? (tournament.settings as Record<string, unknown>)?.maxPlayers) as number | undefined;
   if (!cap) return NextResponse.json({ closed: false });
 
   const { count } = await admin

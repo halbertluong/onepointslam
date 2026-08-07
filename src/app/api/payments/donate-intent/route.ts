@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
 
   try {
     // Donations go to the platform account (no Connect transfer for now)
-    const result = await createPaymentIntent(amountCents, undefined, 0);
+    const result = await createPaymentIntent(amountCents, undefined, 0, { tournament_id: tournamentId });
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Payment setup failed';

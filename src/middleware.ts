@@ -18,10 +18,14 @@ export async function middleware(request: NextRequest) {
     const rateLimitedPaths = [
       '/api/waitlist',
       '/api/auth/provision-tenant',
+      '/api/auth/email-exists',
       '/api/email/registration-confirm',
       '/api/tournaments/email-blast',
       '/api/tournaments/',
       '/api/admin/',
+      '/api/registrations',
+      '/api/donations',
+      '/api/payments/',
     ];
     if (rateLimitedPaths.some((p) => reqPathname.startsWith(p))) {
       const forwarded = request.headers.get('x-forwarded-for') ?? '';

@@ -10,6 +10,7 @@ export async function createPaymentIntent(
   amountCents: number,
   tenantConnectAccountId: string | undefined,
   applicationFeeCents: number,
+  metadata?: Record<string, string>,
 ): Promise<PaymentIntentResult> {
   if (!STRIPE_SECRET_KEY) {
     if (process.env.NODE_ENV === 'production') {
@@ -28,6 +29,7 @@ export async function createPaymentIntent(
     amount: amountCents,
     currency: 'usd',
     automatic_payment_methods: { enabled: true },
+    ...(metadata ? { metadata } : {}),
   };
 
   if (tenantConnectAccountId) {

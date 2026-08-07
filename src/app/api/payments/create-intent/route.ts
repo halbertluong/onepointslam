@@ -16,11 +16,14 @@ export async function POST(req: NextRequest) {
   // Look up the fee server-side — never trust caller-supplied amounts
   const { data: tournament } = await supabase
     .from('tournaments')
-    .select('settings, tenants(platform_fee, stripe_connect_account_id)')
+    .select('settings, status, tenants(platform_fee, stripe_connect_account_id)')
     .eq('id', tournamentId)
     .single();
 
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
+  if ((tournament as Record<string, unknown>).status !== 'registration_open') {
+    return NextResponse.json({ error: 'Registration is not open for this tournament' }, { status: 400 });
+  }
 
   const settings = tournament.settings as Record<string, unknown> | null;
   const entranceFee = (settings?.ticketPriceForFundraiser as number) ?? 0;

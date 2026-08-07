@@ -4,6 +4,12 @@ import { createClient } from '@supabase/supabase-js';
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
 export async function POST(req: NextRequest) {
+  // Only accept calls from our own server (registrations route passes this header)
+  const internalSecret = process.env.INTERNAL_API_SECRET;
+  if (internalSecret && req.headers.get('x-internal-secret') !== internalSecret) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const resendApiKey = process.env.RESEND_API_KEY;
   if (!resendApiKey) {
     return NextResponse.json({ sent: false, reason: 'RESEND_API_KEY not configured' });

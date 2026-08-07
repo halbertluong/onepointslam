@@ -64,5 +64,24 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (event.type === 'payment_intent.canceled') {
+    const pi = event.data.object;
+    await admin
+      .from('players')
+      .update({ payment_status: 'failed' })
+      .eq('stripe_payment_intent_id', pi.id);
+  }
+
+  if (event.type === 'charge.refunded') {
+    const charge = event.data.object;
+    const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
+    if (piId) {
+      await admin
+        .from('players')
+        .update({ payment_status: 'refunded' as 'failed' })
+        .eq('stripe_payment_intent_id', piId);
+    }
+  }
+
   return NextResponse.json({ received: true });
 }

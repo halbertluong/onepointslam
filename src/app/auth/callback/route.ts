@@ -8,8 +8,8 @@ export async function GET(request: NextRequest) {
   const token_hash = searchParams.get('token_hash');
   const type = searchParams.get('type');
   const rawNext = searchParams.get('next') ?? '/';
-  // Only allow relative paths — prevent open redirect to external URLs
-  const next = rawNext.startsWith('/') ? rawNext : '/';
+  // Only allow relative paths — prevent open redirect (including //evil.com protocol-relative)
+  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/';
 
   const cookieStore = await cookies();
 

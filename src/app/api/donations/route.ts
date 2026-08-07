@@ -28,6 +28,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Payment has not been completed' }, { status: 402 });
   }
 
+  // Verify this PI was created for this specific tournament (prevents cross-tournament replay)
+  if (pi.metadata?.tournament_id && pi.metadata.tournament_id !== tournamentId) {
+    return NextResponse.json({ error: 'Payment does not belong to this tournament' }, { status: 400 });
+  }
+
   // Verify amount matches (within 1 cent)
   const expectedCents = Math.round(amountDollars * 100);
   if (Math.abs(pi.amount - expectedCents) > 1) {
