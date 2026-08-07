@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 export async function POST(req: NextRequest) {
-  // Auth required — unauthenticated callers cannot mint PaymentIntents
+  // Auth optional — guests may pay entry fees too. The amount and tournament are
+  // derived server-side, so unauthenticated PI creation is safe here.
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let body: { tournamentId?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     const { createPaymentIntent } = await import('@/lib/stripe');
     const result = await createPaymentIntent(totalCents, tenantConnectAccountId, applicationFeeCents, {
       tournament_id: tournamentId,
-      user_id: user.id,
+      ...(user ? { user_id: user.id } : {}),
     });
     return NextResponse.json(result);
   } catch (err) {
