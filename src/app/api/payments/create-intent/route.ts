@@ -40,7 +40,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const { createPaymentIntent } = await import('@/lib/stripe');
-    const result = await createPaymentIntent(totalCents, tenantConnectAccountId, applicationFeeCents);
+    const result = await createPaymentIntent(totalCents, tenantConnectAccountId, applicationFeeCents, {
+      tournament_id: tournamentId,
+      user_id: user.id,
+    });
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Payment setup failed';

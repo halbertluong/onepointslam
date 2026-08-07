@@ -39,7 +39,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { count } = await admin
     .from('players')
     .select('id', { count: 'exact', head: true })
-    .eq('tournament_id', tournamentId);
+    .eq('tournament_id', tournamentId)
+    .neq('status', 'no_show_eliminated');
 
   if ((count ?? 0) >= cap) {
     await admin

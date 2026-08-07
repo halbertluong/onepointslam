@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify this PI was created for this specific tournament (prevents cross-tournament replay)
-  if (pi.metadata?.tournament_id && pi.metadata.tournament_id !== tournamentId) {
+  // Strict check: require metadata to be present and match — rejects PIs created outside normal flow
+  if (pi.metadata?.tournament_id !== tournamentId) {
     return NextResponse.json({ error: 'Payment does not belong to this tournament' }, { status: 400 });
   }
 

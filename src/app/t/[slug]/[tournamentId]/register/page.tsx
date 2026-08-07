@@ -234,21 +234,22 @@ export default function RegisterPage() {
         { data: t },
         { data: playersData },
         { data: tenant },
-        { data: donations },
       ] = await Promise.all([
         supabase.auth.getUser(),
         supabase.from('tournaments').select('*, tenants(display_name, primary_color)').eq('id', tournamentId).single(),
         supabase.from('players').select('*').eq('tournament_id', tournamentId),
         supabase.from('tenants').select('platform_fee').eq('slug', slug).single(),
-        supabase.from('donations').select('amount').eq('tournament_id', tournamentId),
       ]);
 
       const mappedPlayers = (playersData ?? []).map((p) => mapPlayer(p as Record<string, unknown>));
       setTournament(t);
       setPlayerCount(mappedPlayers.length);
       setBracketPlayers(mappedPlayers);
-      const donTotal = (donations ?? []).reduce((sum, d) => sum + Number(d.amount), 0);
-      setDonationTotal(donTotal);
+      // Fetch donation total via server endpoint (avoids exposing individual donation amounts to browser)
+      fetch(`/api/tournaments/${tournamentId}/donation-total`)
+        .then((r) => r.json())
+        .then((d) => { if (typeof d.total === 'number') setDonationTotal(d.total); })
+        .catch(() => {});
       const settings = t?.settings as Record<string, unknown> | null;
       setPlatformFee((settings?.systemTechFee as number) ?? (tenant?.platform_fee as number) ?? DEFAULT_PLATFORM_FEE);
 

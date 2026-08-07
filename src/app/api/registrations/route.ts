@@ -88,6 +88,25 @@ export async function POST(req: NextRequest) {
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
+  // Duplicate check (before cap check — returning registrant gets accurate error)
+  const { data: existing } = await admin
+    .from('players')
+    .select('id')
+    .eq('tournament_id', tournamentId)
+    .eq('email', email)
+    .maybeSingle();
+  if (existing) return NextResponse.json({ error: 'This email is already registered for this tournament.' }, { status: 409 });
+
+  // PI reuse check — prevent one payment from registering multiple accounts
+  if (verifiedPaymentIntentId) {
+    const { data: piUsed } = await admin
+      .from('players')
+      .select('id')
+      .eq('stripe_payment_intent_id', verifiedPaymentIntentId)
+      .maybeSingle();
+    if (piUsed) return NextResponse.json({ error: 'Payment has already been used for a registration.' }, { status: 409 });
+  }
+
   // Explicit cap check (service-role bypasses RLS)
   const playerCap = (settings?.playerRegistrationCap as number) ?? null;
   if (playerCap !== null) {
@@ -100,15 +119,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Registration is full' }, { status: 409 });
     }
   }
-
-  // Duplicate check
-  const { data: existing } = await admin
-    .from('players')
-    .select('id')
-    .eq('tournament_id', tournamentId)
-    .eq('email', email)
-    .maybeSingle();
-  if (existing) return NextResponse.json({ error: 'This email is already registered for this tournament.' }, { status: 409 });
 
   const { data: inserted, error: insertErr } = await admin.from('players').insert({
     tournament_id: tournamentId,
