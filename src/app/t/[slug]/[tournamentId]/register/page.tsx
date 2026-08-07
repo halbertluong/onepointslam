@@ -9,6 +9,85 @@ import TournamentInfoCard from '@/components/TournamentInfoCard';
 import BracketView from '@/components/BracketView';
 import type { Match, Player } from '@/types';
 import { mapPlayer, mapMatch } from '@/types';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+// Initialised once, outside the component so the Promise is stable across renders
+const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+  ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
+  : null;
+
+// ── Stripe payment form ────────────────────────────────────────────────────────
+function StripeCheckoutForm({
+  playerName,
+  totalDollars,
+  onSuccess,
+  onBack,
+}: {
+  playerName: string;
+  totalDollars: number;
+  onSuccess: (paymentIntentId: string) => void;
+  onBack: () => void;
+}) {
+  const stripe   = useStripe();
+  const elements = useElements();
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState('');
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setLoading(true);
+    setError('');
+
+    // Validate the payment form before confirming
+    const { error: submitErr } = await elements.submit();
+    if (submitErr) {
+      setError(submitErr.message ?? 'Please check your card details.');
+      setLoading(false);
+      return;
+    }
+
+    const { error: confirmErr, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: 'if_required',
+    });
+
+    if (confirmErr) {
+      setError(confirmErr.message ?? 'Payment failed. Please try again.');
+      setLoading(false);
+      return;
+    }
+
+    if (paymentIntent?.status === 'succeeded') {
+      onSuccess(paymentIntent.id);
+    } else {
+      setError('Payment did not complete. Please try again.');
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="bg-slate-50 rounded-xl p-4 text-sm flex justify-between items-center">
+        <span className="text-slate-600">Registration — <strong>{playerName}</strong></span>
+        <span className="font-black text-slate-900">{formatCurrency(totalDollars)}</span>
+      </div>
+      <PaymentElement />
+      {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+      <button
+        type="submit"
+        disabled={loading || !stripe || !elements}
+        className="btn-primary w-full py-3 rounded-xl font-bold text-base disabled:opacity-50 transition-all"
+      >
+        {loading ? 'Processing…' : `Pay ${formatCurrency(totalDollars)} & Register`}
+      </button>
+      <button type="button" onClick={onBack} className="w-full text-sm text-slate-500 hover:text-slate-700 transition-colors">
+        ← Back to registration form
+      </button>
+    </form>
+  );
+}
 
 const CLOSE_REASON_TEXT: Record<string, string> = {
   manual_override: 'Registration has been manually closed by the organizer.',
@@ -18,7 +97,7 @@ const CLOSE_REASON_TEXT: Record<string, string> = {
 
 const DONATE_PRESETS = [10, 25, 50, 100];
 
-type Step = 'loading' | 'form' | 'success' | 'closed' | 'already_registered' | 'donate' | 'donate_success';
+type Step = 'loading' | 'form' | 'payment' | 'success' | 'closed' | 'already_registered' | 'donate' | 'donate_success';
 
 export default function RegisterPage() {
   const { slug, tournamentId } = useParams<{ slug: string; tournamentId: string }>();
@@ -51,6 +130,10 @@ export default function RegisterPage() {
   const [bracketMatches, setBracketMatches] = useState<Match[] | null>(null);
   const [bracketPlayers, setBracketPlayers] = useState<Player[]>([]);
   const [bracketLoading, setBracketLoading] = useState(false);
+
+  // Stripe payment state
+  const [clientSecret,      setClientSecret]      = useState('');
+  const [pendingPlayerData, setPendingPlayerData] = useState<PlayerFormData | null>(null);
 
   // Donation flow state
   const [donateAmount, setDonateAmount] = useState(25);
@@ -143,6 +226,51 @@ export default function RegisterPage() {
     }
   }
 
+  async function insertPlayer(data: PlayerFormData, paymentIntentId: string | null): Promise<{ error?: string }> {
+    const supabase = createClient();
+    const { data: insertedPlayer, error: err } = await supabase.from('players').insert({
+      tournament_id: tournamentId,
+      full_name: data.fullName,
+      email: data.email,
+      skill_tier: data.skillTier,
+      gender: data.gender || null,
+      ntrp_rating: data.ntrp ? parseFloat(data.ntrp) : null,
+      utr_rating: data.utr ? parseFloat(data.utr) : null,
+      age: data.age ? parseInt(data.age) : null,
+      status: 'registered',
+      user_id: currentUser?.id ?? null,
+      ...(paymentIntentId ? { stripe_payment_intent_id: paymentIntentId, payment_status: 'paid' } : {}),
+    }).select('id').single();
+
+    if (err) {
+      if (err.code === '23505') return { error: 'This email is already registered for this tournament.' };
+      return { error: err.message };
+    }
+
+    const settings = tournament?.settings as Record<string, unknown> | null;
+    const cap = settings?.playerRegistrationCap as number | undefined;
+    const { count: afterCount } = await supabase
+      .from('players')
+      .select('id', { count: 'exact', head: true })
+      .eq('tournament_id', tournamentId);
+    if (cap && (afterCount ?? 0) >= cap) {
+      fetch(`/api/tournaments/${tournamentId}/close-if-capped`, { method: 'POST' }).catch(() => {});
+    }
+
+    setRegisteredName(data.fullName);
+    setRegisteredEmail(data.email);
+    setWasGuest(!currentUser);
+    setStep('success');
+
+    fetch('/api/email/registration-confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: data.email, playerId: insertedPlayer?.id, tournamentId }),
+    }).catch(() => { /* email failure must not affect registration */ });
+
+    return {};
+  }
+
   async function handleRegister(data: PlayerFormData): Promise<{ error?: string }> {
     const supabase = createClient();
 
@@ -166,45 +294,32 @@ export default function RegisterPage() {
       if (byEmail) return { error: 'This email is already registered for this tournament.' };
     }
 
-    const { data: insertedPlayer, error: err } = await supabase.from('players').insert({
-      tournament_id: tournamentId,
-      full_name: data.fullName,
-      email: data.email,
-      skill_tier: data.skillTier,
-      gender: data.gender || null,
-      ntrp_rating: data.ntrp ? parseFloat(data.ntrp) : null,
-      utr_rating: data.utr ? parseFloat(data.utr) : null,
-      age: data.age ? parseInt(data.age) : null,
-      status: 'registered',
-      user_id: currentUser?.id ?? null,
-    }).select('id').single();
+    // When there is an entry fee and Stripe is configured, collect payment first
+    if (entranceFee > 0 && stripePromise) {
+      const totalCents = Math.round((entranceFee + platformFee) * 100);
+      const res = await fetch('/api/payments/create-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amountCents: totalCents }),
+      });
+      const json = await res.json() as { clientSecret?: string; mock?: boolean; error?: string };
+      if (!res.ok) return { error: json.error ?? 'Failed to set up payment. Please try again.' };
 
-    if (err) {
-      if (err.code === '23505') return { error: 'This email is already registered for this tournament.' };
-      return { error: err.message };
+      if (json.mock) {
+        // Dev mode: no real Stripe configured — skip payment
+        return insertPlayer(data, null);
+      }
+
+      if (!json.clientSecret) return { error: 'Payment setup failed. Please try again.' };
+
+      setPendingPlayerData(data);
+      setClientSecret(json.clientSecret);
+      setStep('payment');
+      return {};
     }
 
-    if (cap && (currentCount ?? 0) + 1 >= cap) {
-      fetch(`/api/tournaments/${tournamentId}/close-if-capped`, { method: 'POST' }).catch(() => {});
-    }
-
-    setRegisteredName(data.fullName);
-    setRegisteredEmail(data.email);
-    setWasGuest(!currentUser);
-    setStep('success');
-
-    // Fire-and-forget registration confirmation email (non-blocking)
-    fetch('/api/email/registration-confirm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        to: data.email,
-        playerId: insertedPlayer?.id,
-        tournamentId,
-      }),
-    }).catch(() => { /* email failure must not affect registration */ });
-
-    return {};
+    // No fee or Stripe not configured
+    return insertPlayer(data, null);
   }
 
   async function handleSavePassword() {
@@ -385,6 +500,38 @@ export default function RegisterPage() {
           >
             Back to Registration
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Stripe payment step ──────────────────────────────────────────────────────
+  if (step === 'payment' && clientSecret && pendingPlayerData && stripePromise) {
+    const totalDollars = entranceFee + platformFee;
+    return (
+      <div className="min-h-screen bg-slate-50 py-10 px-4">
+        <div className="max-w-md mx-auto space-y-6">
+          <div>
+            {tenantName && <p className="text-sm text-slate-400 mb-1">{tenantName}</p>}
+            <h1 className="text-2xl font-black text-slate-900">{tournamentName}</h1>
+            <p className="text-sm text-slate-500 mt-1">Complete your registration</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
+              <StripeCheckoutForm
+                playerName={pendingPlayerData.fullName}
+                totalDollars={totalDollars}
+                onSuccess={async (paymentIntentId) => {
+                  await insertPlayer(pendingPlayerData, paymentIntentId);
+                }}
+                onBack={() => {
+                  setStep('form');
+                  setClientSecret('');
+                  setPendingPlayerData(null);
+                }}
+              />
+            </Elements>
+          </div>
         </div>
       </div>
     );
