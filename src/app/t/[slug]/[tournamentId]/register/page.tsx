@@ -275,13 +275,13 @@ export default function RegisterPage() {
 
   async function handleEmailBlur(email: string) {
     if (!email || currentUser) return;
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', email)
-      .maybeSingle();
-    if (data) {
+    const res = await fetch('/api/auth/email-exists', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const { exists } = await res.json();
+    if (exists) {
       setWelcomeBackEmail(email);
       setWelcomeBackVisible(true);
       setWelcomeBackError('');
@@ -407,12 +407,10 @@ export default function RegisterPage() {
   }
 
   async function handleDonatePaymentSuccess(paymentIntentId: string, amountDollars: number) {
-    // Only insert after Stripe confirms the payment
-    const supabase = createClient();
-    await supabase.from('donations').insert({
-      tournament_id: tournamentId,
-      amount: amountDollars,
-      stripe_payment_intent_id: paymentIntentId,
+    await fetch('/api/donations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tournamentId, stripePaymentIntentId: paymentIntentId, amountDollars }),
     });
     setDonationTotal((prev) => prev + amountDollars);
     setStep('donate_success');

@@ -82,12 +82,24 @@ export async function POST(req: NextRequest) {
     verifiedPaymentIntentId = stripePaymentIntentId;
   }
 
-  // Use service role to insert — bypasses RLS cap check which is enforced at DB level
   const admin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
+
+  // Explicit cap check (service-role bypasses RLS)
+  const playerCap = (settings?.playerRegistrationCap as number) ?? null;
+  if (playerCap !== null) {
+    const { count } = await admin
+      .from('players')
+      .select('id', { count: 'exact', head: true })
+      .eq('tournament_id', tournamentId)
+      .neq('status', 'no_show_eliminated');
+    if ((count ?? 0) >= playerCap) {
+      return NextResponse.json({ error: 'Registration is full' }, { status: 409 });
+    }
+  }
 
   // Duplicate check
   const { data: existing } = await admin
@@ -128,10 +140,20 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({ to: email, playerId: inserted?.id, tournamentId }),
   }).catch(() => {});
 
-  // Fire-and-forget: close if cap reached
-  fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/api/tournaments/${tournamentId}/close-if-capped`, {
-    method: 'POST',
-  }).catch(() => {});
+  // Close registration if cap reached
+  if (playerCap !== null) {
+    const { count: newCount } = await admin
+      .from('players')
+      .select('id', { count: 'exact', head: true })
+      .eq('tournament_id', tournamentId)
+      .neq('status', 'no_show_eliminated');
+    if ((newCount ?? 0) >= playerCap) {
+      await admin
+        .from('tournaments')
+        .update({ status: 'registration_closed', registration_close_reason: 'cap_reached' })
+        .eq('id', tournamentId);
+    }
+  }
 
   return NextResponse.json({ playerId: inserted?.id });
 }
