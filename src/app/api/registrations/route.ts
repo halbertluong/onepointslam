@@ -70,6 +70,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Payment has not been completed' }, { status: 402 });
     }
 
+    // Verify this PI was minted for this specific tournament (prevents cross-tournament reuse)
+    if (pi.metadata?.tournament_id !== tournamentId) {
+      return NextResponse.json({ error: 'Payment does not belong to this tournament' }, { status: 400 });
+    }
+
     // Verify the amount matches the tournament fee (within 1 cent tolerance for rounding)
     const platformFee = (settings?.systemTechFee as number) ?? 0;
     const expectedCents = Math.round((entranceFee + platformFee) * 100);

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 
+// No auth required — anonymous donations are intentional. The Stripe PI must be succeeded
+// and bound to the correct tournament_id via metadata, which is the only gate we need.
 export async function POST(req: NextRequest) {
   let body: { tournamentId?: string; stripePaymentIntentId?: string; amountDollars?: number };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
