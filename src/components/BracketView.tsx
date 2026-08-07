@@ -10,6 +10,10 @@ interface BracketViewProps {
   maxPlayers: number;
   tournamentId?: string;
   liveUpdates?: boolean;
+  /** When true, matches with two real (non-BYE) players become clickable to set/override the winner. */
+  editable?: boolean;
+  /** Called with the match and the chosen player id when a director sets/overrides a winner in edit mode. */
+  onSetWinner?: (match: Match, winnerId: string) => void | Promise<void>;
 }
 
 function getPlayer(id: string | null, players: Player[]): Player | null {
@@ -23,11 +27,32 @@ function getPlayerName(id: string | null, players: Player[], isBye?: boolean): s
   return players.find((p) => p.id === id)?.fullName ?? 'TBD';
 }
 
-function PlayerSlot({ id, players, isWinner, isBye }: { id: string | null; players: Player[]; isWinner: boolean; isBye?: boolean }) {
+function PlayerSlot({
+  id,
+  players,
+  isWinner,
+  isBye,
+  onClick,
+}: {
+  id: string | null;
+  players: Player[];
+  isWinner: boolean;
+  isBye?: boolean;
+  onClick?: () => void;
+}) {
   const name = getPlayerName(id, players, isBye);
   const p = id ? getPlayer(id, players) : null;
+  const clickable = !!onClick;
+  const Tag = clickable ? 'button' : 'div';
+
   return (
-    <div className={`px-3 py-2 flex items-center justify-between gap-1 border-b border-slate-100 ${isWinner ? 'bg-emerald-50' : ''}`}>
+    <Tag
+      type={clickable ? 'button' : undefined}
+      onClick={onClick}
+      className={`w-full px-3 py-2 flex items-center justify-between gap-1 border-b border-slate-100 text-left transition-colors ${
+        isWinner ? 'bg-emerald-50' : ''
+      } ${clickable ? 'cursor-pointer hover:bg-blue-50' : ''}`}
+    >
       <div className="flex-1 min-w-0">
         <span className={`text-sm font-medium truncate block ${isWinner ? 'text-emerald-700 font-bold' : 'text-slate-700'}`}>
           {p?.seedRating ? <span className="text-amber-500 font-bold mr-1 text-xs">[{p.seedRating}]</span> : null}
@@ -42,11 +67,21 @@ function PlayerSlot({ id, players, isWinner, isBye }: { id: string | null; playe
         )}
       </div>
       {isWinner && <span className="text-emerald-500 text-xs font-bold shrink-0">WIN</span>}
-    </div>
+    </Tag>
   );
 }
 
-function MatchCard({ match, players }: { match: Match; players: Player[] }) {
+function MatchCard({
+  match,
+  players,
+  editable,
+  onSetWinner,
+}: {
+  match: Match;
+  players: Player[];
+  editable?: boolean;
+  onSetWinner?: (match: Match, winnerId: string) => void | Promise<void>;
+}) {
   const isP1Winner = match.winnerId === match.player1Id;
   const isP2Winner = match.winnerId === match.player2Id;
 
@@ -57,13 +92,32 @@ function MatchCard({ match, players }: { match: Match; players: Player[] }) {
       ? 'finalized'
       : '';
 
+  const bothRealPlayers =
+    !!match.player1Id && !!match.player2Id && match.player1Id !== 'BYE' && match.player2Id !== 'BYE';
+  const isEditable = editable && bothRealPlayers && !!onSetWinner;
+
   return (
-    <div className={`bracket-match ${statusClass} min-w-[180px] overflow-hidden`}>
+    <div className={`bracket-match ${statusClass} min-w-[180px] overflow-hidden relative ${isEditable ? 'ring-1 ring-blue-200' : ''}`}>
       {match.status === 'playing' && (
         <div className="h-1 w-full" style={{ backgroundColor: 'var(--tenant-primary)' }} />
       )}
-      <PlayerSlot id={match.player1Id} players={players} isWinner={isP1Winner} isBye={match.status === 'walkover' && match.player1Id == null} />
-      <PlayerSlot id={match.player2Id} players={players} isWinner={isP2Winner} isBye={match.status === 'walkover' && match.player2Id == null} />
+      {isEditable && (
+        <span className="absolute top-1 right-1 text-[10px] leading-none" title="Click a player to set the winner">✏️</span>
+      )}
+      <PlayerSlot
+        id={match.player1Id}
+        players={players}
+        isWinner={isP1Winner}
+        isBye={match.status === 'walkover' && match.player1Id == null}
+        onClick={isEditable ? () => onSetWinner!(match, match.player1Id as string) : undefined}
+      />
+      <PlayerSlot
+        id={match.player2Id}
+        players={players}
+        isWinner={isP2Winner}
+        isBye={match.status === 'walkover' && match.player2Id == null}
+        onClick={isEditable ? () => onSetWinner!(match, match.player2Id as string) : undefined}
+      />
       {match.status === 'playing' && (
         <div className="px-3 py-1 bg-slate-50">
           <span
@@ -89,6 +143,8 @@ export default function BracketView({
   maxPlayers,
   tournamentId,
   liveUpdates = false,
+  editable = false,
+  onSetWinner,
 }: BracketViewProps) {
   const [matches, setMatches] = useState<Match[]>(initialMatches);
 
@@ -145,7 +201,7 @@ export default function BracketView({
               style={{ gap: `${Math.pow(2, r + 1) * 8}px`, justifyContent: 'space-around' }}
             >
               {roundMatches.map((match) => (
-                <MatchCard key={match.id} match={match} players={players} />
+                <MatchCard key={match.id} match={match} players={players} editable={editable} onSetWinner={onSetWinner} />
               ))}
             </div>
           </div>

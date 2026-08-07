@@ -335,11 +335,15 @@ function DirectorView({
   config,
   players,
   matches,
+  onSetWinner,
 }: {
   config: TournamentConfig;
   players: DemoPlayer[];
   matches: Match[];
+  onSetWinner: (matchId: string, winnerId: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+
   const demoTournament = {
     name: config.name,
     status: 'live_play',
@@ -352,13 +356,25 @@ function DirectorView({
   };
 
   return (
-    <div className="bg-slate-50 min-h-full px-4 py-6" style={{ '--tenant-primary': PRIMARY } as React.CSSProperties}>
-      <div className="max-w-4xl mx-auto">
+    <div className="bg-slate-50 min-h-full px-4 sm:px-6 py-6" style={{ '--tenant-primary': PRIMARY } as React.CSSProperties}>
+      <div className="max-w-[1600px] mx-auto space-y-4">
+        <div className="flex items-center justify-end">
+          <button
+            onClick={() => setEditing((e) => !e)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+              editing ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-200 text-slate-600 hover:border-slate-300 bg-white'
+            }`}
+          >
+            {editing ? '✓ Done Editing' : '✏️ Edit Bracket'}
+          </button>
+        </div>
         <TournamentStatsPanel
           tournament={demoTournament}
           players={players}
           matches={matches}
           fundraisingGoal={config.fundraisingGoal}
+          editable={editing}
+          onSetWinner={(match, winnerId) => onSetWinner(match.id, winnerId)}
         />
       </div>
     </div>
@@ -800,7 +816,7 @@ function BracketStage({
 
   const viewContent = (
     <div className="flex-1 overflow-auto" style={mobile ? { maxWidth: 390, margin: '0 auto' } : {}}>
-      {view === 'director' && <DirectorView config={config} players={players} matches={matches} />}
+      {view === 'director' && <DirectorView config={config} players={players} matches={matches} onSetWinner={declareWinner} />}
       {view === 'referee' && <RefereeView config={config} matches={matches} players={players} onDeclareWinner={declareWinner} />}
       {view === 'signup' && <SignupView config={config} playerCount={players.length} />}
       {view === 'spectator' && <SpectatorView config={config} matches={matches} players={players} />}

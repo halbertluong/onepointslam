@@ -314,6 +314,7 @@ export default function TournamentAdminPage() {
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [donationTotal, setDonationTotal] = useState(0);
+  const [editingBracket, setEditingBracket] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -376,6 +377,25 @@ export default function TournamentAdminPage() {
       setMessage(error.message);
     }
     setSaving(false);
+  }
+
+  async function handleOverrideWinner(match: Match, winnerId: string) {
+    const supabase = createClient();
+    await supabase
+      .from('matches')
+      .update({ winner_id: winnerId, status: 'finalized' })
+      .eq('id', match.id);
+
+    const slot = match.matchIndex % 2 === 0 ? 'player1_id' : 'player2_id';
+    await supabase
+      .from('matches')
+      .update({ [slot]: winnerId })
+      .eq('tournament_id', id)
+      .eq('round_index', match.roundIndex + 1)
+      .eq('match_index', Math.floor(match.matchIndex / 2));
+
+    setMessage('Winner updated.');
+    load();
   }
 
   async function handleStartPlay() {
@@ -566,17 +586,41 @@ export default function TournamentAdminPage() {
 
       {/* Bracket tab */}
       {tab === 'overview' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6">
           {matches.length === 0 ? (
             <p className="text-slate-400 text-center py-8">No bracket yet. Generate one above.</p>
           ) : (
-            <BracketView
-              initialMatches={matches}
-              players={players}
-              maxPlayers={tournament.settings?.maxPlayers ?? 32}
-              tournamentId={id}
-              liveUpdates
-            />
+            <>
+              <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+                <h2 className="font-bold text-slate-800">Bracket</h2>
+                <div className="flex items-center gap-2">
+                  {editingBracket && (
+                    <span className="text-xs text-blue-600 font-semibold hidden sm:inline">
+                      ✏️ Click a player to set the winner
+                    </span>
+                  )}
+                  <button
+                    onClick={() => setEditingBracket((e) => !e)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                      editingBracket
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    {editingBracket ? '✓ Done Editing' : '✏️ Edit Bracket'}
+                  </button>
+                </div>
+              </div>
+              <BracketView
+                initialMatches={matches}
+                players={players}
+                maxPlayers={tournament.settings?.maxPlayers ?? 32}
+                tournamentId={id}
+                liveUpdates
+                editable={editingBracket}
+                onSetWinner={handleOverrideWinner}
+              />
+            </>
           )}
         </div>
       )}
