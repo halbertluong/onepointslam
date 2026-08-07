@@ -25,7 +25,9 @@ export async function middleware(request: NextRequest) {
     ];
     if (rateLimitedPaths.some((p) => reqPathname.startsWith(p))) {
       const forwarded = request.headers.get('x-forwarded-for') ?? '';
-      const ip = forwarded.split(',').at(-1)?.trim() || request.headers.get('x-real-ip') || 'anonymous';
+      // Prefer x-real-ip (set by infra, not spoofable by client); fall back to
+      // leftmost X-Forwarded-For entry (closest to origin, hardest to fake).
+      const ip = request.headers.get('x-real-ip') || forwarded.split(',').at(0)?.trim() || 'anonymous';
       const { success } = await ratelimit.limit(ip);
       if (!success) {
         return new NextResponse('Too many requests', { status: 429 });

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { Match, Player } from '@/types';
+import { mapMatch } from '@/types';
 import { getRoundName, getRoundsCount } from '@/lib/bracket';
 
 // ── Layout constants ───────────────────────────────────────────────────────────
@@ -201,7 +202,7 @@ export default function BracketView({
           { event: '*', schema: 'public', table: 'matches', filter: `tournament_id=eq.${tournamentId}` },
           (payload) => {
             setMatches((prev) => {
-              const updated = payload.new as Match;
+              const updated = mapMatch(payload.new as Record<string, unknown>);
               const idx = prev.findIndex((m) => m.id === updated.id);
               if (idx >= 0) {
                 const next = [...prev];

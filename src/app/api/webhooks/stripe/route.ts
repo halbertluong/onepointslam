@@ -42,18 +42,26 @@ export async function POST(req: NextRequest) {
 
   if (event.type === 'payment_intent.succeeded') {
     const pi = event.data.object;
-    await admin
+    const { error } = await admin
       .from('players')
       .update({ payment_status: 'paid' })
       .eq('stripe_payment_intent_id', pi.id);
+    if (error) {
+      console.error('[stripe-webhook] Failed to update payment_status paid:', error.message);
+      return NextResponse.json({ error: 'DB update failed' }, { status: 500 });
+    }
   }
 
   if (event.type === 'payment_intent.payment_failed') {
     const pi = event.data.object;
-    await admin
+    const { error } = await admin
       .from('players')
       .update({ payment_status: 'failed' })
       .eq('stripe_payment_intent_id', pi.id);
+    if (error) {
+      console.error('[stripe-webhook] Failed to update payment_status failed:', error.message);
+      return NextResponse.json({ error: 'DB update failed' }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ received: true });

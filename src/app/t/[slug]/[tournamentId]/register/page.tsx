@@ -89,6 +89,91 @@ function StripeCheckoutForm({
   );
 }
 
+// ── Donate payment wrapper ─────────────────────────────────────────────────────
+function DonateCheckout({
+  amountDollars,
+  tournamentId,
+  onSuccess,
+}: {
+  amountDollars: number;
+  tournamentId: string;
+  onSuccess: (paymentIntentId: string) => void;
+}) {
+  const [clientSecret, setClientSecret] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function initPayment() {
+    setLoading(true);
+    setError('');
+    const res = await fetch('/api/payments/donate-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amountCents: Math.round(amountDollars * 100), tournamentId }),
+    });
+    const json = await res.json() as { clientSecret?: string; error?: string };
+    if (!res.ok || !json.clientSecret) {
+      setError(json.error ?? 'Failed to set up payment.');
+      setLoading(false);
+      return;
+    }
+    setClientSecret(json.clientSecret);
+    setLoading(false);
+  }
+
+  if (!clientSecret) {
+    return (
+      <div className="space-y-3">
+        {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+        <button
+          type="button"
+          onClick={initPayment}
+          disabled={loading}
+          className="btn-primary w-full py-4 rounded-2xl font-black text-base disabled:opacity-60"
+        >
+          {loading ? 'Setting up payment…' : `Donate ${formatCurrency(amountDollars)}`}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
+      <DonateForm amountDollars={amountDollars} onSuccess={onSuccess} />
+    </Elements>
+  );
+}
+
+function DonateForm({ amountDollars, onSuccess }: { amountDollars: number; onSuccess: (piId: string) => void }) {
+  const stripe   = useStripe();
+  const elements = useElements();
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState('');
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setLoading(true);
+    setError('');
+    const { error: submitErr } = await elements.submit();
+    if (submitErr) { setError(submitErr.message ?? 'Check card details.'); setLoading(false); return; }
+    const { error: confirmErr, paymentIntent } = await stripe.confirmPayment({ elements, redirect: 'if_required' });
+    if (confirmErr) { setError(confirmErr.message ?? 'Payment failed.'); setLoading(false); return; }
+    if (paymentIntent?.status === 'succeeded') onSuccess(paymentIntent.id);
+    else { setError('Payment did not complete.'); setLoading(false); }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <PaymentElement />
+      {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+      <button type="submit" disabled={loading || !stripe} className="btn-primary w-full py-4 rounded-2xl font-black text-base disabled:opacity-60">
+        {loading ? 'Processing…' : `Confirm donation ${formatCurrency(amountDollars)}`}
+      </button>
+    </form>
+  );
+}
+
 const CLOSE_REASON_TEXT: Record<string, string> = {
   manual_override: 'Registration has been manually closed by the organizer.',
   deadline_passed: 'The registration deadline has passed.',
@@ -226,87 +311,48 @@ export default function RegisterPage() {
     }
   }
 
+  // All player insertion goes through the server route which verifies payment server-side
   async function insertPlayer(data: PlayerFormData, paymentIntentId: string | null): Promise<{ error?: string }> {
-    const supabase = createClient();
-    const { data: insertedPlayer, error: err } = await supabase.from('players').insert({
-      tournament_id: tournamentId,
-      full_name: data.fullName,
-      email: data.email,
-      skill_tier: data.skillTier,
-      gender: data.gender || null,
-      ntrp_rating: data.ntrp ? parseFloat(data.ntrp) : null,
-      utr_rating: data.utr ? parseFloat(data.utr) : null,
-      age: data.age ? parseInt(data.age) : null,
-      status: 'registered',
-      user_id: currentUser?.id ?? null,
-      ...(paymentIntentId ? { stripe_payment_intent_id: paymentIntentId, payment_status: 'paid' } : {}),
-    }).select('id').single();
-
-    if (err) {
-      if (err.code === '23505') return { error: 'This email is already registered for this tournament.' };
-      return { error: err.message };
+    const res = await fetch('/api/registrations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tournamentId,
+        fullName: data.fullName,
+        email: data.email,
+        gender: data.gender || null,
+        ntrp: data.ntrp || null,
+        utr: data.utr || null,
+        age: data.age || null,
+        skillTier: data.skillTier || null,
+        stripePaymentIntentId: paymentIntentId,
+      }),
+    });
+    const json = await res.json() as { playerId?: string; error?: string };
+    if (!res.ok) {
+      if (res.status === 409) return { error: 'This email is already registered for this tournament.' };
+      return { error: json.error ?? 'Registration failed. Please try again.' };
     }
-
-    const settings = tournament?.settings as Record<string, unknown> | null;
-    const cap = settings?.playerRegistrationCap as number | undefined;
-    const { count: afterCount } = await supabase
-      .from('players')
-      .select('id', { count: 'exact', head: true })
-      .eq('tournament_id', tournamentId);
-    if (cap && (afterCount ?? 0) >= cap) {
-      fetch(`/api/tournaments/${tournamentId}/close-if-capped`, { method: 'POST' }).catch(() => {});
-    }
-
     setRegisteredName(data.fullName);
     setRegisteredEmail(data.email);
     setWasGuest(!currentUser);
     setStep('success');
-
-    fetch('/api/email/registration-confirm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: data.email, playerId: insertedPlayer?.id, tournamentId }),
-    }).catch(() => { /* email failure must not affect registration */ });
-
     return {};
   }
 
   async function handleRegister(data: PlayerFormData): Promise<{ error?: string }> {
-    const supabase = createClient();
-
-    const { count: currentCount } = await supabase
-      .from('players')
-      .select('id', { count: 'exact', head: true })
-      .eq('tournament_id', tournamentId);
-    const settings = tournament?.settings as Record<string, unknown> | null;
-    const cap = settings?.playerRegistrationCap as number | undefined;
-    if (cap && (currentCount ?? 0) >= cap) {
-      return { error: 'Sorry, the player cap has been reached.' };
-    }
-
-    if (!currentUser) {
-      const { data: byEmail } = await supabase
-        .from('players')
-        .select('id')
-        .eq('tournament_id', tournamentId)
-        .eq('email', data.email)
-        .maybeSingle();
-      if (byEmail) return { error: 'This email is already registered for this tournament.' };
-    }
-
     // When there is an entry fee and Stripe is configured, collect payment first
     if (entranceFee > 0 && stripePromise) {
-      const totalCents = Math.round((entranceFee + platformFee) * 100);
       const res = await fetch('/api/payments/create-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amountCents: totalCents }),
+        body: JSON.stringify({ tournamentId }),
       });
       const json = await res.json() as { clientSecret?: string; mock?: boolean; error?: string };
       if (!res.ok) return { error: json.error ?? 'Failed to set up payment. Please try again.' };
 
       if (json.mock) {
-        // Dev mode: no real Stripe configured — skip payment
+        // Dev mode: Stripe not configured — skip payment
         return insertPlayer(data, null);
       }
 
@@ -360,16 +406,15 @@ export default function RegisterPage() {
     setBracketLoading(false);
   }
 
-  async function handleDonate() {
-    const effectiveAmount = donateCustom ? parseFloat(donateCustom) || 0 : donateAmount;
-    if (effectiveAmount <= 0) return;
-    setDonating(true);
+  async function handleDonatePaymentSuccess(paymentIntentId: string, amountDollars: number) {
+    // Only insert after Stripe confirms the payment
     const supabase = createClient();
-    // Mock payment delay — in production this would confirm a Stripe PaymentIntent first
-    await new Promise((r) => setTimeout(r, 1000));
-    await supabase.from('donations').insert({ tournament_id: tournamentId, amount: effectiveAmount });
-    setDonationTotal((prev) => prev + effectiveAmount);
-    setDonating(false);
+    await supabase.from('donations').insert({
+      tournament_id: tournamentId,
+      amount: amountDollars,
+      stripe_payment_intent_id: paymentIntentId,
+    });
+    setDonationTotal((prev) => prev + amountDollars);
     setStep('donate_success');
   }
 
@@ -608,14 +653,21 @@ export default function RegisterPage() {
             </div>
           </div>
 
-          <button
-            type="button"
-            disabled={donating || effectiveAmount <= 0}
-            onClick={handleDonate}
-            className="btn-primary w-full py-4 rounded-2xl font-black text-base disabled:opacity-60"
-          >
-            {donating ? 'Processing…' : effectiveAmount > 0 ? `Donate ${formatCurrency(effectiveAmount)}` : 'Select an amount'}
-          </button>
+          {effectiveAmount > 0 && stripePromise ? (
+            <DonateCheckout
+              amountDollars={effectiveAmount}
+              tournamentId={tournamentId}
+              onSuccess={(piId) => handleDonatePaymentSuccess(piId, effectiveAmount)}
+            />
+          ) : (
+            <button
+              type="button"
+              disabled={effectiveAmount <= 0}
+              className="btn-primary w-full py-4 rounded-2xl font-black text-base disabled:opacity-60"
+            >
+              {effectiveAmount > 0 ? `Donate ${formatCurrency(effectiveAmount)}` : 'Select an amount'}
+            </button>
+          )}
 
           <p className="text-center text-xs text-slate-400">
             Donations go directly to <strong>{tenantName || 'the team'}</strong>.
