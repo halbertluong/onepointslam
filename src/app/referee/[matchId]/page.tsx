@@ -82,6 +82,7 @@ export default function RefereeMatchPage() {
   useEffect(() => { load(); }, [load]);
 
   async function handleDeclareWinner(winnerId: string) {
+    if (match?.status === 'finalized' || match?.status === 'walkover') return;
     const supabase = createClient();
     await supabase
       .from('matches')
@@ -100,6 +101,7 @@ export default function RefereeMatchPage() {
   }
 
   async function handleDeclareSoccerResult(kickerPlayerId: string, keeperPlayerId: string, outcome: KickOutcome) {
+    if (match?.status === 'finalized' || match?.status === 'walkover') return;
     const supabase = createClient();
     const winnerId = determineOneGoalBowlWinner(kickerPlayerId, keeperPlayerId, outcome);
     await supabase
@@ -130,6 +132,7 @@ export default function RefereeMatchPage() {
     defensePlayerId: string,
     outcome: PossessionOutcome,
   ) {
+    if (match?.status === 'finalized' || match?.status === 'walkover') return;
     const supabase = createClient();
     const winnerId = determineOnePointBowlWinner(offensePlayerId, defensePlayerId, outcome);
     await supabase
@@ -156,6 +159,7 @@ export default function RefereeMatchPage() {
   }
 
   async function handleWalkover(winnerId: string) {
+    if (match?.status === 'finalized' || match?.status === 'walkover') return;
     const supabase = createClient();
     const loserId = winnerId === player1?.id ? player2?.id : player1?.id;
     if (loserId) {

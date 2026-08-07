@@ -21,9 +21,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Tournament must be in recycle bin before permanent deletion' }, { status: 400 });
   }
 
-  // Delete children first (matches, players), then the tournament
-  await supabase.from('matches').delete().eq('tournament_id', id);
-  await supabase.from('players').delete().eq('tournament_id', id);
+  // Delete children first (ON DELETE CASCADE handles this, but explicit for safety)
+  const { error: matchErr } = await supabase.from('matches').delete().eq('tournament_id', id);
+  if (matchErr) return NextResponse.json({ error: matchErr.message }, { status: 500 });
+  const { error: playerErr } = await supabase.from('players').delete().eq('tournament_id', id);
+  if (playerErr) return NextResponse.json({ error: playerErr.message }, { status: 500 });
   const { error } = await supabase.from('tournaments').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

@@ -13,6 +13,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     .from('users').select('role').eq('id', user.id).single();
   if (appUser?.role !== 'super_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+  const { data: tournament } = await supabase
+    .from('tournaments').select('id').eq('id', id).single();
+  if (!tournament) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
   const { error } = await supabase
     .from('tournaments')
     .update({ deleted_at: new Date().toISOString(), archived_at: null })

@@ -27,11 +27,20 @@ export default function LoginPage() {
       if (error) setMessage(error.message || 'Something went wrong — please try again.');
       else setMessage('Check your email for a login link.');
     } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setMessage(error.message);
       } else {
-        router.push('/dashboard');
+        const userId = data.user?.id;
+        let dest = '/dashboard';
+        if (userId) {
+          const { data: appUser } = await supabase.from('users').select('role').eq('id', userId).single();
+          const role = appUser?.role;
+          if (role === 'super_admin') dest = '/admin';
+          else if (role === 'referee') dest = '/referee';
+          else if (role !== 'tenant_admin') dest = '/';
+        }
+        router.push(dest);
         router.refresh();
       }
     }

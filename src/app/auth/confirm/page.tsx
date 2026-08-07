@@ -31,7 +31,8 @@ function ConfirmInner() {
         .eq('id', session.user.id)
         .single();
 
-      const next = searchParams.get('next');
+      const rawNext = searchParams.get('next');
+      const next = rawNext?.startsWith('/') ? rawNext : null;
       const defaultPath =
         appUser?.role === 'super_admin' ? '/admin' :
         appUser?.role === 'referee' ? '/referee' :

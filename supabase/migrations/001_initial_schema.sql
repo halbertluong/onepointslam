@@ -31,7 +31,7 @@ create or replace function handle_new_user()
 returns trigger language plpgsql security definer as $$
 begin
   insert into public.users (id, email, role)
-  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'role', 'player'));
+  values (new.id, new.email, 'player');
   return new;
 end;
 $$;

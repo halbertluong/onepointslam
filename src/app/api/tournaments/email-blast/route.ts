@@ -11,16 +11,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const body = await req.json();
-  const { tournamentId, subject, body: message, recipientEmails } = body as {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let body: any;
+  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  const { tournamentId, subject, body: message } = body as {
     tournamentId: string;
     subject: string;
     body: string;
     recipientEmails: string[];
   };
+  const recipientEmails: string[] = (body.recipientEmails ?? []).slice(0, 10_000);
 
   if (!tournamentId || !subject || !message || !recipientEmails?.length) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
+  if (message.length > 10_000) {
+    return NextResponse.json({ error: 'Message body exceeds 10,000 character limit' }, { status: 400 });
+  }
+  // Prevent email header injection via subject line
+  const cleanSubject = subject.replace(/[\r\n]/g, ' ').slice(0, 200);
+  if (!cleanSubject.trim()) {
+    return NextResponse.json({ error: 'Subject is required' }, { status: 400 });
   }
 
   // Verify the tournament belongs to a tenant the user manages
@@ -40,10 +51,22 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Only send to emails of players actually registered for this tournament
+  const { data: players } = await supabase
+    .from('players')
+    .select('email')
+    .eq('tournament_id', tournamentId);
+  const registeredEmails = new Set((players ?? []).map((p) => p.email?.toLowerCase()).filter(Boolean));
+  const validatedRecipients = recipientEmails.filter((e) => registeredEmails.has(e.toLowerCase()));
+  if (validatedRecipients.length === 0) {
+    return NextResponse.json({ error: 'None of the provided emails are registered players for this tournament' }, { status: 400 });
+  }
+
   const tenantRaw = tournament.tenants as unknown;
-  const tenantName = (tenantRaw && typeof tenantRaw === 'object' && 'display_name' in tenantRaw)
+  const tenantNameRaw = (tenantRaw && typeof tenantRaw === 'object' && 'display_name' in tenantRaw)
     ? (tenantRaw as { display_name: string }).display_name
     : 'One Point Bowl';
+  const tenantName = tenantNameRaw.replace(/[\r\n]/g, ' ').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   // Use Supabase Auth to send emails via their built-in SMTP
   // (or fall back to logging if no email provider configured)
@@ -52,7 +75,7 @@ export async function POST(req: NextRequest) {
   if (resendApiKey) {
     // Send via Resend
     const results = await Promise.allSettled(
-      recipientEmails.map((email) =>
+      validatedRecipients.map((email) =>
         fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
@@ -60,24 +83,24 @@ export async function POST(req: NextRequest) {
             Authorization: `Bearer ${resendApiKey}`,
           },
           body: JSON.stringify({
-            from: `${tenantName} via One Point Bowl <noreply@onepointbowl.com>`,
+            from: `${tenantName} via One Point Bowl <${process.env.RESEND_FROM_EMAIL ?? 'noreply@onepointbowl.com'}>`,
             to: [email],
-            subject,
+            subject: cleanSubject,
             text: `${message}\n\n---\nSent by ${tenantName} via One Point Bowl`,
-            html: `<p>${message.replace(/\n/g, '<br/>')}</p><hr/><p style="color:#888;font-size:12px">Sent by ${tenantName} via One Point Bowl</p>`,
+            html: `<p>${message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br/>')}</p><hr/><p style="color:#888;font-size:12px">Sent by ${tenantName} via One Point Bowl</p>`,
           }),
         })
       )
     );
     const failed = results.filter((r) => r.status === 'rejected').length;
     if (failed > 0) {
-      return NextResponse.json({ error: `${failed} of ${recipientEmails.length} emails failed to send` }, { status: 500 });
+      return NextResponse.json({ error: `${failed} of ${validatedRecipients.length} emails failed to send` }, { status: 500 });
     }
-    return NextResponse.json({ sent: recipientEmails.length });
+    return NextResponse.json({ sent: validatedRecipients.length });
   }
 
-  // No email provider — log and return a clear message for now
-  console.log(`[email-blast] Would send to ${recipientEmails.length} recipients:`, { subject, message, recipientEmails });
+  // No email provider — log recipient count only, not PII
+  console.log(`[email-blast] Would send to ${validatedRecipients.length} recipients (RESEND_API_KEY not configured)`);
   return NextResponse.json({
     sent: 0,
     warning: 'No email provider configured. Set RESEND_API_KEY in environment variables to enable sending. Recipients logged to server console.',

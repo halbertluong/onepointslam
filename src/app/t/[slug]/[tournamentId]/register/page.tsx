@@ -9,6 +9,170 @@ import TournamentInfoCard from '@/components/TournamentInfoCard';
 import BracketView from '@/components/BracketView';
 import type { Match, Player } from '@/types';
 import { mapPlayer, mapMatch } from '@/types';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+// Initialised once, outside the component so the Promise is stable across renders
+const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+  ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
+  : null;
+
+// ── Stripe payment form ────────────────────────────────────────────────────────
+function StripeCheckoutForm({
+  playerName,
+  totalDollars,
+  onSuccess,
+  onBack,
+}: {
+  playerName: string;
+  totalDollars: number;
+  onSuccess: (paymentIntentId: string) => void;
+  onBack: () => void;
+}) {
+  const stripe   = useStripe();
+  const elements = useElements();
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState('');
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setLoading(true);
+    setError('');
+
+    // Validate the payment form before confirming
+    const { error: submitErr } = await elements.submit();
+    if (submitErr) {
+      setError(submitErr.message ?? 'Please check your card details.');
+      setLoading(false);
+      return;
+    }
+
+    const { error: confirmErr, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: 'if_required',
+    });
+
+    if (confirmErr) {
+      setError(confirmErr.message ?? 'Payment failed. Please try again.');
+      setLoading(false);
+      return;
+    }
+
+    if (paymentIntent?.status === 'succeeded') {
+      onSuccess(paymentIntent.id);
+    } else {
+      setError('Payment did not complete. Please try again.');
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="bg-slate-50 rounded-xl p-4 text-sm flex justify-between items-center">
+        <span className="text-slate-600">Registration — <strong>{playerName}</strong></span>
+        <span className="font-black text-slate-900">{formatCurrency(totalDollars)}</span>
+      </div>
+      <PaymentElement />
+      {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+      <button
+        type="submit"
+        disabled={loading || !stripe || !elements}
+        className="btn-primary w-full py-3 rounded-xl font-bold text-base disabled:opacity-50 transition-all"
+      >
+        {loading ? 'Processing…' : `Pay ${formatCurrency(totalDollars)} & Register`}
+      </button>
+      <button type="button" onClick={onBack} className="w-full text-sm text-slate-500 hover:text-slate-700 transition-colors">
+        ← Back to registration form
+      </button>
+    </form>
+  );
+}
+
+// ── Donate payment wrapper ─────────────────────────────────────────────────────
+function DonateCheckout({
+  amountDollars,
+  tournamentId,
+  onSuccess,
+}: {
+  amountDollars: number;
+  tournamentId: string;
+  onSuccess: (paymentIntentId: string) => void;
+}) {
+  const [clientSecret, setClientSecret] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function initPayment() {
+    setLoading(true);
+    setError('');
+    const res = await fetch('/api/payments/donate-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amountCents: Math.round(amountDollars * 100), tournamentId }),
+    });
+    const json = await res.json() as { clientSecret?: string; error?: string };
+    if (!res.ok || !json.clientSecret) {
+      setError(json.error ?? 'Failed to set up payment.');
+      setLoading(false);
+      return;
+    }
+    setClientSecret(json.clientSecret);
+    setLoading(false);
+  }
+
+  if (!clientSecret) {
+    return (
+      <div className="space-y-3">
+        {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+        <button
+          type="button"
+          onClick={initPayment}
+          disabled={loading}
+          className="btn-primary w-full py-4 rounded-2xl font-black text-base disabled:opacity-60"
+        >
+          {loading ? 'Setting up payment…' : `Donate ${formatCurrency(amountDollars)}`}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
+      <DonateForm amountDollars={amountDollars} onSuccess={onSuccess} />
+    </Elements>
+  );
+}
+
+function DonateForm({ amountDollars, onSuccess }: { amountDollars: number; onSuccess: (piId: string) => void }) {
+  const stripe   = useStripe();
+  const elements = useElements();
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState('');
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setLoading(true);
+    setError('');
+    const { error: submitErr } = await elements.submit();
+    if (submitErr) { setError(submitErr.message ?? 'Check card details.'); setLoading(false); return; }
+    const { error: confirmErr, paymentIntent } = await stripe.confirmPayment({ elements, redirect: 'if_required' });
+    if (confirmErr) { setError(confirmErr.message ?? 'Payment failed.'); setLoading(false); return; }
+    if (paymentIntent?.status === 'succeeded') onSuccess(paymentIntent.id);
+    else { setError('Payment did not complete.'); setLoading(false); }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <PaymentElement />
+      {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+      <button type="submit" disabled={loading || !stripe} className="btn-primary w-full py-4 rounded-2xl font-black text-base disabled:opacity-60">
+        {loading ? 'Processing…' : `Confirm donation ${formatCurrency(amountDollars)}`}
+      </button>
+    </form>
+  );
+}
 
 const CLOSE_REASON_TEXT: Record<string, string> = {
   manual_override: 'Registration has been manually closed by the organizer.',
@@ -18,7 +182,7 @@ const CLOSE_REASON_TEXT: Record<string, string> = {
 
 const DONATE_PRESETS = [10, 25, 50, 100];
 
-type Step = 'loading' | 'form' | 'success' | 'closed' | 'already_registered' | 'donate' | 'donate_success';
+type Step = 'loading' | 'form' | 'payment' | 'success' | 'closed' | 'already_registered' | 'donate' | 'donate_success';
 
 export default function RegisterPage() {
   const { slug, tournamentId } = useParams<{ slug: string; tournamentId: string }>();
@@ -52,6 +216,10 @@ export default function RegisterPage() {
   const [bracketPlayers, setBracketPlayers] = useState<Player[]>([]);
   const [bracketLoading, setBracketLoading] = useState(false);
 
+  // Stripe payment state
+  const [clientSecret,      setClientSecret]      = useState('');
+  const [pendingPlayerData, setPendingPlayerData] = useState<PlayerFormData | null>(null);
+
   // Donation flow state
   const [donateAmount, setDonateAmount] = useState(25);
   const [donateCustom, setDonateCustom] = useState('');
@@ -66,25 +234,26 @@ export default function RegisterPage() {
         { data: t },
         { data: playersData },
         { data: tenant },
-        { data: donations },
       ] = await Promise.all([
         supabase.auth.getUser(),
         supabase.from('tournaments').select('*, tenants(display_name, primary_color)').eq('id', tournamentId).single(),
         supabase.from('players').select('*').eq('tournament_id', tournamentId),
         supabase.from('tenants').select('platform_fee').eq('slug', slug).single(),
-        supabase.from('donations').select('amount').eq('tournament_id', tournamentId),
       ]);
 
       const mappedPlayers = (playersData ?? []).map((p) => mapPlayer(p as Record<string, unknown>));
       setTournament(t);
       setPlayerCount(mappedPlayers.length);
       setBracketPlayers(mappedPlayers);
-      const donTotal = (donations ?? []).reduce((sum, d) => sum + Number(d.amount), 0);
-      setDonationTotal(donTotal);
+      // Fetch donation total via server endpoint (avoids exposing individual donation amounts to browser)
+      fetch(`/api/tournaments/${tournamentId}/donation-total`)
+        .then((r) => r.json())
+        .then((d) => { if (typeof d.total === 'number') setDonationTotal(d.total); })
+        .catch(() => {});
       const settings = t?.settings as Record<string, unknown> | null;
       setPlatformFee((settings?.systemTechFee as number) ?? (tenant?.platform_fee as number) ?? DEFAULT_PLATFORM_FEE);
 
-      if (t?.status !== 'registration_open') {
+      if (t?.status !== 'registration_open' || t?.deleted_at) {
         setStep('closed');
         return;
       }
@@ -107,13 +276,13 @@ export default function RegisterPage() {
 
   async function handleEmailBlur(email: string) {
     if (!email || currentUser) return;
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', email)
-      .maybeSingle();
-    if (data) {
+    const res = await fetch('/api/auth/email-exists', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const { exists } = await res.json();
+    if (exists) {
       setWelcomeBackEmail(email);
       setWelcomeBackVisible(true);
       setWelcomeBackError('');
@@ -143,56 +312,61 @@ export default function RegisterPage() {
     }
   }
 
-  async function handleRegister(data: PlayerFormData): Promise<{ error?: string }> {
-    const supabase = createClient();
-
-    const { count: currentCount } = await supabase
-      .from('players')
-      .select('id', { count: 'exact', head: true })
-      .eq('tournament_id', tournamentId);
-    const settings = tournament?.settings as Record<string, unknown> | null;
-    const cap = settings?.playerRegistrationCap as number | undefined;
-    if (cap && (currentCount ?? 0) >= cap) {
-      return { error: 'Sorry, the player cap has been reached.' };
-    }
-
-    if (!currentUser) {
-      const { data: byEmail } = await supabase
-        .from('players')
-        .select('id')
-        .eq('tournament_id', tournamentId)
-        .eq('email', data.email)
-        .maybeSingle();
-      if (byEmail) return { error: 'This email is already registered for this tournament.' };
-    }
-
-    const { error: err } = await supabase.from('players').insert({
-      tournament_id: tournamentId,
-      full_name: data.fullName,
-      email: data.email,
-      skill_tier: data.skillTier,
-      gender: data.gender || null,
-      ntrp_rating: data.ntrp ? parseFloat(data.ntrp) : null,
-      utr_rating: data.utr ? parseFloat(data.utr) : null,
-      age: data.age ? parseInt(data.age) : null,
-      status: 'registered',
-      user_id: currentUser?.id ?? null,
+  // All player insertion goes through the server route which verifies payment server-side
+  async function insertPlayer(data: PlayerFormData, paymentIntentId: string | null): Promise<{ error?: string }> {
+    const res = await fetch('/api/registrations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tournamentId,
+        fullName: data.fullName,
+        email: data.email,
+        gender: data.gender || null,
+        ntrp: data.ntrp || null,
+        utr: data.utr || null,
+        age: data.age || null,
+        skillTier: data.skillTier || null,
+        stripePaymentIntentId: paymentIntentId,
+      }),
     });
-
-    if (err) return { error: err.message };
-
-    if (cap && (currentCount ?? 0) + 1 >= cap) {
-      await supabase
-        .from('tournaments')
-        .update({ status: 'registration_closed', registration_close_reason: 'cap_reached' })
-        .eq('id', tournamentId);
+    const json = await res.json() as { playerId?: string; error?: string };
+    if (!res.ok) {
+      if (res.status === 409) return { error: 'This email is already registered for this tournament.' };
+      return { error: json.error ?? 'Registration failed. Please try again.' };
     }
-
     setRegisteredName(data.fullName);
     setRegisteredEmail(data.email);
     setWasGuest(!currentUser);
     setStep('success');
     return {};
+  }
+
+  async function handleRegister(data: PlayerFormData): Promise<{ error?: string }> {
+    // When there is an entry fee and Stripe is configured, collect payment first
+    if (entranceFee > 0 && stripePromise) {
+      const res = await fetch('/api/payments/create-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tournamentId }),
+      });
+      const json = await res.json() as { clientSecret?: string; mock?: boolean; error?: string };
+      if (!res.ok) return { error: json.error ?? 'Failed to set up payment. Please try again.' };
+
+      if (json.mock) {
+        // Dev mode: Stripe not configured — skip payment
+        return insertPlayer(data, null);
+      }
+
+      if (!json.clientSecret) return { error: 'Payment setup failed. Please try again.' };
+
+      setPendingPlayerData(data);
+      setClientSecret(json.clientSecret);
+      setStep('payment');
+      return {};
+    }
+
+    // No fee or Stripe not configured
+    return insertPlayer(data, null);
   }
 
   async function handleSavePassword() {
@@ -210,6 +384,13 @@ export default function RegisterPage() {
         { id: data.user.id, email: registeredEmail, role: 'player', assigned_tenant_ids: [] },
         { onConflict: 'id' },
       );
+      // Link the player row (inserted while guest) back to the new account
+      await supabase
+        .from('players')
+        .update({ user_id: data.user.id })
+        .eq('tournament_id', tournamentId)
+        .eq('email', registeredEmail)
+        .is('user_id', null);
     }
     setSavePasswordLoading(false);
     setSavePasswordDone(true);
@@ -226,16 +407,13 @@ export default function RegisterPage() {
     setBracketLoading(false);
   }
 
-  async function handleDonate() {
-    const effectiveAmount = donateCustom ? parseFloat(donateCustom) || 0 : donateAmount;
-    if (effectiveAmount <= 0) return;
-    setDonating(true);
-    const supabase = createClient();
-    // Mock payment delay — in production this would confirm a Stripe PaymentIntent first
-    await new Promise((r) => setTimeout(r, 1000));
-    await supabase.from('donations').insert({ tournament_id: tournamentId, amount: effectiveAmount });
-    setDonationTotal((prev) => prev + effectiveAmount);
-    setDonating(false);
+  async function handleDonatePaymentSuccess(paymentIntentId: string, amountDollars: number) {
+    await fetch('/api/donations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tournamentId, stripePaymentIntentId: paymentIntentId, amountDollars }),
+    });
+    setDonationTotal((prev) => prev + amountDollars);
     setStep('donate_success');
   }
 
@@ -371,6 +549,38 @@ export default function RegisterPage() {
     );
   }
 
+  // ── Stripe payment step ──────────────────────────────────────────────────────
+  if (step === 'payment' && clientSecret && pendingPlayerData && stripePromise) {
+    const totalDollars = entranceFee + platformFee;
+    return (
+      <div className="min-h-screen bg-slate-50 py-10 px-4">
+        <div className="max-w-md mx-auto space-y-6">
+          <div>
+            {tenantName && <p className="text-sm text-slate-400 mb-1">{tenantName}</p>}
+            <h1 className="text-2xl font-black text-slate-900">{tournamentName}</h1>
+            <p className="text-sm text-slate-500 mt-1">Complete your registration</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
+              <StripeCheckoutForm
+                playerName={pendingPlayerData.fullName}
+                totalDollars={totalDollars}
+                onSuccess={async (paymentIntentId) => {
+                  await insertPlayer(pendingPlayerData, paymentIntentId);
+                }}
+                onBack={() => {
+                  setStep('form');
+                  setClientSecret('');
+                  setPendingPlayerData(null);
+                }}
+              />
+            </Elements>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Donation flow ────────────────────────────────────────────────────────────
   if (step === 'donate') {
     const effectiveAmount = donateCustom ? parseFloat(donateCustom) || 0 : donateAmount;
@@ -442,14 +652,21 @@ export default function RegisterPage() {
             </div>
           </div>
 
-          <button
-            type="button"
-            disabled={donating || effectiveAmount <= 0}
-            onClick={handleDonate}
-            className="btn-primary w-full py-4 rounded-2xl font-black text-base disabled:opacity-60"
-          >
-            {donating ? 'Processing…' : effectiveAmount > 0 ? `Donate ${formatCurrency(effectiveAmount)}` : 'Select an amount'}
-          </button>
+          {effectiveAmount > 0 && stripePromise ? (
+            <DonateCheckout
+              amountDollars={effectiveAmount}
+              tournamentId={tournamentId}
+              onSuccess={(piId) => handleDonatePaymentSuccess(piId, effectiveAmount)}
+            />
+          ) : (
+            <button
+              type="button"
+              disabled={effectiveAmount <= 0}
+              className="btn-primary w-full py-4 rounded-2xl font-black text-base disabled:opacity-60"
+            >
+              {effectiveAmount > 0 ? `Donate ${formatCurrency(effectiveAmount)}` : 'Select an amount'}
+            </button>
+          )}
 
           <p className="text-center text-xs text-slate-400">
             Donations go directly to <strong>{tenantName || 'the team'}</strong>.

@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { email, name, school, role, notes, title, sport, program } = body as {
+  let body: Record<string, unknown>;
+  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  const { email, name, school, role, notes, title, sport, program } = body as unknown as {
     email: string;
     name?: string;
     school?: string;
@@ -14,8 +15,15 @@ export async function POST(req: NextRequest) {
     program?: string;
   };
 
-  if (!email || !email.includes('@')) {
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: 'Valid email required' }, { status: 400 });
+  }
+  if (!name?.trim()) {
+    return NextResponse.json({ error: 'name is required' }, { status: 400 });
+  }
+  if ((name?.length ?? 0) > 200 || (school?.length ?? 0) > 200 || (notes?.length ?? 0) > 2000 ||
+      (title?.length ?? 0) > 200 || (sport?.length ?? 0) > 100 || (program?.length ?? 0) > 200) {
+    return NextResponse.json({ error: 'Input too long' }, { status: 400 });
   }
 
   const supabase = await createClient();
@@ -23,7 +31,7 @@ export async function POST(req: NextRequest) {
     email: email.toLowerCase().trim(),
     name: name?.trim() || null,
     school: school?.trim() || null,
-    role: role || 'coach',
+    role: ['coach', 'director', 'player', 'admin', 'other'].includes(role ?? '') ? role : 'coach',
     notes: notes?.trim() || null,
     title: title?.trim() || null,
     sport: sport?.trim() || null,

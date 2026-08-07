@@ -32,24 +32,19 @@ export default function AdminAdminsPage() {
     e.preventDefault();
     setLoading(true);
     setMessage('');
-    const supabase = createClient();
 
-    // Check if user exists
-    const { data: existing } = await supabase
-      .from('users')
-      .select('id, role')
-      .eq('email', email)
-      .single();
-
-    if (existing) {
-      const { error } = await supabase
-        .from('users')
-        .update({ role: 'super_admin' })
-        .eq('id', existing.id);
-      if (error) setMessage(error.message);
-      else { setMessage(`${email} promoted to Super Admin.`); setEmail(''); fetchAdmins(); }
+    const res = await fetch('/api/admin/promote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      setMessage(json.error ?? 'Failed to promote user.');
     } else {
-      setMessage('User not found. They must sign up first, then can be promoted.');
+      setMessage(`${email} promoted to Super Admin.`);
+      setEmail('');
+      fetchAdmins();
     }
     setLoading(false);
   }

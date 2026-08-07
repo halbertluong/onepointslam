@@ -67,7 +67,7 @@ export default function BracketPanel({
         maxPlayers={maxPlayers}
         tournamentId={tournamentId}
         liveUpdates={liveUpdates}
-        editable={editing}
+        resultEditable={editing}
         onSetWinner={onSetWinner}
       />
     </div>

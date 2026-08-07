@@ -32,7 +32,7 @@ export default async function TenantLayout({ children, params }: Props) {
 
   return (
     <>
-      <style>{`:root { --tenant-primary: ${tenant.primary_color}; --tenant-secondary: ${tenant.secondary_color}; }`}</style>
+      <style>{`:root { --tenant-primary: ${/^#[0-9a-fA-F]{6}$/.test(tenant.primary_color ?? '') ? tenant.primary_color : '#1a2033'}; --tenant-secondary: ${/^#[0-9a-fA-F]{6}$/.test(tenant.secondary_color ?? '') ? tenant.secondary_color : '#4f6ef7'}; }`}</style>
       <NavBar
         role={role}
         tenantSlug={slug}

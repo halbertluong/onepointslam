@@ -10,9 +10,12 @@ export async function createPaymentIntent(
   amountCents: number,
   tenantConnectAccountId: string | undefined,
   applicationFeeCents: number,
+  metadata?: Record<string, string>,
 ): Promise<PaymentIntentResult> {
   if (!STRIPE_SECRET_KEY) {
-    // Mock mode
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('STRIPE_SECRET_KEY is not set — cannot process payments in production');
+    }
     return {
       clientSecret: `mock_pi_${Date.now()}_secret_mock`,
       paymentIntentId: `mock_pi_${Date.now()}`,
@@ -26,6 +29,7 @@ export async function createPaymentIntent(
     amount: amountCents,
     currency: 'usd',
     automatic_payment_methods: { enabled: true },
+    ...(metadata ? { metadata } : {}),
   };
 
   if (tenantConnectAccountId) {

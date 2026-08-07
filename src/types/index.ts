@@ -47,6 +47,8 @@ export interface TournamentSettings {
   numberOfCourts?: number;
   tournamentDate?: string;
   prizePlaces?: PrizePlace[];
+  fundraisingGoal?: number;
+  inviteCode?: string;
 }
 
 export type TournamentStatus =
@@ -82,6 +84,7 @@ export interface Player {
   utrRating?: number;
   age?: number;
   status: PlayerStatus;
+  paymentStatus?: 'pending' | 'paid' | 'failed';
   stripePaymentIntentId?: string;
 }
 
@@ -98,6 +101,7 @@ export function mapPlayer(row: Record<string, unknown>): Player {
     utrRating: (row.utr_rating ?? row.utrRating) as number | undefined,
     age: row.age as number | undefined,
     status: (row.status as PlayerStatus) ?? 'registered',
+    paymentStatus: (row.payment_status ?? row.paymentStatus) as 'pending' | 'paid' | 'failed' | undefined,
     stripePaymentIntentId: (row.stripe_payment_intent_id ?? row.stripePaymentIntentId) as string | undefined,
   };
 }

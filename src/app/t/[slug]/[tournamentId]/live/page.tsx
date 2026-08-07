@@ -100,8 +100,9 @@ export default function LivePage() {
     return () => { supabase.removeChannel(channel); };
   }, [load, tournamentId]);
 
-  const primary = tournament?.tenant.primary_color ?? '#3b82f6';
-  const secondary = tournament?.tenant.secondary_color ?? '#1e40af';
+  const safeHex = (c: string | undefined) => /^#[0-9a-fA-F]{6}$/.test(c ?? '') ? c! : '#3b82f6';
+  const primary = safeHex(tournament?.tenant.primary_color);
+  const secondary = safeHex(tournament?.tenant.secondary_color);
 
   const activeMatches = matches
     .filter((m) => ['playing', 'court_assigned', 'warmup'].includes(m.status))

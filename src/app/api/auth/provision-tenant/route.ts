@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const adminClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
-
 function toSlug(text: string): string {
   return text
     .toLowerCase()
@@ -15,29 +10,88 @@ function toSlug(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId, school, sport, program } = await req.json() as {
+  const adminClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+
+  let parsed: { userId?: string; school?: string; sport?: string; program?: string; inviteCode?: string };
+  try { parsed = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  const { userId, school, sport, program, inviteCode } = parsed as {
     userId?: string;
     school?: string;
     sport?: string;
     program?: string;
+    inviteCode?: string;
   };
 
-  if (!userId || !school || !sport || !program) {
+  // Invite code must always be present and correct
+  const validCode = process.env.DIRECTOR_INVITE_CODE;
+  if (!validCode) {
+    console.error('[provision-tenant] DIRECTOR_INVITE_CODE env var is not set — rejecting all requests');
+    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
+  }
+  if (inviteCode !== validCode) {
+    return NextResponse.json({ error: 'Invalid invite code' }, { status: 401 });
+  }
+
+  // Verify the caller is authenticated and is provisioning for themselves
+  const { createServerClient } = await import('@supabase/ssr');
+  const { cookies } = await import('next/headers');
+  const cookieStore = await cookies();
+  const sessionClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (cs) => cs.forEach(({ name, value, options }) => cookieStore.set(name, value, options)),
+      },
+    },
+  );
+  const { data: { user: sessionUser } } = await sessionClient.auth.getUser();
+  if (!sessionUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!userId || sessionUser.id !== userId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  // Verify the userId actually exists in auth.users
+  const { data: authUser, error: authErr } = await adminClient.auth.admin.getUserById(userId);
+  if (authErr || !authUser?.user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 400 });
+  }
+
+  // Enforce .edu email requirement server-side (client-side check is bypassable)
+  const email = authUser.user.email ?? '';
+  if (!email.toLowerCase().endsWith('.edu')) {
+    return NextResponse.json({ error: 'A .edu email address is required to register as a director' }, { status: 403 });
+  }
+
+  // Prevent re-provisioning an already-provisioned account
+  const { data: existingUser } = await adminClient.from('users').select('role').eq('id', userId).single();
+  if (existingUser?.role === 'tenant_admin') {
+    return NextResponse.json({ error: 'Account is already provisioned as a director' }, { status: 409 });
+  }
+
+  if (!school || !sport || !program) {
     return NextResponse.json({ error: 'userId, school, sport, and program are required' }, { status: 400 });
+  }
+  if (school.length > 100 || sport.length > 60 || program.length > 60) {
+    return NextResponse.json({ error: 'Input fields exceed maximum length' }, { status: 400 });
   }
 
   const displayName = `${school.trim()} - ${sport.trim()} - ${program.trim()}`;
   const baseSlug = toSlug(displayName);
 
-  // Ensure slug uniqueness by appending a short random suffix if needed
+  // Ensure slug uniqueness by appending a random suffix if needed (retry up to 5 times)
   let slug = baseSlug;
-  const { data: existing } = await adminClient
-    .from('tenants')
-    .select('id')
-    .eq('slug', slug)
-    .maybeSingle();
-
-  if (existing) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: existing } = await adminClient
+      .from('tenants')
+      .select('id')
+      .eq('slug', slug)
+      .maybeSingle();
+    if (!existing) break;
     slug = `${baseSlug}-${Math.random().toString(36).slice(2, 6)}`;
   }
 
@@ -52,11 +106,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: tenantErr?.message ?? 'Failed to create tenant' }, { status: 500 });
   }
 
-  // Assign the tenant to the user
+  // Assign the tenant and role to the user atomically
   const { error: userErr } = await adminClient
     .from('users')
-    .update({ assigned_tenant_ids: [tenant.id] })
-    .eq('id', userId);
+    .upsert({ id: userId, role: 'tenant_admin', assigned_tenant_ids: [tenant.id] }, { onConflict: 'id' });
 
   if (userErr) {
     return NextResponse.json({ error: userErr.message }, { status: 500 });
