@@ -29,6 +29,7 @@ interface TournamentConfig {
   date: string;
   prizeMoney: number;
   fundraisingGoal: number;
+  numberOfCourts: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -90,6 +91,7 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
     date: '',
     prizeMoney: 500,
     fundraisingGoal: 2000,
+    numberOfCourts: 4,
   });
 
   function set<K extends keyof TournamentConfig>(k: K, v: TournamentConfig[K]) {
@@ -167,17 +169,32 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Prize Money ($)
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={form.prizeMoney}
-              onChange={(e) => set('prizeMoney', parseFloat(e.target.value) || 0)}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+                Number of Courts
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={form.numberOfCourts}
+                onChange={(e) => set('numberOfCourts', parseInt(e.target.value) || 1)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+                Prize Money ($)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={form.prizeMoney}
+                onChange={(e) => set('prizeMoney', parseFloat(e.target.value) || 0)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+              />
+            </div>
           </div>
 
           <div>
@@ -363,6 +380,7 @@ function DirectorView({
       systemTechFee: 0,
       maxPlayers: config.drawSize,
       fundraisingGoal: config.fundraisingGoal,
+      numberOfCourts: config.numberOfCourts,
     },
   };
 
@@ -1046,8 +1064,19 @@ export default function DemoClient() {
 
   function handleParticipantsNext(ps: DemoPlayer[]) {
     const bracket = buildBracket(ps);
+    const courts = config?.numberOfCourts ?? 0;
+    const assigned = courts > 0
+      ? bracket.map((m) => {
+          if (m.roundIndex !== 0) return m;
+          if (!m.player1Id || m.player1Id === 'BYE' || !m.player2Id || m.player2Id === 'BYE') return m;
+          const courtIdx = bracket
+            .filter((x) => x.roundIndex === 0 && x.player1Id && x.player1Id !== 'BYE' && x.player2Id && x.player2Id !== 'BYE')
+            .findIndex((x) => x.id === m.id);
+          return { ...m, courtNumber: (courtIdx % courts) + 1, status: 'court_assigned' as const };
+        })
+      : bracket;
     setPlayers(ps);
-    setMatches(bracket);
+    setMatches(assigned);
     setStage('bracket');
   }
 
