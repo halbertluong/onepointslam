@@ -8,10 +8,10 @@ interface Props {
 }
 
 export default async function PublicBracketPage({ params }: Props) {
-  const { tournamentId } = await params;
+  const { slug, tournamentId } = await params;
   const supabase = await createClient();
 
-  const [{ data: tournament }, { data: players }, { data: matches }] = await Promise.all([
+  const [{ data: tournament }, { data: players }, { data: matches }, { data: tenant }] = await Promise.all([
     supabase.from('tournaments').select('*').eq('id', tournamentId).single(),
     supabase.from('players').select('*').eq('tournament_id', tournamentId),
     supabase
@@ -20,9 +20,11 @@ export default async function PublicBracketPage({ params }: Props) {
       .eq('tournament_id', tournamentId)
       .order('round_index')
       .order('match_index'),
+    supabase.from('tenants').select('id').eq('slug', slug).single(),
   ]);
 
   if (!tournament) notFound();
+  if (!tenant || tournament.tenant_id !== tenant.id) notFound();
 
   const typedPlayers: Player[] = (players ?? []).map((p) => ({
     id: p.id,

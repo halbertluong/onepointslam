@@ -51,16 +51,18 @@ export default function DashboardShell({ tenant, userEmail, isSuperAdmin, tenant
     requestAnimationFrame(() => window.scrollTo({ top: target, behavior: 'instant' as ScrollBehavior }));
   }
 
-  const primary = tenant?.primary_color ?? '#1d4ed8';
+  const safeHex = (c: string | undefined | null) => /^#[0-9a-fA-F]{6}$/.test(c ?? '') ? c! : '#1d4ed8';
+  const primary = safeHex(tenant?.primary_color);
+  const secondary = safeHex(tenant?.secondary_color);
 
   return (
     <div className="min-h-screen bg-slate-50">
       {tenant && (
-        <style>{`:root { --tenant-primary: ${primary}; --tenant-secondary: ${tenant.secondary_color}; }`}</style>
+        <style>{`:root { --tenant-primary: ${primary}; --tenant-secondary: ${secondary}; }`}</style>
       )}
 
       <nav
-        className="bg-white border-b h-14 flex items-center px-4 sm:px-6 justify-between sticky top-0 z-40"
+        className="bg-white border-b h-14 flex items-center px-4 sm:px-6 lg:px-8 justify-between sticky top-0 z-40"
         style={{ borderBottomColor: primary }}
       >
         {/* Logo */}
@@ -124,7 +126,7 @@ export default function DashboardShell({ tenant, userEmail, isSuperAdmin, tenant
 
       {/* Director mode — always mounted, hidden when in referee mode */}
       <div style={{ display: mode === 'director' ? 'block' : 'none' }}>
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">{children}</main>
+        <main className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">{children}</main>
       </div>
 
       {/* Referee mode — always mounted after first render, hidden when in director mode */}

@@ -4,73 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import TenantThemeProvider from '@/components/TenantThemeProvider';
 import type { Tenant } from '@/types';
-
-// Major D1 universities with official colors
-const D1_SCHOOLS = [
-  { name: 'Alabama Crimson Tide',       slug: 'alabama',          primary: '#9E1B32', secondary: '#828A8F' },
-  { name: 'Arizona State Sun Devils',   slug: 'arizona-state',    primary: '#8C1D40', secondary: '#FFC627' },
-  { name: 'Arizona Wildcats',           slug: 'arizona',          primary: '#003366', secondary: '#CC0033' },
-  { name: 'Arkansas Razorbacks',        slug: 'arkansas',         primary: '#9D2235', secondary: '#000000' },
-  { name: 'Auburn Tigers',              slug: 'auburn',           primary: '#0C2340', secondary: '#E87722' },
-  { name: 'Baylor Bears',               slug: 'baylor',           primary: '#154734', secondary: '#FFB81C' },
-  { name: 'Boston College Eagles',      slug: 'boston-college',   primary: '#98002E', secondary: '#BC9B6A' },
-  { name: 'Cal Bears',                  slug: 'cal',              primary: '#003262', secondary: '#FDB515' },
-  { name: 'Clemson Tigers',             slug: 'clemson',          primary: '#F66733', secondary: '#522D80' },
-  { name: 'Colorado Buffaloes',         slug: 'colorado',         primary: '#CFB87C', secondary: '#000000' },
-  { name: 'Duke Blue Devils',           slug: 'duke',             primary: '#003087', secondary: '#FFFFFF' },
-  { name: 'Florida Gators',             slug: 'florida',          primary: '#0021A5', secondary: '#FA4616' },
-  { name: 'Florida State Seminoles',    slug: 'florida-state',    primary: '#782F40', secondary: '#CEB888' },
-  { name: 'Georgia Bulldogs',           slug: 'georgia',          primary: '#BA0C2F', secondary: '#000000' },
-  { name: 'Georgia Tech Yellow Jackets',slug: 'georgia-tech',     primary: '#B3A369', secondary: '#003057' },
-  { name: 'Illinois Fighting Illini',   slug: 'illinois',         primary: '#13294B', secondary: '#E84A27' },
-  { name: 'Indiana Hoosiers',           slug: 'indiana',          primary: '#990000', secondary: '#FFFFFF' },
-  { name: 'Iowa Hawkeyes',              slug: 'iowa',             primary: '#FFCD00', secondary: '#000000' },
-  { name: 'Iowa State Cyclones',        slug: 'iowa-state',       primary: '#C8102E', secondary: '#F1BE48' },
-  { name: 'Kansas Jayhawks',            slug: 'kansas',           primary: '#0051A5', secondary: '#E8000D' },
-  { name: 'Kansas State Wildcats',      slug: 'kansas-state',     primary: '#512888', secondary: '#FFFFFF' },
-  { name: 'Kentucky Wildcats',          slug: 'kentucky',         primary: '#0033A0', secondary: '#FFFFFF' },
-  { name: 'LSU Tigers',                 slug: 'lsu',              primary: '#461D7C', secondary: '#FDD023' },
-  { name: 'Louisville Cardinals',       slug: 'louisville',       primary: '#AD0000', secondary: '#000000' },
-  { name: 'Maryland Terrapins',         slug: 'maryland',         primary: '#E03A3E', secondary: '#FFD520' },
-  { name: 'Michigan Wolverines',        slug: 'michigan',         primary: '#00274C', secondary: '#FFCB05' },
-  { name: 'Michigan State Spartans',    slug: 'michigan-state',   primary: '#18453B', secondary: '#FFFFFF' },
-  { name: 'Minnesota Golden Gophers',   slug: 'minnesota',        primary: '#7A0019', secondary: '#FFB71B' },
-  { name: 'Mississippi State Bulldogs', slug: 'mississippi-state',primary: '#660000', secondary: '#FFFFFF' },
-  { name: 'Missouri Tigers',            slug: 'missouri',         primary: '#F1B82D', secondary: '#000000' },
-  { name: 'NC State Wolfpack',          slug: 'nc-state',         primary: '#CC0000', secondary: '#000000' },
-  { name: 'Nebraska Cornhuskers',       slug: 'nebraska',         primary: '#E41C38', secondary: '#000000' },
-  { name: 'North Carolina Tar Heels',   slug: 'unc',              primary: '#4B9CD3', secondary: '#FFFFFF' },
-  { name: 'Northwestern Wildcats',      slug: 'northwestern',     primary: '#4E2A84', secondary: '#FFFFFF' },
-  { name: 'Notre Dame Fighting Irish',  slug: 'notre-dame',       primary: '#0C2340', secondary: '#AE9142' },
-  { name: 'Ohio State Buckeyes',        slug: 'ohio-state',       primary: '#BB0000', secondary: '#666666' },
-  { name: 'Oklahoma Sooners',           slug: 'oklahoma',         primary: '#841617', secondary: '#FDF9D8' },
-  { name: 'Oklahoma State Cowboys',     slug: 'oklahoma-state',   primary: '#FF6600', secondary: '#000000' },
-  { name: 'Ole Miss Rebels',            slug: 'ole-miss',         primary: '#CE1126', secondary: '#00205B' },
-  { name: 'Oregon Ducks',               slug: 'oregon',           primary: '#154733', secondary: '#FEE123' },
-  { name: 'Oregon State Beavers',       slug: 'oregon-state',     primary: '#DC4405', secondary: '#000000' },
-  { name: 'Penn State Nittany Lions',   slug: 'penn-state',       primary: '#041E42', secondary: '#FFFFFF' },
-  { name: 'Pittsburgh Panthers',        slug: 'pittsburgh',       primary: '#003594', secondary: '#FFB81C' },
-  { name: 'Purdue Boilermakers',        slug: 'purdue',           primary: '#CEB888', secondary: '#000000' },
-  { name: 'Rutgers Scarlet Knights',    slug: 'rutgers',          primary: '#CC0033', secondary: '#FFFFFF' },
-  { name: 'South Carolina Gamecocks',   slug: 'south-carolina',   primary: '#73000A', secondary: '#000000' },
-  { name: 'Stanford Cardinal',          slug: 'stanford',         primary: '#8C1515', secondary: '#B6B1A9' },
-  { name: 'Syracuse Orange',            slug: 'syracuse',         primary: '#F76900', secondary: '#000E54' },
-  { name: 'TCU Horned Frogs',           slug: 'tcu',              primary: '#4D1979', secondary: '#A3A9AC' },
-  { name: 'Tennessee Volunteers',       slug: 'tennessee',        primary: '#FF8200', secondary: '#FFFFFF' },
-  { name: 'Texas A&M Aggies',           slug: 'texas-am',         primary: '#500000', secondary: '#FFFFFF' },
-  { name: 'Texas Longhorns',            slug: 'texas',            primary: '#BF5700', secondary: '#000000' },
-  { name: 'Texas Tech Red Raiders',     slug: 'texas-tech',       primary: '#CC0000', secondary: '#000000' },
-  { name: 'UCLA Bruins',                slug: 'ucla',             primary: '#2D68C4', secondary: '#F2A900' },
-  { name: 'USC Trojans',                slug: 'usc',              primary: '#990000', secondary: '#FFC72C' },
-  { name: 'Utah Utes',                  slug: 'utah',             primary: '#CC0000', secondary: '#FFFFFF' },
-  { name: 'Vanderbilt Commodores',      slug: 'vanderbilt',       primary: '#866D4B', secondary: '#000000' },
-  { name: 'Virginia Cavaliers',         slug: 'virginia',         primary: '#232D4B', secondary: '#E57200' },
-  { name: 'Virginia Tech Hokies',       slug: 'virginia-tech',    primary: '#75091D', secondary: '#CF4420' },
-  { name: 'Wake Forest Demon Deacons',  slug: 'wake-forest',      primary: '#9E7E38', secondary: '#000000' },
-  { name: 'Washington Huskies',         slug: 'washington',       primary: '#33006F', secondary: '#E8D3A2' },
-  { name: 'Washington State Cougars',   slug: 'washington-state', primary: '#981E32', secondary: '#5E6A71' },
-  { name: 'Wisconsin Badgers',          slug: 'wisconsin',        primary: '#C5050C', secondary: '#FFFFFF' },
-];
+import { ALL_SCHOOLS, SUGGEST_CORRECTION_URL } from '@/lib/schools';
 
 export default function SettingsPage() {
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -85,6 +19,8 @@ export default function SettingsPage() {
   const [schoolSearch, setSchoolSearch] = useState('');
   const [showSchoolPicker, setShowSchoolPicker] = useState(false);
   const [colorMode, setColorMode] = useState<'school' | 'custom'>('school');
+  const [tierFilter, setTierFilter] = useState<'all' | 'd1' | 'd2' | 'd3'>('all');
+  const [selectedSchoolUnverified, setSelectedSchoolUnverified] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -115,11 +51,12 @@ export default function SettingsPage() {
     load();
   }, []);
 
-  function applySchool(school: typeof D1_SCHOOLS[0]) {
+  function applySchool(school: typeof ALL_SCHOOLS[0]) {
     setDisplayName(school.name + ' Tennis');
     setSlug(school.slug + '-tennis');
     setPrimary(school.primary);
     setSecondary(school.secondary);
+    setSelectedSchoolUnverified(!school.colorsVerified);
     setShowSchoolPicker(false);
     setSchoolSearch('');
   }
@@ -127,13 +64,28 @@ export default function SettingsPage() {
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !tenant) return;
+
+    const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+    const MAX_SIZE_MB = 2;
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setMessage('Logo must be PNG, JPEG, WebP, or SVG.');
+      return;
+    }
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      setMessage(`Logo must be smaller than ${MAX_SIZE_MB} MB.`);
+      return;
+    }
+
     setUploading(true);
     const supabase = createClient();
-    const path = `logos/${tenant.id}/${file.name}`;
+    const ext = file.name.split('.').pop() ?? 'png';
+    const path = `logos/${tenant.id}/logo.${ext}`;
     const { error } = await supabase.storage.from('tenant-assets').upload(path, file, { upsert: true });
     if (!error) {
       const { data: { publicUrl } } = supabase.storage.from('tenant-assets').getPublicUrl(path);
       setLogoUrl(publicUrl);
+    } else {
+      setMessage(error.message);
     }
     setUploading(false);
   }
@@ -144,11 +96,24 @@ export default function SettingsPage() {
     setSaving(true);
     setMessage('');
     const supabase = createClient();
+    const RESERVED_SLUGS = ['admin', 'api', 'auth', 'dashboard', 't', '_next', 'referee', 'favicon.ico', 'demo', 'soccer'];
+    const cleanSlug = slug.toLowerCase().replace(/\s+/g, '-');
+    if (RESERVED_SLUGS.includes(cleanSlug)) {
+      setMessage('That slug is reserved. Please choose a different one.');
+      setSaving(false);
+      return;
+    }
+    const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+    if (!HEX_RE.test(primary) || !HEX_RE.test(secondary)) {
+      setMessage('Colors must be valid hex values (e.g. #1a2b3c).');
+      setSaving(false);
+      return;
+    }
     const { error } = await supabase
       .from('tenants')
       .update({
         display_name: displayName,
-        slug: slug.toLowerCase().replace(/\s+/g, '-'),
+        slug: cleanSlug,
         primary_color: primary,
         secondary_color: secondary,
         logo_url: logoUrl || null,
@@ -159,9 +124,11 @@ export default function SettingsPage() {
     setSaving(false);
   }
 
-  const filteredSchools = D1_SCHOOLS.filter((s) =>
-    s.name.toLowerCase().includes(schoolSearch.toLowerCase())
-  );
+  const filteredSchools = ALL_SCHOOLS.filter((s) => {
+    const matchesTier = tierFilter === 'all' || s.tier === tierFilter;
+    const matchesSearch = s.name.toLowerCase().includes(schoolSearch.toLowerCase());
+    return matchesTier && matchesSearch;
+  });
 
   return (
     <TenantThemeProvider primaryColor={primary} secondaryColor={secondary}>
@@ -209,7 +176,7 @@ export default function SettingsPage() {
 
             {showSchoolPicker && (
               <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <div className="p-2 border-b border-slate-100">
+                <div className="p-2 border-b border-slate-100 space-y-2">
                   <input
                     type="text"
                     value={schoolSearch}
@@ -218,6 +185,18 @@ export default function SettingsPage() {
                     className="w-full px-3 py-2 text-sm focus:outline-none"
                     autoFocus
                   />
+                  <div className="flex gap-1 px-1">
+                    {(['all', 'd1', 'd2', 'd3'] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setTierFilter(t)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase transition-colors ${tierFilter === t ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-700'}`}
+                      >
+                        {t === 'all' ? 'All' : t.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="max-h-64 overflow-y-auto">
                   {filteredSchools.map((school) => (
@@ -231,12 +210,23 @@ export default function SettingsPage() {
                         <span className="w-4 h-4 rounded-full border border-white/50 shadow-sm" style={{ backgroundColor: school.primary }} />
                         <span className="w-4 h-4 rounded-full border border-white/50 shadow-sm" style={{ backgroundColor: school.secondary }} />
                       </div>
-                      <span className="text-sm text-slate-700">{school.name}</span>
+                      <span className="text-sm text-slate-700 flex-1">{school.name}</span>
+                      <span className="text-[10px] font-bold uppercase text-slate-300">{school.tier}</span>
                     </button>
                   ))}
                   {filteredSchools.length === 0 && (
-                    <p className="px-4 py-6 text-center text-sm text-slate-400">No schools found. Use Custom mode.</p>
+                    <p className="px-4 py-6 text-center text-sm text-slate-400">No schools found. Use Custom mode to enter your colors manually.</p>
                   )}
+                </div>
+              </div>
+            )}
+
+            {selectedSchoolUnverified && (
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700">
+                <span className="text-base leading-none">⚠️</span>
+                <div>
+                  Colors for this school aren&apos;t verified in our dataset — please check them below and adjust if needed.{' '}
+                  <a href={SUGGEST_CORRECTION_URL} className="underline hover:text-amber-900">Suggest a correction</a>
                 </div>
               </div>
             )}
@@ -276,6 +266,13 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
+
+            {colorMode === 'school' && !selectedSchoolUnverified && (
+              <p className="text-xs text-slate-400">
+                Colors from our verified dataset.{' '}
+                <a href={SUGGEST_CORRECTION_URL} className="underline hover:text-slate-600">Suggest a correction</a> if they look wrong.
+              </p>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -329,7 +326,7 @@ export default function SettingsPage() {
                     Remove
                   </button>
                 )}
-                <input ref={fileRef} type="file" accept=".svg,.png,.jpg,.jpeg" className="hidden" onChange={handleLogoUpload} />
+                <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={handleLogoUpload} />
               </div>
               <p className="text-xs text-slate-400 mt-1.5">Recommended: square SVG or PNG with transparent background</p>
             </div>
@@ -367,8 +364,27 @@ export default function SettingsPage() {
             </p>
           </div>
 
+          {/* Stripe Payments */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-3">
+            <h2 className="font-bold text-slate-800">Payment Collection</h2>
+            {tenant?.stripeConnectAccountId ? (
+              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">
+                <span>✓</span>
+                <span>Stripe account connected — entry fees will be collected and transferred to your account.</span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 rounded-xl px-4 py-3">
+                  <span className="mt-0.5">⚠</span>
+                  <span>No Stripe account connected. Entry fees will not be collected until Stripe is configured. Contact your One Point Bowl administrator to set up payments for your account.</span>
+                </div>
+                <p className="text-xs text-slate-400">Once connected, registration fees will transfer directly to your program&apos;s Stripe account minus the platform fee.</p>
+              </div>
+            )}
+          </div>
+
           {message && (
-            <p className={`text-sm text-center rounded-xl p-3 ${message.includes('error') || message.includes('Error') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+            <p className={`text-sm text-center rounded-xl p-3 ${message.includes('error') || message.includes('Error') || message.includes('must') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
               {message}
             </p>
           )}

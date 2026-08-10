@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 
-const INVITE_CODE = 'onepoint';
 const TITLE_OPTIONS = ['Head Coach', 'Assistant Coach', 'Sports Administrator', 'Director of Operations', 'Other'];
 const SPORT_OPTIONS = ['Tennis', 'Basketball', 'Soccer', 'Other'];
 const PROGRAM_OPTIONS = ["Men's", "Women's", 'Both'];
@@ -31,8 +30,8 @@ export default function RegisterPage() {
 
   function handleCodeSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (code.trim().toLowerCase() !== INVITE_CODE) {
-      setCodeError('Invalid invite code. Contact us to get early access.');
+    if (!code.trim()) {
+      setCodeError('Please enter your invite code.');
       return;
     }
     setStep('details');
@@ -75,24 +74,11 @@ export default function RegisterPage() {
       return;
     }
 
-    // Assign tenant_admin role via server-side API (bypasses RLS for new users with no session yet)
-    const roleRes = await fetch('/api/auth/set-role', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, role: 'tenant_admin' }),
-    });
-
-    if (!roleRes.ok) {
-      setError('Account created but role assignment failed — contact support.');
-      setLoading(false);
-      return;
-    }
-
-    // Create a tenant for this tournament director (school + sport + program)
+    // Create a tenant and assign role in one server-side call
     const tenantRes = await fetch('/api/auth/provision-tenant', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, school, sport: resolvedSport, program }),
+      body: JSON.stringify({ userId, school, sport: resolvedSport, program, inviteCode: code.trim() }),
     });
 
     if (!tenantRes.ok) {

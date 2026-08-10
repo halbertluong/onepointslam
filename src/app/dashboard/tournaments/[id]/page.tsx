@@ -2,12 +2,46 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/browser';
-import { useParams } from 'next/navigation';
-import BracketView from '@/components/BracketView';
+import { useParams, useRouter } from 'next/navigation';
+import BracketPanel from '@/components/BracketPanel';
 import { generateBracket } from '@/lib/bracket';
 import type { Tournament, Player, Match } from '@/types';
-import { mapPlayer } from '@/types';
-import { formatCurrency } from '@/lib/pricing';
+import { mapPlayer, mapMatch } from '@/types';
+import { calcRaised, formatCurrency } from '@/lib/pricing';
+
+function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; isArchived: boolean }) {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+
+  async function toggle() {
+    setLoading(true);
+    const endpoint = isArchived ? 'unarchive' : 'archive';
+    await fetch(`/api/tournaments/${tournamentId}/${endpoint}`, { method: 'POST' });
+    router.push('/dashboard');
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+      <div>
+        <h2 className="font-bold text-slate-800">
+          {isArchived ? 'Unarchive Tournament' : 'Archive Tournament'}
+        </h2>
+        <p className="text-sm text-slate-500 mt-0.5">
+          {isArchived
+            ? 'Restores this tournament to your main dashboard view.'
+            : 'Hides this tournament from your main dashboard. You can unarchive it any time.'}
+        </p>
+      </div>
+      <button
+        onClick={toggle}
+        disabled={loading}
+        className="px-5 py-2.5 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-50 transition-colors text-slate-600 disabled:opacity-50"
+      >
+        {loading ? '…' : isArchived ? '↩ Unarchive' : '📦 Archive this tournament'}
+      </button>
+    </div>
+  );
+}
 
 type Tab = 'overview' | 'draw' | 'players' | 'settings';
 
@@ -279,14 +313,16 @@ export default function TournamentAdminPage() {
   const [emailBody, setEmailBody] = useState('');
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [donationTotal, setDonationTotal] = useState(0);
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const [{ data: t }, { data: p }, { data: m }, { data: me }] = await Promise.all([
+    const [{ data: t }, { data: p }, { data: m }, { data: me }, { data: donations }] = await Promise.all([
       supabase.from('tournaments').select('*, tenants(slug)').eq('id', id).single(),
       supabase.from('players').select('*').eq('tournament_id', id).order('created_at'),
       supabase.from('matches').select('*').eq('tournament_id', id).order('round_index').order('match_index'),
       supabase.from('users').select('role').eq('id', (await supabase.auth.getUser()).data.user?.id ?? '').single(),
+      supabase.from('donations').select('amount').eq('tournament_id', id),
     ]);
     if (t) {
       setTournament(t);
@@ -294,20 +330,8 @@ export default function TournamentAdminPage() {
     }
     setIsSuperAdmin((me as { role?: string } | null)?.role === 'super_admin');
     setPlayers((p ?? []).map((row) => mapPlayer(row as Record<string, unknown>)));
-    setMatches(
-      (m ?? []).map((x) => ({
-        id: x.id,
-        tournamentId: x.tournament_id,
-        roundIndex: x.round_index,
-        matchIndex: x.match_index,
-        player1Id: x.player1_id,
-        player2Id: x.player2_id,
-        serverPlayerId: x.server_player_id,
-        winnerId: x.winner_id,
-        status: x.status,
-        courtNumber: x.court_number,
-      }))
-    );
+    setMatches((m ?? []).map((x) => mapMatch(x as Record<string, unknown>)));
+    setDonationTotal((donations ?? []).reduce((sum, d) => sum + Number(d.amount), 0));
     setLoading(false);
   }, [id]);
 
@@ -327,6 +351,11 @@ export default function TournamentAdminPage() {
 
   async function handleGenerateBracket() {
     if (!tournament) return;
+    const minReg = tournament.settings?.minimumRegistrants;
+    if (minReg && players.length < minReg) {
+      setMessage(`Need at least ${minReg} registered players to generate the bracket. Currently have ${players.length}.`);
+      return;
+    }
     setSaving(true);
     const supabase = createClient();
     const generated = generateBracket(players, tournament.settings, id);
@@ -352,6 +381,25 @@ export default function TournamentAdminPage() {
       setMessage(error.message);
     }
     setSaving(false);
+  }
+
+  async function handleOverrideWinner(match: Match, winnerId: string) {
+    const supabase = createClient();
+    await supabase
+      .from('matches')
+      .update({ winner_id: winnerId, status: 'finalized' })
+      .eq('id', match.id);
+
+    const slot = match.matchIndex % 2 === 0 ? 'player1_id' : 'player2_id';
+    await supabase
+      .from('matches')
+      .update({ [slot]: winnerId })
+      .eq('tournament_id', id)
+      .eq('round_index', match.roundIndex + 1)
+      .eq('match_index', Math.floor(match.matchIndex / 2));
+
+    setMessage('Winner updated.');
+    load();
   }
 
   async function handleStartPlay() {
@@ -509,7 +557,7 @@ export default function TournamentAdminPage() {
         {(([
           { label: 'Players', value: players.length },
           { label: 'Ticket Price', value: formatCurrency(tournament.settings?.ticketPriceForFundraiser ?? 0) },
-          { label: 'School Revenue', value: formatCurrency((tournament.settings?.ticketPriceForFundraiser ?? 0) * players.length) },
+          { label: 'Total Raised', value: formatCurrency(calcRaised(players.length, tournament.settings?.ticketPriceForFundraiser ?? 0, donationTotal)) },
           ...(isSuperAdmin ? [{ label: 'Platform Fees', value: formatCurrency((tournament.settings?.systemTechFee ?? 5) * players.length) }] : []),
         ]) as { label: string; value: string | number }[]).map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-4">
@@ -542,18 +590,16 @@ export default function TournamentAdminPage() {
 
       {/* Bracket tab */}
       {tab === 'overview' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          {matches.length === 0 ? (
-            <p className="text-slate-400 text-center py-8">No bracket yet. Generate one above.</p>
-          ) : (
-            <BracketView
-              initialMatches={matches}
-              players={players}
-              maxPlayers={tournament.settings?.maxPlayers ?? 32}
-              tournamentId={id}
-              liveUpdates
-            />
-          )}
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6">
+          <BracketPanel
+            matches={matches}
+            players={players}
+            maxPlayers={tournament.settings?.maxPlayers ?? 32}
+            tournamentId={id}
+            liveUpdates
+            onSetWinner={handleOverrideWinner}
+            emptyMessage="No bracket yet. Generate one above."
+          />
         </div>
       )}
 
@@ -644,6 +690,9 @@ export default function TournamentAdminPage() {
             saved={settingsSaved}
             onSave={(patch, newName) => handleSaveSettings(patch, newName)}
           />
+
+          {/* Archive / Danger Zone */}
+          <ArchiveSection tournamentId={id} isArchived={!!((tournament as unknown as Record<string, unknown>)?.archived_at)} />
 
           <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
             <div>
@@ -794,7 +843,7 @@ function SettingsEditor({
     e.preventDefault();
     const patch: Partial<Tournament['settings']> = {};
     const price = parseFloat(ticketPrice);
-    if (!isNaN(price) && price >= 0) patch.ticketPriceForFundraiser = price;
+    if (!isNaN(price) && price >= 0) patch.ticketPriceForFundraiser = Math.round(price * 100) / 100;
     const maxNum = parseInt(maxPlayers);
     if (!isNaN(maxNum) && maxNum > 0) patch.maxPlayers = maxNum as Tournament['settings']['maxPlayers'];
     patch.tournamentDate = tournamentDate || undefined;
@@ -934,9 +983,13 @@ function SettingsEditor({
             <input
               type="number"
               min="0"
-              step="0.50"
+              step="0.01"
               value={ticketPrice}
               onChange={(e) => setTicketPrice(e.target.value)}
+              onBlur={(e) => {
+                const val = parseFloat(e.target.value);
+                if (!isNaN(val)) setTicketPrice(val.toFixed(2));
+              }}
               className="flex-1 px-3 py-2.5 text-sm focus:outline-none"
             />
           </div>

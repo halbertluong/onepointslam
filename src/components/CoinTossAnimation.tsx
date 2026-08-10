@@ -7,12 +7,18 @@ interface CoinTossAnimationProps {
   player1Name: string;
   player2Name: string;
   onResult: (serverId: 'player1' | 'player2') => void;
+  title?: string;
+  resultLabel?: string;
+  icon?: string;
 }
 
 export default function CoinTossAnimation({
   player1Name,
   player2Name,
   onResult,
+  title = 'Coin Toss — Server Selection',
+  resultLabel = 'serves first',
+  icon = '🎾',
 }: CoinTossAnimationProps) {
   const [phase, setPhase] = useState<'idle' | 'flipping' | 'result'>('idle');
   const [displayed, setDisplayed] = useState<string>(player1Name);
@@ -44,7 +50,7 @@ export default function CoinTossAnimation({
     <div className="flex flex-col items-center gap-6 p-6">
       <div className="text-center">
         <p className="text-sm font-medium text-slate-500 uppercase tracking-widest mb-2">
-          Coin Toss — Server Selection
+          {title}
         </p>
         <p className="text-slate-600 text-sm">
           {player1Name} vs {player2Name}
@@ -74,7 +80,7 @@ export default function CoinTossAnimation({
               transition={{ duration: 0.06 }}
               className="text-white font-bold text-sm leading-tight"
             >
-              {phase === 'idle' ? '🎾' : displayed}
+              {phase === 'idle' ? icon : displayed}
             </motion.span>
           </AnimatePresence>
         </motion.div>
@@ -89,7 +95,7 @@ export default function CoinTossAnimation({
           <p className="text-2xl font-bold" style={{ color: 'var(--tenant-primary)' }}>
             {winner === 'player1' ? player1Name : player2Name}
           </p>
-          <p className="text-slate-500 mt-1">serves first</p>
+          <p className="text-slate-500 mt-1">{resultLabel}</p>
         </motion.div>
       )}
 

@@ -13,8 +13,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Must be super_admin' }, { status: 403 });
   }
 
-  const body = await req.json();
-  const { targetEmail, origin, landingPath } = body as { targetEmail: string; origin: string; landingPath: string };
+  let body: { targetEmail: string; origin: string; landingPath: string };
+  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  const { targetEmail, origin, landingPath } = body;
   if (!targetEmail) return NextResponse.json({ error: 'Missing targetEmail' }, { status: 400 });
 
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -29,8 +30,11 @@ export async function POST(req: NextRequest) {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const base = origin ?? 'https://onepointbowl.vercel.app';
-  const redirectTo = `${base}/auth/confirm?next=${encodeURIComponent(landingPath ?? '/')}`;
+  void origin;
+  const base = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!base) return NextResponse.json({ error: 'NEXT_PUBLIC_SITE_URL not configured' }, { status: 500 });
+  const safeLandingPath = (landingPath && landingPath.startsWith('/')) ? landingPath : '/';
+  const redirectTo = `${base}/auth/confirm?next=${encodeURIComponent(safeLandingPath)}`;
 
   const { data, error } = await admin.auth.admin.generateLink({
     type: 'magiclink',

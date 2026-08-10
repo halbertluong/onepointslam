@@ -174,12 +174,12 @@ export default function BasketballPage() {
             🏀 One Point Bowl — Basketball Edition
           </div>
           <h1 className="text-5xl sm:text-7xl font-black mb-6 leading-none tracking-tight">
-            One Free Throw.<br />
-            <span style={{ color: PRIMARY }}>One Point.</span><br />
+            One Coin Flip.<br />
+            <span style={{ color: PRIMARY }}>One Shot.</span><br />
             One Champion.
           </h1>
           <p className="text-white/60 text-xl sm:text-2xl max-w-3xl mx-auto leading-relaxed mb-10">
-            The fastest fundraising tournament format for D1 basketball programs. A single free throw decides every match. 64 players. 90 minutes. Zero overhead.
+            The fastest fundraising tournament format for D1 basketball programs. One coin flip and one possession decides every match. 64 players. 90 minutes. Zero overhead.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a href="#waitlist"
@@ -198,7 +198,7 @@ export default function BasketballPage() {
       {/* Social proof bar */}
       <div className="bg-slate-900 text-white/50 text-sm font-semibold py-4 px-6 overflow-hidden">
         <div className="max-w-5xl mx-auto flex flex-wrap gap-x-10 gap-y-2 justify-center items-center text-center">
-          {['Single free throw decides each match', '90-second matchups', 'Full bracket in under 2 hours', 'Built for D1 programs', 'NIL-friendly fundraising'].map((t) => (
+          {['One coin flip, one possession, decisive every time', '90-second matchups', 'Full bracket in under 2 hours', 'Built for D1 programs', 'NIL-friendly fundraising'].map((t) => (
             <span key={t} className="flex items-center gap-2">
               <span style={{ color: PRIMARY }}>●</span> {t}
             </span>
@@ -238,13 +238,13 @@ export default function BasketballPage() {
           <div className="text-center mb-12">
             <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest text-white mb-4"
               style={{ backgroundColor: PRIMARY }}>How It Works</span>
-            <h2 className="text-4xl font-black text-slate-900 mb-4">One free throw. That&apos;s it.</h2>
-            <p className="text-slate-500 text-lg">Each match is decided by a single free throw attempt. Make it — you advance. Miss — you&apos;re out. Clean, dramatic, and done in 90 seconds.</p>
+            <h2 className="text-4xl font-black text-slate-900 mb-4">One possession. That&apos;s it.</h2>
+            <p className="text-slate-500 text-lg">Before each match, a coin flip decides who chooses their role — offense or defense. Make the shot, you advance. Get the stop as the defender — a miss, steal, or block — you advance. One possession decides it all.</p>
           </div>
           <div className="space-y-8">
-            <Step n={1} title="Players pay a small entry fee" desc="Set your entry at $20–$50. Across 64 players that's $1,280–$3,200 raised before a single free throw is taken." />
+            <Step n={1} title="Players pay a small entry fee" desc="Set your entry at $20–$50. Across 64 players that's $1,280–$3,200 raised before a single possession is played." />
             <Step n={2} title="Draw the bracket" desc="Our platform seeds players and generates the single-elimination bracket automatically. Donors, families, and fans can watch it update live." />
-            <Step n={3} title="One free throw per match" desc="Each player steps to the line. One shot. Make it, you advance. Miss, your opponent wins. The referee records the result and the bracket updates instantly." />
+            <Step n={3} title="Coin flip, then one shot" desc="A coin flip decides who chooses offense or defense — the other player gets the remaining role. One shot decides it: make it and the offensive player advances, miss it — or get stripped or blocked — and the defender advances. The referee records it instantly and the bracket updates in real time." />
             <Step n={4} title="Crown the champion" desc="The whole bracket resolves in under 2 hours for 64 players. Presentation, photos, and NIL activation all happen same day." />
           </div>
         </div>
@@ -259,7 +259,7 @@ export default function BasketballPage() {
             <h2 className="text-4xl font-black text-slate-900 mb-4">Everything you need, nothing you don&apos;t</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            <FeatureCard emoji="🏀" title="Free Throw Bracket Engine" desc="Automatic single-elimination seeding. Manage 8 to 256 players. BYEs handled automatically." />
+            <FeatureCard emoji="🏀" title="Possession Bracket Engine" desc="Automatic single-elimination seeding. Manage 8 to 256 players. BYEs handled automatically." />
             <FeatureCard emoji="📱" title="Referee Mobile App" desc="Referees score matches from their phone. No paper, no confusion, no delays." />
             <FeatureCard emoji="📺" title="Live Public Scoreboard" desc="Display the bracket on a TV courtside. Fans and families can follow on their phones — no login required." />
             <FeatureCard emoji="💰" title="Fundraising Calculator" desc="Set a goal, see the ticket price needed. Or set a price and see the projected raise. Live math." />
@@ -303,23 +303,23 @@ export default function BasketballPage() {
           <div className="text-center mb-10">
             <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest text-white mb-4"
               style={{ backgroundColor: PRIMARY }}>The Format Explained</span>
-            <h2 className="text-4xl font-black text-slate-900 mb-4">Why one free throw?</h2>
+            <h2 className="text-4xl font-black text-slate-900 mb-4">Why one possession?</h2>
           </div>
           <div className="bg-white rounded-2xl border border-slate-100 p-8 space-y-6 text-slate-600 leading-relaxed">
             <p>
-              <strong className="text-slate-900">The One Point Bowl format for basketball</strong> distills competition to its most dramatic single moment: the free throw. It is the one skill every player has — it requires technique, composure, and focus. Under pressure, in front of a crowd, it becomes a spectacle.
+              <strong className="text-slate-900">The One Point Bowl format for basketball</strong> distills competition to its most dramatic single moment: a defended possession. Before the match, a coin flip decides who chooses their role — offense or defense — and the other player is automatically assigned the one that&apos;s left. Then it&apos;s one shot, under pressure, in front of a crowd.
             </p>
             <p>
-              Each match takes 90 seconds. Two players step to the line. One shoots. Win or go home. A 64-player bracket resolves in under 2 hours on a single court — or faster across multiple courts simultaneously.
+              Each match takes 90 seconds. Make the shot and the offensive player advances. Miss it, get stripped, or get blocked and the defensive player advances instead — the outcome is always decisive, so there&apos;s never a tiebreaker to run. A 64-player bracket resolves in under 2 hours on a single court — or faster across multiple courts simultaneously.
             </p>
             <p>
-              <strong className="text-slate-900">Single elimination</strong> means every shot matters. There are no second chances. This creates genuine drama even among recreational players, and gives elite players a chance to demonstrate composure.
+              <strong className="text-slate-900">Single elimination</strong> means every possession matters. There are no second chances. This creates genuine drama even among recreational players, and gives elite players a chance to demonstrate composure on both ends of the floor.
             </p>
             <p>
               <strong className="text-slate-900">For fundraising:</strong> a $25 entry fee across 64 participants is $1,600 raised in under 2 hours. Add a $5 donation from spectators per match watched, and you&apos;re well above that. The format is lean, fast, and memorable.
             </p>
             <div className="rounded-xl p-5 text-white text-sm font-semibold" style={{ backgroundColor: PRIMARY }}>
-              💡 Pro tip: pair the tournament with a shooting challenge for donors ($10 to shoot a free throw, proceeds go to the program). Your athletes can coach them. It doubles the engagement.
+              💡 Pro tip: since either player can win the coin flip and choose to play defense, encourage your lockdown defenders to lean into the stop. Donors love watching a real contest, not just an uncontested shot.
             </div>
           </div>
         </div>

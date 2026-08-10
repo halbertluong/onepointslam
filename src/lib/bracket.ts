@@ -1,4 +1,4 @@
-import type { Player, Match, TournamentSettings } from '@/types';
+import type { Player, Match, TournamentSettings, KickOutcome, PossessionOutcome } from '@/types';
 
 function nextPowerOf2(n: number): number {
   let p = 1;
@@ -72,19 +72,22 @@ export function generateBracket(
 
   // Round 0 (first round)
   for (let i = 0; i < matchesPerRound; i++) {
-    const p1 = slots[i * 2];
-    const p2 = slots[i * 2 + 1];
-    const isByeMatch = p1 === 'BYE' || p2 === 'BYE';
+    const raw1 = slots[i * 2];
+    const raw2 = slots[i * 2 + 1];
+    const isByeMatch = raw1 === 'BYE' || raw2 === 'BYE';
+    // Store null for BYE slots — 'BYE' is an internal sentinel only, never written to the DB
+    const p1: string | null = raw1 === 'BYE' ? null : raw1;
+    const p2: string | null = raw2 === 'BYE' ? null : raw2;
 
     matches.push({
-      id: `match-r0-${i}`,
+      id: `${tournamentId}-r0-${i}`,
       tournamentId,
       roundIndex: 0,
       matchIndex: i,
       player1Id: p1,
       player2Id: p2,
       serverPlayerId: null,
-      winnerId: isByeMatch ? (p1 !== 'BYE' ? (p1 as string) : (p2 as string)) : null,
+      winnerId: isByeMatch ? (p1 ?? p2) : null,
       status: isByeMatch ? 'walkover' : 'scheduled',
       courtNumber: undefined,
     });
@@ -96,7 +99,7 @@ export function generateBracket(
     const count = P / Math.pow(2, r + 1);
     for (let i = 0; i < count; i++) {
       matches.push({
-        id: `match-r${r}-${i}`,
+        id: `${tournamentId}-r${r}-${i}`,
         tournamentId,
         roundIndex: r,
         matchIndex: i,
@@ -155,6 +158,33 @@ export function advanceWinner(
     }
     return m;
   });
+}
+
+/**
+ * One Goal Bowl (soccer): the winner follows directly from the kick outcome.
+ * A goal advances the kicker; a miss or a save advances the keeper. There is
+ * no tiebreaker — the outcome is always decisive.
+ */
+export function determineOneGoalBowlWinner(
+  kickerPlayerId: string,
+  keeperPlayerId: string,
+  outcome: KickOutcome,
+): string {
+  return outcome === 'goal' ? kickerPlayerId : keeperPlayerId;
+}
+
+/**
+ * One Point Bowl (basketball): the winner follows directly from the
+ * possession outcome. A made shot advances the offensive player; a miss,
+ * steal, or block advances the defensive player. There is no tiebreaker —
+ * the outcome is always decisive.
+ */
+export function determineOnePointBowlWinner(
+  offensePlayerId: string,
+  defensePlayerId: string,
+  outcome: PossessionOutcome,
+): string {
+  return outcome === 'made' ? offensePlayerId : defensePlayerId;
 }
 
 export function getRoundsCount(maxPlayers: number): number {

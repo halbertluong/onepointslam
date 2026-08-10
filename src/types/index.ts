@@ -23,6 +23,9 @@ export type ServeRuleProfile = 'one_serve_sudden_death' | 'two_serves_traditiona
 export type ServerDetermination = 'random_coin_toss' | 'referee_manual_override';
 export type ReceivingSideSelection = 'server_choice' | 'ad_court_fixed' | 'deuce_court_fixed';
 
+/** Which sport a tournament runs. Defaults to 'tennis' when unset, for backward compatibility. */
+export type Sport = 'tennis' | 'basketball' | 'soccer';
+
 export interface PrizePlace {
   place: number;
   type: 'fixed' | 'percentage';
@@ -30,6 +33,8 @@ export interface PrizePlace {
 }
 
 export interface TournamentSettings {
+  /** Defaults to 'tennis' when omitted (pre-dates multi-sport support). */
+  sport?: Sport;
   maxPlayers: MaxPlayers;
   ticketPriceForFundraiser: number;
   systemTechFee: number;
@@ -42,6 +47,8 @@ export interface TournamentSettings {
   numberOfCourts?: number;
   tournamentDate?: string;
   prizePlaces?: PrizePlace[];
+  fundraisingGoal?: number;
+  inviteCode?: string;
 }
 
 export type TournamentStatus =
@@ -77,6 +84,7 @@ export interface Player {
   utrRating?: number;
   age?: number;
   status: PlayerStatus;
+  paymentStatus?: 'pending' | 'paid' | 'failed';
   stripePaymentIntentId?: string;
 }
 
@@ -93,6 +101,7 @@ export function mapPlayer(row: Record<string, unknown>): Player {
     utrRating: (row.utr_rating ?? row.utrRating) as number | undefined,
     age: row.age as number | undefined,
     status: (row.status as PlayerStatus) ?? 'registered',
+    paymentStatus: (row.payment_status ?? row.paymentStatus) as 'pending' | 'paid' | 'failed' | undefined,
     stripePaymentIntentId: (row.stripe_payment_intent_id ?? row.stripePaymentIntentId) as string | undefined,
   };
 }
@@ -105,6 +114,12 @@ export type MatchStatus =
   | 'finalized'
   | 'walkover';
 
+/** Outcome of the single penalty-kick attempt in a One Goal Bowl (soccer) match. */
+export type KickOutcome = 'goal' | 'miss' | 'saved';
+
+/** Outcome of the single possession in a One Point Bowl (basketball) match. */
+export type PossessionOutcome = 'made' | 'missed' | 'stolen' | 'blocked';
+
 export interface Match {
   id: string;
   tournamentId: string;
@@ -116,4 +131,40 @@ export interface Match {
   winnerId: string | null;
   status: MatchStatus;
   courtNumber?: number;
+  /** One Goal Bowl (soccer): the player who takes the penalty kick, chosen before the kick. */
+  kickerPlayerId?: string | null;
+  /** One Goal Bowl (soccer): the player defending the goal, auto-assigned as the remaining role. */
+  keeperPlayerId?: string | null;
+  /** One Goal Bowl (soccer): result of the single kick attempt. */
+  kickOutcome?: KickOutcome | null;
+  /** One Point Bowl (basketball): the player who won the pre-possession coin flip and chose their role. */
+  coinFlipWinnerId?: string | null;
+  /** One Point Bowl (basketball): the player taking the shot, chosen (or auto-assigned) after the coin flip. */
+  offensePlayerId?: string | null;
+  /** One Point Bowl (basketball): the player defending the possession, auto-assigned as the remaining role. */
+  defensePlayerId?: string | null;
+  /** One Point Bowl (basketball): result of the single possession. */
+  possessionOutcome?: PossessionOutcome | null;
+}
+
+export function mapMatch(row: Record<string, unknown>): Match {
+  return {
+    id: row.id as string,
+    tournamentId: (row.tournament_id ?? row.tournamentId) as string,
+    roundIndex: (row.round_index ?? row.roundIndex) as number,
+    matchIndex: (row.match_index ?? row.matchIndex) as number,
+    player1Id: (row.player1_id ?? row.player1Id) as string | null,
+    player2Id: (row.player2_id ?? row.player2Id) as string | null,
+    serverPlayerId: (row.server_player_id ?? row.serverPlayerId) as string | null,
+    winnerId: (row.winner_id ?? row.winnerId) as string | null,
+    status: (row.status as MatchStatus) ?? 'scheduled',
+    courtNumber: (row.court_number ?? row.courtNumber) as number | undefined,
+    kickerPlayerId: (row.kicker_player_id ?? row.kickerPlayerId) as string | null | undefined,
+    keeperPlayerId: (row.keeper_player_id ?? row.keeperPlayerId) as string | null | undefined,
+    kickOutcome: (row.kick_outcome ?? row.kickOutcome) as KickOutcome | null | undefined,
+    coinFlipWinnerId: (row.coin_flip_winner_id ?? row.coinFlipWinnerId) as string | null | undefined,
+    offensePlayerId: (row.offense_player_id ?? row.offensePlayerId) as string | null | undefined,
+    defensePlayerId: (row.defense_player_id ?? row.defensePlayerId) as string | null | undefined,
+    possessionOutcome: (row.possession_outcome ?? row.possessionOutcome) as PossessionOutcome | null | undefined,
+  };
 }
