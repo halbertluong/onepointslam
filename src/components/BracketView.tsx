@@ -43,6 +43,32 @@ function getPlayerName(id: string | null | undefined, players: Player[], isBye?:
   return players.find((p) => p.id === id)?.fullName ?? 'TBD';
 }
 
+// ── Drag ghost (touch) ────────────────────────────────────────────────────────
+const ghost = typeof document !== 'undefined'
+  ? (() => {
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;padding:6px 12px;background:#1d4ed8;color:#fff;border-radius:10px;font-size:13px;font-weight:600;white-space:nowrap;opacity:0;transition:opacity .1s;box-shadow:0 4px 16px rgba(0,0,0,.25)';
+      document.body.appendChild(el);
+      return el;
+    })()
+  : null;
+
+function showGhost(x: number, y: number, label: string) {
+  if (!ghost) return;
+  ghost.textContent = label;
+  ghost.style.left = `${x + 14}px`;
+  ghost.style.top  = `${y - 20}px`;
+  ghost.style.opacity = '1';
+}
+function moveGhost(x: number, y: number) {
+  if (!ghost) return;
+  ghost.style.left = `${x + 14}px`;
+  ghost.style.top  = `${y - 20}px`;
+}
+function hideGhost() {
+  if (ghost) ghost.style.opacity = '0';
+}
+
 // ── Player slot ───────────────────────────────────────────────────────────────
 function PlayerSlot({
   id, players, isWinner, isBye, matchId, slot, dragging, onDragStart, onDrop, editable, onSetWinner,
@@ -67,14 +93,49 @@ function PlayerSlot({
   const isClickable = !!onSetWinner;
   const Tag = isClickable ? 'button' : 'div';
 
+  function handleTouchStart(e: React.TouchEvent) {
+    if (!isDraggable) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    onDragStart({ matchId, slot });
+    showGhost(t.clientX, t.clientY, name);
+  }
+
+  function handleTouchMove(e: React.TouchEvent) {
+    if (!isDraggable) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    moveGhost(t.clientX, t.clientY);
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (!isDraggable) return;
+    hideGhost();
+    const t = e.changedTouches[0];
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+    const target = el?.closest('[data-slot]');
+    if (target) {
+      const tMatchId = target.getAttribute('data-match-id')!;
+      const tSlot    = target.getAttribute('data-slot') as 'p1' | 'p2';
+      onDrop({ matchId: tMatchId, slot: tSlot });
+    } else {
+      onDrop({ matchId, slot }); // drop on self = cancel
+    }
+  }
+
   return (
     <Tag
       type={isClickable ? 'button' : undefined}
       onClick={onSetWinner}
       draggable={isDraggable}
+      data-match-id={editable ? matchId : undefined}
+      data-slot={editable ? slot : undefined}
       onDragStart={isDraggable ? () => onDragStart({ matchId, slot }) : undefined}
       onDragOver={editable ? (e) => e.preventDefault() : undefined}
       onDrop={editable ? () => onDrop({ matchId, slot }) : undefined}
+      onTouchStart={isDraggable ? handleTouchStart : undefined}
+      onTouchMove={isDraggable ? handleTouchMove : undefined}
+      onTouchEnd={isDraggable ? handleTouchEnd : undefined}
       style={{ height: CARD_H / 2 }}
       className={[
         'w-full px-3 flex items-center justify-between gap-1 border-b border-slate-100 overflow-hidden transition-colors select-none text-left',
@@ -269,7 +330,7 @@ export default function BracketView({
   const totalH         = numFirstRound * CARD_H;
 
   return (
-    <div className="overflow-x-auto pb-4">
+    <div className="overflow-x-auto pb-4" style={editable ? { touchAction: 'none' } : undefined}>
       {/* Heading row */}
       <div className="flex mb-4">
         {rounds.map((_, r) => (
