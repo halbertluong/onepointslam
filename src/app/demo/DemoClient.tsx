@@ -154,30 +154,30 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Tournament Date
-              </label>
-              <input
-                type="date"
-                value={form.date}
-                onChange={(e) => set('date', e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Prize Money ($)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={form.prizeMoney}
-                onChange={(e) => set('prizeMoney', parseFloat(e.target.value) || 0)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Tournament Date
+            </label>
+            <input
+              type="date"
+              value={form.date}
+              onChange={(e) => set('date', e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none appearance-none"
+              style={{ minHeight: '42px', colorScheme: 'light' }}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Prize Money ($)
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={form.prizeMoney}
+              onChange={(e) => set('prizeMoney', parseFloat(e.target.value) || 0)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            />
           </div>
 
           <div>
