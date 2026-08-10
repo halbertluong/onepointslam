@@ -187,10 +187,11 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
                 Number of Courts
               </label>
               <input
-                type="text"
-                inputMode="numeric"
+                type="number"
+                min="1"
+                max="20"
                 value={numberOfCourts}
-                onChange={(e) => setNumberOfCourts(e.target.value.replace(/[^0-9]/g, ''))}
+                onChange={(e) => setNumberOfCourts(e.target.value)}
                 onFocus={(e) => e.target.select()}
                 className={inputCls}
                 placeholder="1"
