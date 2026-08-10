@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import BracketView from '@/components/BracketView';
 import TournamentStatsPanel from '@/components/TournamentStatsPanel';
@@ -388,13 +388,27 @@ function RefereeView({
   matches,
   players,
   onDeclareWinner,
+  initialMatchId,
+  onClearInitialMatch,
 }: {
   config: TournamentConfig;
   matches: Match[];
   players: DemoPlayer[];
   onDeclareWinner: (matchId: string, winnerId: string) => void;
+  initialMatchId?: string | null;
+  onClearInitialMatch?: () => void;
 }) {
-  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(initialMatchId ?? null);
+
+  // When parent pushes a match to open (clicked from bracket), sync it in
+  useEffect(() => {
+    if (initialMatchId) setSelectedMatchId(initialMatchId);
+  }, [initialMatchId]);
+
+  function selectMatch(id: string | null) {
+    setSelectedMatchId(id);
+    if (!id) onClearInitialMatch?.();
+  }
 
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
 
@@ -441,10 +455,11 @@ function RefereeView({
             player1={p1 as Player}
             player2={p2 as Player}
             tournamentName={config.name}
-            onDeclareWinner={(winnerId) => { onDeclareWinner(match.id, winnerId); setSelectedMatchId(null); }}
-            onWalkover={(winnerId) => { onDeclareWinner(match.id, winnerId); setSelectedMatchId(null); }}
-            onBack={() => setSelectedMatchId(null)}
-            onNext={() => setSelectedMatchId(null)}
+            useRandomToss
+            onDeclareWinner={(winnerId) => { onDeclareWinner(match.id, winnerId); selectMatch(null); }}
+            onWalkover={(winnerId) => { onDeclareWinner(match.id, winnerId); selectMatch(null); }}
+            onBack={() => selectMatch(null)}
+            onNext={() => selectMatch(null)}
           />
         </div>
       );
@@ -457,7 +472,7 @@ function RefereeView({
         matches={matchRows}
         tournaments={[demoTournament]}
         players={playerRecords}
-        onMatchClick={(row) => setSelectedMatchId(row.id)}
+        onMatchClick={(row) => selectMatch(row.id)}
       />
     </div>
   );
@@ -524,10 +539,12 @@ function SpectatorView({
   config,
   matches,
   players,
+  onMatchClick,
 }: {
   config: TournamentConfig;
   matches: Match[];
   players: DemoPlayer[];
+  onMatchClick?: (matchId: string) => void;
 }) {
   const completed = matches.filter((m) => m.status === 'finalized' || m.status === 'walkover');
 
@@ -543,6 +560,14 @@ function SpectatorView({
         </div>
         <p className="text-xs text-blue-500 mt-1 font-medium">🔴 Live — updates in real time</p>
       </div>
+      {onMatchClick && (
+        <div className="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center gap-2">
+          <span className="text-base">🎾</span>
+          <span className="text-xs font-medium text-blue-700">
+            Click any unplayed match to open the referee experience — coin toss, serve/receive, and declare a winner.
+          </span>
+        </div>
+      )}
       <div className="px-4 py-6 overflow-x-auto">
         <div className="bg-white rounded-2xl border border-slate-200 p-4 min-w-max">
           <BracketView
@@ -550,6 +575,7 @@ function SpectatorView({
             players={players}
             maxPlayers={Math.max(8, players.length)}
             liveUpdates={false}
+            onMatchClick={onMatchClick}
           />
         </div>
       </div>
@@ -760,11 +786,13 @@ function BracketEditorView({
   matches,
   players,
   onSwap,
+  onMatchClick,
 }: {
   config: TournamentConfig;
   matches: Match[];
   players: DemoPlayer[];
   onSwap: (aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') => void;
+  onMatchClick?: (matchId: string) => void;
 }) {
   const anyResults = matches.some((m) => m.winnerId);
   return (
@@ -785,6 +813,14 @@ function BracketEditorView({
           </span>
         </div>
       )}
+      {onMatchClick && (
+        <div className="bg-emerald-50 border-b border-emerald-100 px-4 py-2 flex items-center gap-2">
+          <span className="text-base">🎾</span>
+          <span className="text-xs font-medium text-emerald-700">
+            Click any unplayed match to referee it — coin toss, serve assignment, and declare a winner.
+          </span>
+        </div>
+      )}
       <div className="px-4 py-6 overflow-x-auto">
         <div className="bg-white rounded-2xl border border-slate-200 p-6 min-w-max">
           <BracketView
@@ -794,6 +830,7 @@ function BracketEditorView({
             liveUpdates={false}
             editable={!anyResults}
             onSwap={!anyResults ? onSwap : undefined}
+            onMatchClick={onMatchClick}
           />
         </div>
       </div>
@@ -823,10 +860,17 @@ function BracketStage({
   initialMatches: Match[];
 }) {
   const [matches, setMatches] = useState<Match[]>(initialMatches);
-  const [view, setView] = useState<DemoView>('director');
+  const [view, setView] = useState<DemoView>('referee');
+  const [pendingMatchId, setPendingMatchId] = useState<string | null>(null);
   const [mobile, setMobile] = useState(false);
   const [speeding, setSpeeding] = useState(false);
   const [shareMsg, setShareMsg] = useState('');
+
+  // Open a specific match in the referee flow from any bracket view
+  function openMatchAsReferee(matchId: string) {
+    setPendingMatchId(matchId);
+    setView('referee');
+  }
 
   const declareWinner = useCallback((matchId: string, winnerId: string) => {
     setMatches((prev) => advanceWinner(prev, matchId, winnerId));
@@ -883,10 +927,16 @@ function BracketStage({
   const viewContent = (
     <div className="flex-1 overflow-auto" style={mobile ? { maxWidth: 390, margin: '0 auto' } : {}}>
       {view === 'director' && <DirectorView config={config} players={players} matches={matches} onSetWinner={declareWinner} />}
-      {view === 'referee' && <RefereeView config={config} matches={matches} players={players} onDeclareWinner={declareWinner} />}
+      {view === 'referee' && (
+        <RefereeView
+          config={config} matches={matches} players={players} onDeclareWinner={declareWinner}
+          initialMatchId={pendingMatchId}
+          onClearInitialMatch={() => setPendingMatchId(null)}
+        />
+      )}
       {view === 'signup' && <SignupView config={config} playerCount={players.length} />}
-      {view === 'spectator' && <SpectatorView config={config} matches={matches} players={players} />}
-      {view === 'bracket' && <BracketEditorView config={config} matches={matches} players={players} onSwap={swapPlayers} />}
+      {view === 'spectator' && <SpectatorView config={config} matches={matches} players={players} onMatchClick={openMatchAsReferee} />}
+      {view === 'bracket' && <BracketEditorView config={config} matches={matches} players={players} onSwap={swapPlayers} onMatchClick={openMatchAsReferee} />}
       {view === 'stats' && <StatsView config={config} players={players} matches={matches} />}
       {view === 'results' && <ResultsView config={config} matches={matches} players={players} />}
     </div>

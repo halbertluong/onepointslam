@@ -25,6 +25,8 @@ interface BracketViewProps {
   resultEditable?: boolean;
   /** Called with the match and the chosen player id when a director sets/overrides a winner in edit mode. */
   onSetWinner?: (match: Match, winnerId: string) => void | Promise<void>;
+  /** Called when a match card is clicked (e.g. to open referee view) */
+  onMatchClick?: (matchId: string) => void;
 }
 
 type DragKey = { matchId: string; slot: 'p1' | 'p2' } | null;
@@ -104,7 +106,7 @@ function PlayerSlot({
 
 // ── Match card ────────────────────────────────────────────────────────────────
 function MatchCard({
-  match, players, topPx, editable, dragging, onDragStart, onDrop, resultEditable, onSetWinner,
+  match, players, topPx, editable, dragging, onDragStart, onDrop, resultEditable, onSetWinner, onMatchClick,
 }: {
   match: Match;
   players: Player[];
@@ -115,9 +117,13 @@ function MatchCard({
   onDrop: (to: { matchId: string; slot: 'p1' | 'p2' }) => void;
   resultEditable?: boolean;
   onSetWinner?: (match: Match, winnerId: string) => void | Promise<void>;
+  onMatchClick?: (matchId: string) => void;
 }) {
   const isP1Winner = match.winnerId === match.player1Id;
   const isP2Winner = match.winnerId === match.player2Id;
+  const isClickable = !!onMatchClick && !match.winnerId && match.status !== 'walkover'
+    && match.player1Id && match.player1Id !== 'BYE'
+    && match.player2Id && match.player2Id !== 'BYE';
   const statusClass =
     match.status === 'playing'
       ? 'playing'
@@ -131,8 +137,10 @@ function MatchCard({
 
   return (
     <div
-      className={`absolute bracket-match ${statusClass} overflow-hidden ${isResultEditable ? 'ring-1 ring-blue-200' : ''}`}
+      className={`absolute bracket-match ${statusClass} overflow-hidden ${isResultEditable ? 'ring-1 ring-blue-200' : ''} ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-blue-400 hover:ring-offset-1 transition-shadow' : ''}`}
       style={{ top: topPx, left: 0, width: COL_W, height: CARD_H }}
+      onClick={isClickable ? () => onMatchClick!(match.id) : undefined}
+      title={isClickable ? 'Click to referee this match' : undefined}
     >
       {match.status === 'playing' && (
         <div className="h-0.5 w-full" style={{ backgroundColor: 'var(--tenant-primary, #1d4ed8)' }} />
@@ -202,6 +210,7 @@ export default function BracketView({
   onSwap,
   resultEditable,
   onSetWinner,
+  onMatchClick,
 }: BracketViewProps) {
   const [matches,  setMatches]  = useState<Match[]>(initialMatches);
   const [dragging, setDragging] = useState<DragKey>(null);
@@ -296,6 +305,7 @@ export default function BracketView({
                     onDrop={handleDrop}
                     resultEditable={resultEditable}
                     onSetWinner={onSetWinner}
+                    onMatchClick={onMatchClick}
                   />
                 ))}
               </div>
