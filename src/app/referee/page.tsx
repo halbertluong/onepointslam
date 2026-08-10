@@ -34,22 +34,31 @@ export default async function RefereeQueuePage() {
     return <EmptyQueue reason="No live tournaments in your organization right now." />;
   }
 
-  const { data: rawMatches } = await supabase
-    .from('matches')
-    .select('*')
-    .in('tournament_id', tournamentIds)
-    .in('status', ['scheduled', 'court_assigned', 'warmup', 'playing'])
-    .is('winner_id', null)
-    .not('player1_id', 'is', null)
-    .not('player2_id', 'is', null)
-    .neq('player1_id', 'BYE')
-    .neq('player2_id', 'BYE')
-    .order('match_index');
+  const [{ data: rawMatches }, { data: rawAllMatches }] = await Promise.all([
+    supabase
+      .from('matches')
+      .select('*')
+      .in('tournament_id', tournamentIds)
+      .in('status', ['scheduled', 'court_assigned', 'warmup', 'playing'])
+      .is('winner_id', null)
+      .not('player1_id', 'is', null)
+      .not('player2_id', 'is', null)
+      .neq('player1_id', 'BYE')
+      .neq('player2_id', 'BYE')
+      .order('match_index'),
+    supabase
+      .from('matches')
+      .select('*')
+      .in('tournament_id', tournamentIds)
+      .order('round_index')
+      .order('match_index'),
+  ]);
 
   const matches = rawMatches ?? [];
+  const allMatches = rawAllMatches ?? [];
 
   const playerIds = [...new Set(
-    matches.flatMap((m) => [m.player1_id, m.player2_id]).filter(Boolean)
+    allMatches.flatMap((m) => [m.player1_id, m.player2_id]).filter(Boolean)
   )];
 
   const { data: players } = playerIds.length > 0
@@ -71,6 +80,7 @@ export default async function RefereeQueuePage() {
   return (
     <RefereeQueueClient
       matches={matches}
+      allMatches={allMatches}
       tournaments={tournamentRows}
       players={playerMap}
     />

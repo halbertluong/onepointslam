@@ -29,6 +29,8 @@ export type { MatchRow, TournamentRow };
 
 interface Props {
   matches: MatchRow[];
+  /** All matches for the tournament (including finalized) — used for full bracket view */
+  allMatches?: MatchRow[];
   tournaments: TournamentRow[];
   players: Record<string, Record<string, unknown>>;
   /** When provided, renders match cards as buttons instead of Links */
@@ -66,7 +68,7 @@ function toPlayerType(p: Record<string, unknown>): Player {
   };
 }
 
-export default function RefereeQueueClient({ matches, tournaments, players, onMatchClick }: Props) {
+export default function RefereeQueueClient({ matches, allMatches, tournaments, players, onMatchClick }: Props) {
   const [view, setView] = useState<'list' | 'bracket'>('list');
 
   const tournamentMap = Object.fromEntries(tournaments.map((t) => [t.id, t]));
@@ -83,7 +85,7 @@ export default function RefereeQueueClient({ matches, tournaments, players, onMa
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="px-4 py-6 max-w-5xl mx-auto space-y-6">
+      <div className="px-4 py-6 space-y-6" style={{ maxWidth: view === 'bracket' ? 'none' : '64rem', margin: '0 auto' }}>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-black">Referee Console</h1>
@@ -213,9 +215,10 @@ export default function RefereeQueueClient({ matches, tournaments, players, onMa
           const logoUrl = tenant?.logo_url as string | undefined;
           const maxPlayers = (t?.settings?.maxPlayers as number | undefined) ?? 32;
 
-          const allTournamentMatches = tMatches.map(toMatchType);
+          const bracketSource = (allMatches ?? matches).filter((m) => m.tournament_id === tournamentId);
+          const allTournamentMatches = bracketSource.map(toMatchType);
           const allPlayers = [...new Set(
-            tMatches.flatMap((m) => [m.player1_id, m.player2_id]).filter(Boolean) as string[]
+            bracketSource.flatMap((m) => [m.player1_id, m.player2_id]).filter(Boolean) as string[]
           )].map((id) => players[id]).filter(Boolean).map(toPlayerType);
 
           return (
@@ -235,7 +238,7 @@ export default function RefereeQueueClient({ matches, tournaments, players, onMa
                   <p className="text-sm font-bold text-white/70">{t?.name}</p>
                 </div>
               </div>
-              <div className="bg-white rounded-2xl overflow-auto">
+              <div className="bg-white rounded-2xl overflow-x-auto px-4 py-4">
                 <BracketView
                   initialMatches={allTournamentMatches}
                   players={allPlayers}
