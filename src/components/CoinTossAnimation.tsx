@@ -41,7 +41,6 @@ export default function CoinTossAnimation({
         setDisplayed(winnerName);
         setWinner(result);
         setPhase('result');
-        setTimeout(() => onResult(result), 600);
       }
     }, interval);
   }, [player1Name, player2Name, onResult]);
@@ -90,12 +89,20 @@ export default function CoinTossAnimation({
         <motion.div
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="text-center"
+          className="text-center space-y-4 w-full max-w-xs"
         >
-          <p className="text-2xl font-bold" style={{ color: 'var(--tenant-primary)' }}>
-            {winner === 'player1' ? player1Name : player2Name}
-          </p>
-          <p className="text-slate-500 mt-1">{resultLabel}</p>
+          <div>
+            <p className="text-2xl font-bold" style={{ color: 'var(--tenant-primary)' }}>
+              {winner === 'player1' ? player1Name : player2Name}
+            </p>
+            <p className="text-slate-500 mt-1">{resultLabel}</p>
+          </div>
+          <button
+            onClick={() => onResult(winner)}
+            className="btn-primary tap-target w-full rounded-2xl"
+          >
+            Continue →
+          </button>
         </motion.div>
       )}
 
