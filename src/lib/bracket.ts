@@ -187,6 +187,28 @@ export function determineOnePointBowlWinner(
   return outcome === 'made' ? offensePlayerId : defensePlayerId;
 }
 
+export function reverseWinner(matches: Match[], matchId: string): Match[] {
+  const match = matches.find((m) => m.id === matchId);
+  if (!match?.winnerId) return matches;
+
+  const prevWinnerId = match.winnerId;
+  const nextRound = match.roundIndex + 1;
+  const nextMatchIndex = Math.floor(match.matchIndex / 2);
+  const slot = match.matchIndex % 2 === 0 ? 'player1Id' : 'player2Id';
+
+  const nextMatch = matches.find((m) => m.roundIndex === nextRound && m.matchIndex === nextMatchIndex);
+  // Cascade: if the player already won their next match, reverse that too first
+  let updated = nextMatch?.winnerId === prevWinnerId
+    ? reverseWinner(matches, nextMatch!.id)
+    : [...matches];
+
+  return updated.map((m) => {
+    if (m.id === matchId) return { ...m, winnerId: null, status: 'scheduled' as const };
+    if (m.roundIndex === nextRound && m.matchIndex === nextMatchIndex) return { ...m, [slot]: null };
+    return m;
+  });
+}
+
 export function getRoundsCount(maxPlayers: number): number {
   return Math.log2(nextPowerOf2(maxPlayers));
 }

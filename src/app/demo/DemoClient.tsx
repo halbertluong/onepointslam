@@ -15,12 +15,14 @@ import {
   getTournamentStats,
   type DemoPlayer,
 } from './demoData';
-import { advanceWinner, getRoundName, getRoundsCount } from '@/lib/bracket';
+import { advanceWinner, reverseWinner, getRoundName, getRoundsCount } from '@/lib/bracket';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Stage = 'setup' | 'participants' | 'bracket';
-type DemoView = 'director' | 'referee' | 'signup' | 'spectator' | 'bracket' | 'stats' | 'results';
+type DemoView = 'registrant' | 'director' | 'referee' | 'spectator';
+type DirectorSubView = 'dashboard' | 'bracket' | 'queue' | 'stats' | 'results';
+type RefereeSubView = 'queue' | 'bracket' | 'stats' | 'results';
 
 interface TournamentConfig {
   name: string;
@@ -384,11 +386,13 @@ function DirectorView({
   players,
   matches,
   onSetWinner,
+  onSwap,
 }: {
   config: TournamentConfig;
   players: DemoPlayer[];
   matches: Match[];
   onSetWinner: (matchId: string, winnerId: string) => void;
+  onSwap: (aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') => void;
 }) {
   const demoTournament = {
     name: config.name,
@@ -402,9 +406,11 @@ function DirectorView({
     },
   };
 
+  const anyResults = matches.some((m) => m.winnerId);
+
   return (
     <div className="bg-slate-50 min-h-full px-4 sm:px-6 py-6" style={{ '--tenant-primary': PRIMARY } as React.CSSProperties}>
-      <div className="max-w-[1600px] mx-auto">
+      <div className="max-w-[1600px] mx-auto space-y-6">
         <TournamentStatsPanel
           tournament={demoTournament}
           players={players}
@@ -412,6 +418,77 @@ function DirectorView({
           fundraisingGoal={config.fundraisingGoal}
           onSetWinner={(match, winnerId) => onSetWinner(match.id, winnerId)}
         />
+        {/* Bracket editor embedded in dashboard */}
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-slate-800 text-sm">Bracket Editor</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {anyResults ? 'Swap players before matches are played.' : 'Drag any player to swap matchups.'}
+              </p>
+            </div>
+            {!anyResults && (
+              <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600">
+                <span>🔀</span><span>Drag to rearrange</span>
+              </div>
+            )}
+          </div>
+          <div className="px-5 py-5 overflow-x-auto">
+            <BracketView
+              initialMatches={matches}
+              players={players}
+              maxPlayers={Math.max(8, players.length)}
+              liveUpdates={false}
+              editable={!anyResults}
+              onSwap={!anyResults ? onSwap : undefined}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── View: Bracket Declare (win/loss + reversal) ───────────────────────────────
+
+function BracketDeclareView({
+  config,
+  matches,
+  players,
+  onSetWinner,
+  onReverseMatch,
+}: {
+  config: TournamentConfig;
+  matches: Match[];
+  players: DemoPlayer[];
+  onSetWinner: (matchId: string, winnerId: string) => void;
+  onReverseMatch: (matchId: string) => void;
+}) {
+  return (
+    <div className="bg-slate-50 min-h-full">
+      <div className="bg-white border-b border-slate-200 px-4 py-3">
+        <h2 className="font-black text-slate-900 text-base">{config.name} — Bracket</h2>
+        <p className="text-xs text-slate-500 mt-0.5">
+          Click a player to declare the winner. Click ↩ on any result to reset it.
+        </p>
+      </div>
+      <div className="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center gap-3">
+        <span className="text-xs font-medium text-blue-700">✏️ Click a player name to set the winner</span>
+        <span className="text-blue-300">·</span>
+        <span className="text-xs font-medium text-slate-500">↩ to reverse a result</span>
+      </div>
+      <div className="px-4 py-6 overflow-x-auto">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 min-w-max">
+          <BracketView
+            initialMatches={matches}
+            players={players}
+            maxPlayers={Math.max(8, players.length)}
+            liveUpdates={false}
+            resultEditable
+            onSetWinner={(match, winnerId) => onSetWinner(match.id, winnerId)}
+            onReverseMatch={onReverseMatch}
+          />
+        </div>
       </div>
     </div>
   );
@@ -580,12 +657,10 @@ function SpectatorView({
   config,
   matches,
   players,
-  onMatchClick,
 }: {
   config: TournamentConfig;
   matches: Match[];
   players: DemoPlayer[];
-  onMatchClick?: (matchId: string) => void;
 }) {
   const completed = matches.filter((m) => m.status === 'finalized' || m.status === 'walkover');
 
@@ -601,14 +676,13 @@ function SpectatorView({
         </div>
         <p className="text-xs text-blue-500 mt-1 font-medium">🔴 Live — updates in real time</p>
       </div>
-      {onMatchClick && (
-        <div className="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center gap-2">
-          <span className="text-base">🎾</span>
-          <span className="text-xs font-medium text-blue-700">
-            Click any unplayed match to open the referee experience — coin toss, serve/receive, and declare a winner.
-          </span>
-        </div>
-      )}
+      {/* Read-only banner — always visible */}
+      <div className="bg-slate-800 border-b border-slate-700 px-4 py-2 flex items-center justify-center gap-2">
+        <span className="text-base">📺</span>
+        <span className="text-xs font-bold text-white/70 uppercase tracking-wide">
+          Read-Only · Live Broadcast View — matches update automatically
+        </span>
+      </div>
       <div className="px-4 py-6 overflow-x-auto">
         <div className="bg-white rounded-2xl border border-slate-200 p-4 min-w-max">
           <BracketView
@@ -616,7 +690,6 @@ function SpectatorView({
             players={players}
             maxPlayers={Math.max(8, players.length)}
             liveUpdates={false}
-            onMatchClick={onMatchClick}
           />
         </div>
       </div>
@@ -710,6 +783,44 @@ function StatsView({
             </div>
           ))}
         </div>
+
+        {/* Server / Receiver wins */}
+        {(() => {
+          const withServer = matches.filter(
+            (m) => (m.status === 'finalized') && m.serverPlayerId && m.winnerId
+          );
+          if (withServer.length === 0) return null;
+          const serverWins = withServer.filter((m) => m.serverPlayerId === m.winnerId).length;
+          const receiverWins = withServer.length - serverWins;
+          const serverPct = Math.round((serverWins / withServer.length) * 100);
+          const receiverPct = 100 - serverPct;
+          return (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+              <h3 className="font-bold text-sm text-slate-700">Winners by Serve</h3>
+              <div className="grid grid-cols-2 gap-4 text-center">
+                <div>
+                  <p className="text-3xl font-black" style={{ color: PRIMARY }}>{serverWins}</p>
+                  <p className="text-xs text-slate-400">Server wins</p>
+                  <p className="text-xs font-bold text-slate-500 mt-0.5">{serverPct}%</p>
+                </div>
+                <div>
+                  <p className="text-3xl font-black text-emerald-600">{receiverWins}</p>
+                  <p className="text-xs text-slate-400">Receiver wins</p>
+                  <p className="text-xs font-bold text-slate-500 mt-0.5">{receiverPct}%</p>
+                </div>
+              </div>
+              <div className="h-3 bg-slate-100 rounded-full overflow-hidden flex">
+                <div className="h-full rounded-l-full transition-all" style={{ width: `${serverPct}%`, backgroundColor: PRIMARY }} />
+                <div className="h-full rounded-r-full flex-1 bg-emerald-500" />
+              </div>
+              <div className="flex justify-between text-xs text-slate-400">
+                <span style={{ color: PRIMARY }}>● Server</span>
+                <span className="text-emerald-600">● Receiver</span>
+              </div>
+              <p className="text-xs text-slate-400 text-center">Based on {withServer.length} scored match{withServer.length !== 1 ? 'es' : ''}</p>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -881,15 +992,59 @@ function BracketEditorView({
 
 // ── Main Demo Shell ───────────────────────────────────────────────────────────
 
-const VIEWS: { id: DemoView; label: string; emoji: string }[] = [
-  { id: 'director', label: 'Director', emoji: '🏆' },
-  { id: 'referee', label: 'Referee', emoji: '🎾' },
-  { id: 'signup', label: 'Registration', emoji: '📋' },
-  { id: 'spectator', label: 'Spectator', emoji: '📺' },
-  { id: 'bracket', label: 'Bracket Editor', emoji: '🔀' },
+const PERSONAS: { id: DemoView; label: string; emoji: string; desc: string }[] = [
+  { id: 'registrant', label: 'Registrant', emoji: '📋', desc: 'Sign-up flow' },
+  { id: 'director', label: 'Director', emoji: '🏆', desc: 'Full tournament management' },
+  { id: 'referee', label: 'Referee', emoji: '🎾', desc: 'Match queue & scoring' },
+  { id: 'spectator', label: 'Spectator', emoji: '📺', desc: 'Read-only live broadcast' },
+];
+
+const DIRECTOR_SUBS: { id: DirectorSubView; label: string; emoji: string }[] = [
+  { id: 'dashboard', label: 'Dashboard', emoji: '🏆' },
+  { id: 'bracket', label: 'Bracket', emoji: '🔀' },
+  { id: 'queue', label: 'Referee Queue', emoji: '🎾' },
   { id: 'stats', label: 'Stats', emoji: '📊' },
   { id: 'results', label: 'Results', emoji: '🥇' },
 ];
+
+const REFEREE_SUBS: { id: RefereeSubView; label: string; emoji: string }[] = [
+  { id: 'queue', label: 'Match Queue', emoji: '🎾' },
+  { id: 'bracket', label: 'Bracket', emoji: '🔀' },
+  { id: 'stats', label: 'Stats', emoji: '📊' },
+  { id: 'results', label: 'Results', emoji: '🥇' },
+];
+
+function SubNav<T extends string>({
+  items,
+  active,
+  onChange,
+}: {
+  items: { id: T; label: string; emoji: string }[];
+  active: T;
+  onChange: (id: T) => void;
+}) {
+  return (
+    <div className="bg-slate-50 border-b border-slate-200 px-4 py-1.5 overflow-x-auto">
+      <div className="flex items-center gap-1 min-w-max">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onChange(item.id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+              active === item.id
+                ? 'text-white shadow-sm'
+                : 'text-slate-500 hover:text-slate-700 hover:bg-white'
+            }`}
+            style={active === item.id ? { backgroundColor: PRIMARY } : undefined}
+          >
+            <span>{item.emoji}</span>
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function BracketStage({
   config,
@@ -901,20 +1056,26 @@ function BracketStage({
   initialMatches: Match[];
 }) {
   const [matches, setMatches] = useState<Match[]>(initialMatches);
-  const [view, setView] = useState<DemoView>('referee');
+  const [persona, setPersona] = useState<DemoView>('director');
+  const [directorSub, setDirectorSub] = useState<DirectorSubView>('dashboard');
+  const [refereeSub, setRefereeSub] = useState<RefereeSubView>('queue');
   const [pendingMatchId, setPendingMatchId] = useState<string | null>(null);
   const [mobile, setMobile] = useState(false);
   const [speeding, setSpeeding] = useState(false);
   const [shareMsg, setShareMsg] = useState('');
 
-  // Open a specific match in the referee flow from any bracket view
   function openMatchAsReferee(matchId: string) {
     setPendingMatchId(matchId);
-    setView('referee');
+    if (persona === 'director') setDirectorSub('queue');
+    if (persona === 'referee') setRefereeSub('queue');
   }
 
   const declareWinner = useCallback((matchId: string, winnerId: string) => {
     setMatches((prev) => advanceWinner(prev, matchId, winnerId));
+  }, []);
+
+  const undoMatchResult = useCallback((matchId: string) => {
+    setMatches((prev) => reverseWinner(prev, matchId));
   }, []);
 
   const swapPlayers = useCallback(
@@ -939,7 +1100,9 @@ function BracketStage({
     setTimeout(() => {
       setMatches((prev) => speedThroughAll(prev));
       setSpeeding(false);
-      setView('results');
+      setDirectorSub('results');
+      setRefereeSub('results');
+      if (persona === 'spectator' || persona === 'registrant') setPersona('director');
     }, 600);
   }
 
@@ -965,48 +1128,71 @@ function BracketStage({
   })();
   const isComplete = !!finalMatch?.winnerId;
 
+  const refereeQueueEl = (
+    <RefereeView
+      config={config} matches={matches} players={players} onDeclareWinner={declareWinner}
+      initialMatchId={pendingMatchId}
+      onClearInitialMatch={() => setPendingMatchId(null)}
+    />
+  );
+
+  const bracketDeclareEl = (
+    <BracketDeclareView
+      config={config} matches={matches} players={players}
+      onSetWinner={declareWinner} onReverseMatch={undoMatchResult}
+    />
+  );
+
+  const directorContent = (() => {
+    switch (directorSub) {
+      case 'dashboard': return <DirectorView config={config} players={players} matches={matches} onSetWinner={declareWinner} onSwap={swapPlayers} />;
+      case 'bracket': return bracketDeclareEl;
+      case 'queue': return refereeQueueEl;
+      case 'stats': return <StatsView config={config} players={players} matches={matches} />;
+      case 'results': return <ResultsView config={config} matches={matches} players={players} />;
+    }
+  })();
+
+  const refereeContent = (() => {
+    switch (refereeSub) {
+      case 'queue': return refereeQueueEl;
+      case 'bracket': return bracketDeclareEl;
+      case 'stats': return <StatsView config={config} players={players} matches={matches} />;
+      case 'results': return <ResultsView config={config} matches={matches} players={players} />;
+    }
+  })();
+
   const viewContent = (
-    <div className="flex-1 overflow-auto" style={mobile ? { maxWidth: 390, margin: '0 auto' } : {}}>
-      {view === 'director' && <DirectorView config={config} players={players} matches={matches} onSetWinner={declareWinner} />}
-      {view === 'referee' && (
-        <RefereeView
-          config={config} matches={matches} players={players} onDeclareWinner={declareWinner}
-          initialMatchId={pendingMatchId}
-          onClearInitialMatch={() => setPendingMatchId(null)}
-        />
-      )}
-      {view === 'signup' && <SignupView config={config} playerCount={players.length} />}
-      {view === 'spectator' && <SpectatorView config={config} matches={matches} players={players} onMatchClick={openMatchAsReferee} />}
-      {view === 'bracket' && <BracketEditorView config={config} matches={matches} players={players} onSwap={swapPlayers} onMatchClick={openMatchAsReferee} />}
-      {view === 'stats' && <StatsView config={config} players={players} matches={matches} />}
-      {view === 'results' && <ResultsView config={config} matches={matches} players={players} />}
+    <div className="flex-1 overflow-auto">
+      {persona === 'registrant' && <SignupView config={config} playerCount={players.length} />}
+      {persona === 'director' && directorContent}
+      {persona === 'referee' && refereeContent}
+      {persona === 'spectator' && <SpectatorView config={config} matches={matches} players={players} />}
     </div>
   );
 
   return (
     <div className="flex flex-col" style={{ minHeight: 'calc(100vh - 36px)' }}>
-      {/* Top toolbar */}
+      {/* Top toolbar — persona picker */}
       <div className="bg-white border-b border-slate-200 px-4 py-2 flex items-center gap-3 flex-wrap">
-        <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">View as:</span>
+        <span className="text-xs font-bold text-slate-400 uppercase tracking-wide hidden sm:block">Persona:</span>
 
-        {/* View tabs */}
         <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1">
-          {VIEWS.map((v) => (
+          {PERSONAS.map((p) => (
             <button
-              key={v.id}
-              onClick={() => setView(v.id)}
+              key={p.id}
+              onClick={() => setPersona(p.id)}
               className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                view === v.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                persona === p.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              <span>{v.emoji}</span>
-              <span className="hidden sm:inline">{v.label}</span>
+              <span>{p.emoji}</span>
+              <span className="hidden sm:inline">{p.label}</span>
             </button>
           ))}
         </div>
 
         <div className="flex items-center gap-2 ml-auto flex-wrap">
-          {/* Mobile toggle */}
           <button
             onClick={() => setMobile((m) => !m)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
@@ -1017,8 +1203,7 @@ function BracketStage({
             {mobile ? '📱 Mobile' : '🖥 Desktop'}
           </button>
 
-          {/* Speed-Through */}
-          {!isComplete && (
+          {!isComplete && persona !== 'registrant' && persona !== 'spectator' && (
             <button
               onClick={runSpeedThrough}
               disabled={speeding || activeCount === 0}
@@ -1028,7 +1213,6 @@ function BracketStage({
             </button>
           )}
 
-          {/* Share */}
           <button
             onClick={handleShare}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:border-slate-300 transition-all"
@@ -1037,6 +1221,14 @@ function BracketStage({
           </button>
         </div>
       </div>
+
+      {/* Sub-nav for Director / Referee */}
+      {persona === 'director' && (
+        <SubNav items={DIRECTOR_SUBS} active={directorSub} onChange={setDirectorSub} />
+      )}
+      {persona === 'referee' && (
+        <SubNav items={REFEREE_SUBS} active={refereeSub} onChange={setRefereeSub} />
+      )}
 
       {/* Mobile mode wrapper */}
       {mobile ? (

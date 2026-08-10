@@ -27,6 +27,8 @@ interface BracketViewProps {
   onSetWinner?: (match: Match, winnerId: string) => void | Promise<void>;
   /** Called when a match card is clicked (e.g. to open referee view) */
   onMatchClick?: (matchId: string) => void;
+  /** When provided, finalized matches show a reset button to undo the result */
+  onReverseMatch?: (matchId: string) => void;
 }
 
 type DragKey = { matchId: string; slot: 'p1' | 'p2' } | null;
@@ -167,7 +169,7 @@ function PlayerSlot({
 
 // ── Match card ────────────────────────────────────────────────────────────────
 function MatchCard({
-  match, players, topPx, editable, dragging, onDragStart, onDrop, resultEditable, onSetWinner, onMatchClick,
+  match, players, topPx, editable, dragging, onDragStart, onDrop, resultEditable, onSetWinner, onMatchClick, onReverseMatch,
 }: {
   match: Match;
   players: Player[];
@@ -179,6 +181,7 @@ function MatchCard({
   resultEditable?: boolean;
   onSetWinner?: (match: Match, winnerId: string) => void | Promise<void>;
   onMatchClick?: (matchId: string) => void;
+  onReverseMatch?: (matchId: string) => void;
 }) {
   const isP1Winner = match.winnerId === match.player1Id;
   const isP2Winner = match.winnerId === match.player2Id;
@@ -206,8 +209,17 @@ function MatchCard({
       {match.status === 'playing' && (
         <div className="h-0.5 w-full" style={{ backgroundColor: 'var(--tenant-primary, #1d4ed8)' }} />
       )}
-      {isResultEditable && (
+      {isResultEditable && !match.winnerId && (
         <span className="absolute top-1 right-1 text-[10px] leading-none z-10" title="Click a player to set the winner">✏️</span>
+      )}
+      {onReverseMatch && match.winnerId && match.status !== 'walkover' && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onReverseMatch(match.id); }}
+          className="absolute top-1 right-1 z-10 text-[10px] px-1.5 py-0.5 rounded bg-slate-100 hover:bg-red-100 hover:text-red-600 text-slate-400 font-bold leading-none transition-colors"
+          title="Reset result"
+        >
+          ↩
+        </button>
       )}
       <PlayerSlot
         id={match.player1Id} players={players} isWinner={isP1Winner}
@@ -272,6 +284,7 @@ export default function BracketView({
   resultEditable,
   onSetWinner,
   onMatchClick,
+  onReverseMatch,
 }: BracketViewProps) {
   const [matches,  setMatches]  = useState<Match[]>(initialMatches);
   const [dragging, setDragging] = useState<DragKey>(null);
@@ -367,6 +380,7 @@ export default function BracketView({
                     resultEditable={resultEditable}
                     onSetWinner={onSetWinner}
                     onMatchClick={onMatchClick}
+                    onReverseMatch={onReverseMatch}
                   />
                 ))}
               </div>
