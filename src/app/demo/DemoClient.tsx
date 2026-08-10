@@ -448,20 +448,24 @@ function RefereeView({
 
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
 
-  // Convert camelCase Match[] to snake_case MatchRow[] for RefereeQueueClient
+  const toRow = (m: Match): MatchRow => ({
+    id: m.id,
+    tournament_id: m.tournamentId,
+    round_index: m.roundIndex,
+    match_index: m.matchIndex,
+    player1_id: m.player1Id,
+    player2_id: m.player2Id,
+    winner_id: m.winnerId,
+    status: m.status,
+    court_number: m.courtNumber ?? null,
+  });
+
+  // Active matches for the queue list; all matches for the bracket view
   const matchRows: MatchRow[] = matches
     .filter((m) => !m.winnerId && m.status !== 'walkover' && m.player1Id && m.player1Id !== 'BYE' && m.player2Id && m.player2Id !== 'BYE')
-    .map((m) => ({
-      id: m.id,
-      tournament_id: m.tournamentId,
-      round_index: m.roundIndex,
-      match_index: m.matchIndex,
-      player1_id: m.player1Id,
-      player2_id: m.player2Id,
-      winner_id: m.winnerId,
-      status: m.status,
-      court_number: m.courtNumber ?? null,
-    }));
+    .map(toRow);
+
+  const allMatchRows: MatchRow[] = matches.map(toRow);
 
   const playerRecords: Record<string, Record<string, unknown>> = Object.fromEntries(
     players.map((p) => [p.id, {
@@ -506,6 +510,7 @@ function RefereeView({
     <div style={{ '--tenant-primary': PRIMARY } as React.CSSProperties}>
       <RefereeQueueClient
         matches={matchRows}
+        allMatches={allMatchRows}
         tournaments={[demoTournament]}
         players={playerRecords}
         onMatchClick={(row) => selectMatch(row.id)}
