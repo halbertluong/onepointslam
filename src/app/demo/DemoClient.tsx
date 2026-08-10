@@ -84,18 +84,28 @@ function DemoBanner() {
 // ── Setup Form ────────────────────────────────────────────────────────────────
 
 function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
-  const [form, setForm] = useState<TournamentConfig>({
-    name: 'Spring Charity Cup 2026',
-    drawSize: 16,
-    entryFee: 50,
-    date: '',
-    prizeMoney: 500,
-    fundraisingGoal: 2000,
-    numberOfCourts: 4,
-  });
+  const [name, setName] = useState('Spring Charity Cup 2026');
+  const [drawSize, setDrawSize] = useState(16);
+  const [date, setDate] = useState('');
+  // String state so typing feels natural — no leading zeros, no stuck digits on backspace
+  const [entryFee, setEntryFee] = useState('50');
+  const [numberOfCourts, setNumberOfCourts] = useState('4');
+  const [prizeMoney, setPrizeMoney] = useState('500');
+  const [fundraisingGoal, setFundraisingGoal] = useState('2000');
 
-  function set<K extends keyof TournamentConfig>(k: K, v: TournamentConfig[K]) {
-    setForm((f) => ({ ...f, [k]: v }));
+  const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none';
+
+  function handleSubmit() {
+    if (!name.trim()) return;
+    onNext({
+      name: name.trim(),
+      drawSize,
+      date,
+      entryFee: parseFloat(entryFee) || 0,
+      numberOfCourts: Math.max(1, parseInt(numberOfCourts) || 1),
+      prizeMoney: parseFloat(prizeMoney) || 0,
+      fundraisingGoal: parseFloat(fundraisingGoal) || 0,
+    });
   }
 
   return (
@@ -119,8 +129,8 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
             </label>
             <input
               type="text"
-              value={form.name}
-              onChange={(e) => set('name', e.target.value)}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2"
               placeholder="Spring Charity Cup 2026"
               required
@@ -133,9 +143,9 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
                 Draw Size
               </label>
               <select
-                value={form.drawSize}
-                onChange={(e) => set('drawSize', parseInt(e.target.value))}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+                value={drawSize}
+                onChange={(e) => setDrawSize(parseInt(e.target.value))}
+                className={inputCls}
               >
                 {[8, 16, 32, 64].map((n) => (
                   <option key={n} value={n}>{n} players</option>
@@ -147,11 +157,13 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
                 Entry Fee ($)
               </label>
               <input
-                type="number"
-                min="0"
-                value={form.entryFee}
-                onChange={(e) => set('entryFee', parseFloat(e.target.value) || 0)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+                type="text"
+                inputMode="decimal"
+                value={entryFee}
+                onChange={(e) => setEntryFee(e.target.value.replace(/[^0-9.]/g, ''))}
+                onFocus={(e) => e.target.select()}
+                className={inputCls}
+                placeholder="0"
               />
             </div>
           </div>
@@ -162,9 +174,9 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
             </label>
             <input
               type="date"
-              value={form.date}
-              onChange={(e) => set('date', e.target.value)}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none appearance-none"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className={`${inputCls} appearance-none`}
               style={{ minHeight: '42px', colorScheme: 'light' }}
             />
           </div>
@@ -175,12 +187,13 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
                 Number of Courts
               </label>
               <input
-                type="number"
-                min="1"
-                max="20"
-                value={form.numberOfCourts}
-                onChange={(e) => set('numberOfCourts', parseInt(e.target.value) || 1)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+                type="text"
+                inputMode="numeric"
+                value={numberOfCourts}
+                onChange={(e) => setNumberOfCourts(e.target.value.replace(/[^0-9]/g, ''))}
+                onFocus={(e) => e.target.select()}
+                className={inputCls}
+                placeholder="1"
               />
             </div>
             <div>
@@ -188,11 +201,13 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
                 Prize Money ($)
               </label>
               <input
-                type="number"
-                min="0"
-                value={form.prizeMoney}
-                onChange={(e) => set('prizeMoney', parseFloat(e.target.value) || 0)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+                type="text"
+                inputMode="decimal"
+                value={prizeMoney}
+                onChange={(e) => setPrizeMoney(e.target.value.replace(/[^0-9.]/g, ''))}
+                onFocus={(e) => e.target.select()}
+                className={inputCls}
+                placeholder="0"
               />
             </div>
           </div>
@@ -202,20 +217,22 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
               Fundraising Goal ($)
             </label>
             <input
-              type="number"
-              min="0"
-              value={form.fundraisingGoal}
-              onChange={(e) => set('fundraisingGoal', parseFloat(e.target.value) || 0)}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+              type="text"
+              inputMode="decimal"
+              value={fundraisingGoal}
+              onChange={(e) => setFundraisingGoal(e.target.value.replace(/[^0-9.]/g, ''))}
+              onFocus={(e) => e.target.select()}
+              className={inputCls}
+              placeholder="0"
             />
             <p className="text-xs text-slate-400 mt-1">
-              At {fmt$(form.entryFee)} entry × {form.drawSize} players = {fmt$(form.entryFee * form.drawSize)} potential revenue
+              At {fmt$(parseFloat(entryFee) || 0)} entry × {drawSize} players = {fmt$((parseFloat(entryFee) || 0) * drawSize)} potential revenue
             </p>
           </div>
 
           <button
-            onClick={() => form.name.trim() && onNext(form)}
-            disabled={!form.name.trim()}
+            onClick={handleSubmit}
+            disabled={!name.trim()}
             className="w-full py-3 rounded-xl font-bold text-sm text-white transition-all hover:opacity-90 disabled:opacity-40"
             style={{ backgroundColor: PRIMARY }}
           >
