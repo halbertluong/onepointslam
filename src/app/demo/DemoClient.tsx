@@ -20,7 +20,7 @@ import { advanceWinner, reverseWinner, getRoundName, getRoundsCount } from '@/li
 
 type Stage = 'setup' | 'participants' | 'bracket';
 type DemoView = 'registrant' | 'director' | 'referee' | 'spectator';
-type DirectorSubView = 'bracket' | 'draw' | 'players' | 'referee';
+type DirectorSubView = 'bracket' | 'draw' | 'players' | 'referee' | 'settings';
 type RefereeSubView = 'queue' | 'bracket' | 'stats' | 'results';
 
 interface TournamentConfig {
@@ -505,6 +505,118 @@ function DirectorPlayersTab({ players }: { players: DemoPlayer[] }) {
   );
 }
 
+// ── Director: Settings Tab ────────────────────────────────────────────────────
+
+function DemoSettingsTab({
+  config,
+  onUpdate,
+}: {
+  config: TournamentConfig;
+  onUpdate: (patch: Partial<TournamentConfig>) => void;
+}) {
+  const [name, setName] = useState(config.name);
+  const [drawSize, setDrawSize] = useState(String(config.drawSize));
+  const [entryFee, setEntryFee] = useState(String(config.entryFee));
+  const [courts, setCourts] = useState(String(config.numberOfCourts));
+  const [prize, setPrize] = useState(String(config.prizeMoney));
+  const [goal, setGoal] = useState(String(config.fundraisingGoal));
+  const [date, setDate] = useState(config.date ?? '');
+  const [saved, setSaved] = useState(false);
+
+  function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    onUpdate({
+      name: name.trim() || config.name,
+      drawSize: parseInt(drawSize) || config.drawSize,
+      entryFee: parseFloat(entryFee) || 0,
+      numberOfCourts: parseInt(courts) || 1,
+      prizeMoney: parseFloat(prize) || 0,
+      fundraisingGoal: parseFloat(goal) || 0,
+      date,
+    });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-slate-400';
+
+  return (
+    <form onSubmit={handleSave} className="space-y-6">
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
+        <h3 className="font-bold text-slate-800">Tournament Settings</h3>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Tournament Name</label>
+          <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Draw Size</label>
+            <select value={drawSize} onChange={(e) => setDrawSize(e.target.value)} className={inputCls}>
+              {[8, 16, 32, 48, 64, 96, 128, 192, 256].map((n) => (
+                <option key={n} value={n}>{n} players</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Entry Fee ($)</label>
+            <input type="number" min="0" step="0.01" value={entryFee} onChange={(e) => setEntryFee(e.target.value)} className={inputCls} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Tournament Date</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Number of Courts</label>
+            <input type="number" min="1" max="20" value={courts} onChange={(e) => setCourts(e.target.value)} className={inputCls} />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
+        <h3 className="font-bold text-slate-800">Fundraising</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Fundraising Goal ($)</label>
+            <input type="number" min="0" value={goal} onChange={(e) => setGoal(e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Prize Money ($)</label>
+            <input type="number" min="0" value={prize} onChange={(e) => setPrize(e.target.value)} className={inputCls} />
+          </div>
+        </div>
+        <p className="text-xs text-slate-400">
+          At {fmt$(parseFloat(entryFee) || 0)} entry × {drawSize} players = {fmt$((parseFloat(entryFee) || 0) * parseInt(drawSize))} potential revenue
+        </p>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+        <h3 className="font-bold text-slate-800">Demo Actions</h3>
+        <p className="text-sm text-slate-500">Archive and email features are available in the real product. In demo mode, changes update the live view instantly.</p>
+        <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+          <span>🧪</span>
+          <span>Demo mode — no data is saved. Settings reset on page refresh.</span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-90"
+          style={{ backgroundColor: PRIMARY }}
+        >
+          Save Changes
+        </button>
+        {saved && <span className="text-sm text-emerald-600 font-semibold">✓ Saved!</span>}
+      </div>
+    </form>
+  );
+}
+
 // ── View: Director Dashboard ──────────────────────────────────────────────────
 
 function DirectorView({
@@ -514,6 +626,7 @@ function DirectorView({
   onSetWinner,
   onSwap,
   onReverseMatch,
+  onUpdateConfig,
 }: {
   config: TournamentConfig;
   players: DemoPlayer[];
@@ -521,6 +634,7 @@ function DirectorView({
   onSetWinner: (matchId: string, winnerId: string) => void;
   onSwap: (aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') => void;
   onReverseMatch: (matchId: string) => void;
+  onUpdateConfig: (patch: Partial<TournamentConfig>) => void;
 }) {
   const [tab, setTab] = useState<DirectorSubView>('bracket');
 
@@ -532,6 +646,7 @@ function DirectorView({
     { id: 'draw', label: 'Draw Editor' },
     { id: 'players', label: `Players (${players.length})` },
     { id: 'referee', label: 'Referee Queue' },
+    { id: 'settings', label: 'Settings' },
   ];
 
   const anyResults = matches.some((m) => m.winnerId);
@@ -647,6 +762,10 @@ function DirectorView({
                 players={players}
                 onDeclareWinner={onSetWinner}
               />
+            )}
+
+            {tab === 'settings' && (
+              <DemoSettingsTab config={config} onUpdate={onUpdateConfig} />
             )}
           </div>
         </div>
@@ -1246,7 +1365,7 @@ function SubNav<T extends string>({
 }
 
 function BracketStage({
-  config,
+  config: initialConfig,
   players,
   initialMatches,
 }: {
@@ -1254,6 +1373,7 @@ function BracketStage({
   players: DemoPlayer[];
   initialMatches: Match[];
 }) {
+  const [config, setConfig] = useState<TournamentConfig>(initialConfig);
   const [matches, setMatches] = useState<Match[]>(initialMatches);
   const [persona, setPersona] = useState<DemoView>('director');
   const [refereeSub, setRefereeSub] = useState<RefereeSubView>('queue');
@@ -1347,6 +1467,7 @@ function BracketStage({
       onSetWinner={declareWinner}
       onSwap={swapPlayers}
       onReverseMatch={undoMatchResult}
+      onUpdateConfig={(patch) => setConfig((c) => ({ ...c, ...patch }))}
     />
   );
 
