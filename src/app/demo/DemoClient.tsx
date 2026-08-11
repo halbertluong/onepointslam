@@ -598,7 +598,7 @@ function DemoSettingsTab({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4 sm:col-span-2">
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Tournament Date</label>
                 <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
