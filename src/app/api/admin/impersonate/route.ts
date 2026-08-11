@@ -25,31 +25,49 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY not configured on server' }, { status: 500 });
   }
 
-  // Use service role key to generate a magic link
   const admin = createServiceClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
   const base = process.env.NEXT_PUBLIC_SITE_URL || origin;
-  const safeLandingPath = (landingPath && landingPath.startsWith('/')) ? landingPath : '/';
-  const redirectTo = `${base}/auth/confirm?next=${encodeURIComponent(safeLandingPath)}`;
 
-  const { data, error } = await admin.auth.admin.generateLink({
+  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
     type: 'magiclink',
     email: targetEmail,
-    options: { redirectTo },
+    options: { redirectTo: `${base}/auth/set-session` },
   });
 
-  if (error) {
-    console.error('[impersonate] generateLink error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (linkError) {
+    console.error('[impersonate] generateLink error:', linkError);
+    return NextResponse.json({ error: linkError.message }, { status: 500 });
   }
 
-  const link = data?.properties?.action_link;
-  if (!link) {
-    console.error('[impersonate] No action_link in response:', JSON.stringify(data));
-    return NextResponse.json({ error: 'No magic link returned from Supabase' }, { status: 500 });
+  // Exchange token_hash server-side to get real session tokens, then hand them
+  // to the client via /auth/set-session — avoids the race where the existing
+  // super-admin session fires SIGNED_IN before the hash-based session is parsed.
+  const actionLink = linkData?.properties?.action_link;
+  if (!actionLink) {
+    return NextResponse.json({ error: 'No action_link returned from Supabase' }, { status: 500 });
   }
 
-  return NextResponse.json({ magicLink: link });
+  const tokenHash = new URL(actionLink).searchParams.get('token_hash');
+  if (!tokenHash) {
+    return NextResponse.json({ error: 'No token_hash in action_link' }, { status: 500 });
+  }
+
+  const { data: otpData, error: otpError } = await admin.auth.verifyOtp({
+    token_hash: tokenHash,
+    type: 'magiclink',
+  });
+
+  if (otpError || !otpData.session) {
+    console.error('[impersonate] verifyOtp error:', otpError);
+    return NextResponse.json({ error: otpError?.message ?? 'Failed to exchange token' }, { status: 500 });
+  }
+
+  const { access_token, refresh_token } = otpData.session;
+  const safeLandingPath = (landingPath && landingPath.startsWith('/')) ? landingPath : '/';
+  const setSessionUrl = `${base}/auth/set-session?at=${encodeURIComponent(access_token)}&rt=${encodeURIComponent(refresh_token)}&next=${encodeURIComponent(safeLandingPath)}`;
+
+  return NextResponse.json({ magicLink: setSessionUrl });
 }
