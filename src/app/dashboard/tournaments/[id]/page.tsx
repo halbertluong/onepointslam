@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/browser';
 import { useParams, useRouter } from 'next/navigation';
 import BracketPanel from '@/components/BracketPanel';
 import { generateBracket } from '@/lib/bracket';
+import { releaseCourtToNextMatch } from '@/lib/courts';
 import type { Tournament, Player, Match } from '@/types';
 import { mapPlayer, mapMatch } from '@/types';
 import { calcRaised, formatCurrency } from '@/lib/pricing';
@@ -468,6 +469,10 @@ export default function TournamentAdminPage() {
   }
 
   async function handleOverrideWinner(match: Match, winnerId: string) {
+    // Only free the court the first time this match is decided — re-overriding
+    // an already-finalized match (correcting a mistake) shouldn't re-release
+    // a court that was already handed off to a different match.
+    const wasAlreadyDecided = match.status === 'finalized' || match.status === 'walkover';
     const supabase = createClient();
     await supabase
       .from('matches')
@@ -482,6 +487,10 @@ export default function TournamentAdminPage() {
       .eq('round_index', match.roundIndex + 1)
       .eq('match_index', Math.floor(match.matchIndex / 2));
 
+    if (!wasAlreadyDecided) {
+      await releaseCourtToNextMatch(supabase, id, match.courtNumber);
+    }
+
     setMessage('Winner updated.');
     load();
   }
@@ -491,16 +500,19 @@ export default function TournamentAdminPage() {
     const supabase = createClient();
     await supabase.from('tournaments').update({ status: 'live_play' }).eq('id', id);
 
-    // Auto-assign courts to first-round matches that have two real players
+    // Assign courts to only the first `numberOfCourts` ready matches. The rest
+    // stay queued and pick up a court in real time as matches finish
+    // (see releaseCourtToNextMatch), instead of all being assigned up front.
     const courts = tournament?.settings?.numberOfCourts ?? 0;
     if (courts > 0) {
       const round0 = matches
         .filter((m) => m.roundIndex === 0 && m.player1Id && m.player2Id && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
-        .sort((a, b) => a.matchIndex - b.matchIndex);
+        .sort((a, b) => a.matchIndex - b.matchIndex)
+        .slice(0, courts);
       await Promise.all(
         round0.map((m, i) =>
           supabase.from('matches')
-            .update({ court_number: (i % courts) + 1, status: 'court_assigned' })
+            .update({ court_number: i + 1, status: 'court_assigned' })
             .eq('id', m.id)
         )
       );
