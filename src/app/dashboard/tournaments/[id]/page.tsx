@@ -43,7 +43,7 @@ function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; is
   );
 }
 
-type Tab = 'overview' | 'draw' | 'players' | 'settings';
+type Tab = 'overview' | 'draw' | 'players' | 'referee' | 'settings';
 
 const GENDER_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   male:       { bg: 'bg-blue-100',   text: 'text-blue-600',   label: '♂' },
@@ -292,6 +292,90 @@ function DrawEditor({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const STATUS_ORDER_REF: Record<string, number> = { playing: 0, court_assigned: 1, warmup: 2, scheduled: 3 };
+const STATUS_LABEL: Record<string, string> = { playing: '● LIVE', court_assigned: 'Court Assigned', warmup: 'Warmup', scheduled: 'Scheduled' };
+const STATUS_STYLE: Record<string, string> = {
+  playing: 'bg-red-100 text-red-700',
+  court_assigned: 'bg-blue-100 text-blue-700',
+  warmup: 'bg-amber-100 text-amber-700',
+  scheduled: 'bg-slate-100 text-slate-500',
+};
+
+function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
+  const active = matches
+    .filter((m) => ['playing', 'court_assigned', 'warmup', 'scheduled'].includes(m.status))
+    .sort((a, b) => (STATUS_ORDER_REF[a.status] ?? 9) - (STATUS_ORDER_REF[b.status] ?? 9) || (a.courtNumber ?? 99) - (b.courtNumber ?? 99));
+
+  const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
+
+  if (active.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+        <p className="text-3xl mb-2">🎾</p>
+        <p className="font-semibold text-slate-600">No active matches</p>
+        <p className="text-sm text-slate-400 mt-1">Matches will appear here once live play starts</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-400">
+        {active.filter((m) => m.status === 'playing').length} live · {active.length} total queued — click a match to open the referee view
+      </p>
+      {active.map((m) => {
+        const p1 = playerMap[m.player1Id ?? ''];
+        const p2 = playerMap[m.player2Id ?? ''];
+        const isLive = m.status === 'playing';
+        return (
+          <a
+            key={m.id}
+            href={`/referee/${m.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`block bg-white rounded-2xl border p-4 hover:shadow-sm transition-all ${isLive ? 'border-red-200' : 'border-slate-200'}`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">R{m.roundIndex + 1} · M{m.matchIndex + 1}</span>
+                {m.courtNumber ? (
+                  <span className="px-2 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-600">Court {m.courtNumber}</span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded text-xs text-slate-400 italic">Unassigned</span>
+                )}
+              </div>
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${STATUS_STYLE[m.status] ?? 'bg-slate-100 text-slate-500'} ${isLive ? 'animate-pulse' : ''}`}>
+                {STATUS_LABEL[m.status] ?? m.status}
+              </span>
+            </div>
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+              <div>
+                <p className="font-semibold text-slate-800 text-sm truncate">{p1?.fullName ?? 'TBD'}</p>
+                {p1 && (p1.ntrpRating != null || p1.utrRating != null) && (
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {p1.ntrpRating != null && <span className="mr-1.5">NTRP {p1.ntrpRating}</span>}
+                    {p1.utrRating != null && <span>UTR {p1.utrRating}</span>}
+                  </p>
+                )}
+              </div>
+              <span className="text-slate-300 font-bold text-sm">vs</span>
+              <div className="text-right">
+                <p className="font-semibold text-slate-800 text-sm truncate">{p2?.fullName ?? 'TBD'}</p>
+                {p2 && (p2.ntrpRating != null || p2.utrRating != null) && (
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {p2.ntrpRating != null && <span className="mr-1.5">NTRP {p2.ntrpRating}</span>}
+                    {p2.utrRating != null && <span>UTR {p2.utrRating}</span>}
+                  </p>
+                )}
+              </div>
+            </div>
+          </a>
+        );
+      })}
     </div>
   );
 }
@@ -568,21 +652,23 @@ export default function TournamentAdminPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 gap-1">
-        {(['overview', 'draw', 'players', 'settings'] as Tab[]).map((t) => {
+      <div className="flex border-b border-slate-200 gap-1 overflow-x-auto">
+        {(['overview', 'draw', 'players', 'referee', 'settings'] as Tab[]).map((t) => {
           if (t === 'draw' && !canManageDraw) return null;
+          if (t === 'referee' && tournament.status !== 'live_play') return null;
+          const label = t === 'draw' ? 'Draw Editor' : t === 'overview' ? 'Bracket' : t === 'players' ? 'Players' : t === 'referee' ? 'Referee Queue' : 'Settings';
           return (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-colors capitalize ${
+              className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-colors whitespace-nowrap ${
                 tab === t
                   ? 'border-b-2 text-slate-900'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
               style={tab === t ? { borderColor: 'var(--tenant-primary)', color: 'var(--tenant-primary)' } : {}}
             >
-              {t === 'draw' ? 'Draw Editor' : t === 'overview' ? 'Bracket' : t === 'players' ? 'Players' : 'Settings'}
+              {label}
             </button>
           );
         })}
@@ -679,6 +765,11 @@ export default function TournamentAdminPage() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* Referee Queue tab */}
+      {tab === 'referee' && (
+        <RefereeQueueTab matches={matches} players={players} />
       )}
 
       {/* Settings tab */}
