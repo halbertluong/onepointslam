@@ -54,9 +54,9 @@ export default function NavBar({ role, tenantSlug, displayName, logoUrl }: NavBa
               Dashboard
             </Link>
           )}
-          {(role === 'referee' || role === 'tenant_admin' || role === 'super_admin') && (
+          {role === 'referee' && (
             <Link href="/referee" className="text-sm font-medium text-slate-600 hover:text-slate-900">
-              Referee
+              Referee Queue
             </Link>
           )}
           {role ? (
