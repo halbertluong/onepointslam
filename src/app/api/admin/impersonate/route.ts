@@ -45,13 +45,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No action_link returned' }, { status: 500 });
   }
 
-  // Extract token_hash from the Supabase action link and hand it to the
-  // browser — the browser's anon-key client can verify it via verifyOtp(),
-  // which is a public endpoint (service-role cannot call it for itself).
-  const url = new URL(actionLink);
-  const tokenHash = url.searchParams.get('token_hash');
+  // Use hashed_token from the response properties — the browser's anon-key
+  // client uses it via verifyOtp(), which is a public endpoint.
+  const tokenHash = data.properties?.hashed_token;
   if (!tokenHash) {
-    return NextResponse.json({ error: 'No token_hash in action_link' }, { status: 500 });
+    return NextResponse.json({ error: 'No hashed_token in generateLink response' }, { status: 500 });
   }
 
   const safeLandingPath = landingPath?.startsWith('/') ? landingPath : '/';
