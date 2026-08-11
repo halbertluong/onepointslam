@@ -10,13 +10,13 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const PERSONAS = [
   {
     name: 'director',
-    email: 'director.stanford@demo.onepointbowl.com',
+    email: 'director@onepointbowl.com',
     password: 'Demo1234!',
     storageFile: 'tests/auth/director.json',
   },
   {
     name: 'referee',
-    email: 'referee1@demo.onepointbowl.com',
+    email: 'referee@onepointbowl.com',
     password: 'Demo1234!',
     storageFile: 'tests/auth/referee.json',
   },
