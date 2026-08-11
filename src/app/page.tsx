@@ -148,7 +148,7 @@ function WaitlistForm() {
         className="w-full rounded-xl px-4 py-3 text-sm text-slate-900 bg-white border border-white/20 focus:outline-none focus:ring-2"
       />
       {status === 'error' && (
-        <p className="text-red-300 text-xs text-center">Something went wrong — try again.</p>
+        <p role="alert" className="text-red-300 text-xs text-center">Something went wrong — please try again or contact support if the error persists.</p>
       )}
       <button
         type="submit"
