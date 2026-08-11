@@ -45,5 +45,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Notify team — fire and forget, never block the user response
+  const resendApiKey = process.env.RESEND_API_KEY;
+  if (resendApiKey) {
+    const from = process.env.RESEND_FROM_EMAIL ?? 'noreply@onepointbowl.com';
+    const lines = [
+      `<b>Name:</b> ${name?.trim() ?? '—'}`,
+      `<b>Email:</b> ${email}`,
+      `<b>School:</b> ${school?.trim() ?? '—'}`,
+      `<b>Title:</b> ${title?.trim() ?? '—'}`,
+      `<b>Sport:</b> ${sport?.trim() ?? '—'}`,
+      `<b>Program:</b> ${program?.trim() ?? '—'}`,
+    ].join('<br>');
+    fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${resendApiKey}` },
+      body: JSON.stringify({
+        from,
+        to: ['Hal@onepointbowl.com', 'Filip@onepointbowl.com'],
+        subject: `New waitlist signup: ${name?.trim() ?? email}`,
+        html: `<p>Someone just joined the waitlist.</p><p>${lines}</p>`,
+      }),
+    }).catch(() => {});
+  }
+
   return NextResponse.json({ success: true });
 }
