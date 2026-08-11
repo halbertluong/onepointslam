@@ -619,7 +619,7 @@ function DemoSettingsTab({
               </div>
             </div>
 
-            <div>
+            <div className="sm:col-span-2 sm:w-1/2">
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Number of Courts</label>
               <input type="number" min="1" max="20" value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="e.g. 4" className={inputCls} />
               <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
