@@ -14,6 +14,8 @@ import {
   getTournamentStats,
   type DemoPlayer,
 } from './demoData';
+import PrizePlacesEditor from '@/components/PrizePlacesEditor';
+import type { PrizePlace } from '@/types';
 import { advanceWinner, reverseWinner, getRoundName, getRoundsCount } from '@/lib/bracket';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -28,9 +30,16 @@ interface TournamentConfig {
   drawSize: number;
   entryFee: number;
   date: string;
+  registrationDeadline: string;
   prizeMoney: number;
   fundraisingGoal: number;
   numberOfCourts: number;
+  playerCap?: number;
+  minimumRegistrants?: number;
+  serveRuleProfile: 'one_serve_sudden_death' | 'two_serves_traditional' | 'skill_based';
+  serverDetermination: 'random_coin_toss' | 'referee_manual_override';
+  receivingSideSelection: 'server_choice' | 'ad_court_fixed' | 'deuce_court_fixed';
+  prizePlaces: PrizePlace[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -102,10 +111,15 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
       name: name.trim(),
       drawSize,
       date,
+      registrationDeadline: '',
       entryFee: parseFloat(entryFee) || 0,
       numberOfCourts: Math.max(1, parseInt(numberOfCourts) || 1),
       prizeMoney: parseFloat(prizeMoney) || 0,
       fundraisingGoal: parseFloat(fundraisingGoal) || 0,
+      serveRuleProfile: 'one_serve_sudden_death',
+      serverDetermination: 'random_coin_toss',
+      receivingSideSelection: 'server_choice',
+      prizePlaces: [],
     });
   }
 
@@ -514,104 +528,168 @@ function DemoSettingsTab({
   config: TournamentConfig;
   onUpdate: (patch: Partial<TournamentConfig>) => void;
 }) {
-  const [name, setName] = useState(config.name);
-  const [drawSize, setDrawSize] = useState(String(config.drawSize));
-  const [entryFee, setEntryFee] = useState(String(config.entryFee));
-  const [courts, setCourts] = useState(String(config.numberOfCourts));
-  const [prize, setPrize] = useState(String(config.prizeMoney));
-  const [goal, setGoal] = useState(String(config.fundraisingGoal));
-  const [date, setDate] = useState(config.date ?? '');
+  const s = config;
+  const [name, setName] = useState(s.name);
+  const [maxPlayers, setMaxPlayers] = useState(String(s.drawSize));
+  const [ticketPrice, setTicketPrice] = useState(String(s.entryFee));
+  const [tournamentDate, setTournamentDate] = useState(s.date ?? '');
+  const [deadline, setDeadline] = useState(s.registrationDeadline ?? '');
+  const [cap, setCap] = useState(String(s.playerCap ?? ''));
+  const [minReg, setMinReg] = useState(String(s.minimumRegistrants ?? ''));
+  const [courts, setCourts] = useState(String(s.numberOfCourts));
+  const [serveRule, setServeRule] = useState(s.serveRuleProfile);
+  const [serverDetermination, setServerDetermination] = useState(s.serverDetermination);
+  const [receivingSide, setReceivingSide] = useState(s.receivingSideSelection);
+  const [prizePlaces, setPrizePlaces] = useState<PrizePlace[]>(s.prizePlaces ?? []);
   const [saved, setSaved] = useState(false);
 
-  function handleSave(e: React.FormEvent) {
+  const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-slate-400';
+
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const capNum = parseInt(cap);
+    const minNum = parseInt(minReg);
     onUpdate({
       name: name.trim() || config.name,
-      drawSize: parseInt(drawSize) || config.drawSize,
-      entryFee: parseFloat(entryFee) || 0,
+      drawSize: parseInt(maxPlayers) || config.drawSize,
+      entryFee: parseFloat(ticketPrice) || 0,
+      date: tournamentDate,
+      registrationDeadline: deadline,
+      playerCap: (!isNaN(capNum) && capNum > 0) ? capNum : undefined,
+      minimumRegistrants: (!isNaN(minNum) && minNum > 0) ? minNum : undefined,
       numberOfCourts: parseInt(courts) || 1,
-      prizeMoney: parseFloat(prize) || 0,
-      fundraisingGoal: parseFloat(goal) || 0,
-      date,
+      serveRuleProfile: serveRule,
+      serverDetermination,
+      receivingSideSelection: receivingSide,
+      prizePlaces,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
 
-  const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-slate-400';
-
   return (
-    <form onSubmit={handleSave} className="space-y-6">
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
-        <h3 className="font-bold text-slate-800">Tournament Settings</h3>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-6">
+        <h2 className="font-bold text-slate-800">Tournament Settings</h2>
 
+        {/* Details */}
+        <div className="space-y-4">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Details</h3>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Tournament Name</label>
+            <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Spring 2026 Charity Cup" />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Draw Size</label>
+              <select value={maxPlayers} onChange={(e) => setMaxPlayers(e.target.value)} className={inputCls}>
+                {[8, 16, 32, 48, 64, 96, 128, 192, 256].map((n) => (
+                  <option key={n} value={n}>{n} players</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Player Cap (optional)</label>
+              <input
+                type="number" min="2" max={parseInt(maxPlayers) || 64}
+                value={cap} onChange={(e) => setCap(e.target.value)}
+                placeholder={`Max ${maxPlayers}`} className={inputCls}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 sm:col-span-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Tournament Date</label>
+                <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Registration Deadline</label>
+                <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Minimum Registrants</label>
+              <input
+                type="number" min="2" max={parseInt(maxPlayers) || 64}
+                value={minReg} onChange={(e) => setMinReg(e.target.value)}
+                placeholder="No minimum" className={inputCls}
+              />
+              <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Number of Courts</label>
+              <input type="number" min="1" max="20" value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="e.g. 4" className={inputCls} />
+              <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Fundraising */}
+        <div className="border-t border-slate-100 pt-5 space-y-4">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Fundraising</h3>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Ticket Price / Player</label>
+            <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden">
+              <span className="px-3 py-2.5 bg-slate-50 text-slate-400 text-sm border-r border-slate-200">$</span>
+              <input
+                type="number" min="0" step="0.01"
+                value={ticketPrice}
+                onChange={(e) => setTicketPrice(e.target.value)}
+                onBlur={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setTicketPrice(v.toFixed(2)); }}
+                className="flex-1 px-3 py-2.5 text-sm focus:outline-none"
+              />
+            </div>
+          </div>
+          <PrizePlacesEditor places={prizePlaces} ticketPrice={parseFloat(ticketPrice) || 0} onChange={setPrizePlaces} />
+        </div>
+
+        {/* Match Rules */}
+        <div className="border-t border-slate-100 pt-5 space-y-4">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Match Rules</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Serve Rule</label>
+              <select value={serveRule} onChange={(e) => setServeRule(e.target.value as TournamentConfig['serveRuleProfile'])} className={inputCls}>
+                <option value="one_serve_sudden_death">1 Serve — Sudden Death</option>
+                <option value="two_serves_traditional">2 Serves — Traditional</option>
+                <option value="skill_based">Skill-Based (Pros 1, Amateurs 2)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Server Selection</label>
+              <select value={serverDetermination} onChange={(e) => setServerDetermination(e.target.value as TournamentConfig['serverDetermination'])} className={inputCls}>
+                <option value="random_coin_toss">Random Coin Toss</option>
+                <option value="referee_manual_override">Referee Manual</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Receiving Side</label>
+              <select value={receivingSide} onChange={(e) => setReceivingSide(e.target.value as TournamentConfig['receivingSideSelection'])} className={inputCls}>
+                <option value="server_choice">Server&apos;s Choice</option>
+                <option value="ad_court_fixed">Ad Court Fixed</option>
+                <option value="deuce_court_fixed">Deuce Court Fixed</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 pt-1">
+          <button type="submit" className="btn-primary px-5 py-2.5 rounded-xl text-sm font-bold">
+            Save Changes
+          </button>
+          {saved && <span className="text-sm text-emerald-600 font-semibold">✓ Saved!</span>}
+        </div>
+      </div>
+
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+        <span className="text-lg shrink-0">🧪</span>
         <div>
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Tournament Name</label>
-          <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+          <p className="text-sm font-semibold text-amber-800">Demo mode</p>
+          <p className="text-xs text-amber-700 mt-0.5">Archive and email features are available in the real product. Changes reset on page refresh.</p>
         </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Draw Size</label>
-            <select value={drawSize} onChange={(e) => setDrawSize(e.target.value)} className={inputCls}>
-              {[8, 16, 32, 48, 64, 96, 128, 192, 256].map((n) => (
-                <option key={n} value={n}>{n} players</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Entry Fee ($)</label>
-            <input type="number" min="0" step="0.01" value={entryFee} onChange={(e) => setEntryFee(e.target.value)} className={inputCls} />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Tournament Date</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Number of Courts</label>
-            <input type="number" min="1" max="20" value={courts} onChange={(e) => setCourts(e.target.value)} className={inputCls} />
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
-        <h3 className="font-bold text-slate-800">Fundraising</h3>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Fundraising Goal ($)</label>
-            <input type="number" min="0" value={goal} onChange={(e) => setGoal(e.target.value)} className={inputCls} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Prize Money ($)</label>
-            <input type="number" min="0" value={prize} onChange={(e) => setPrize(e.target.value)} className={inputCls} />
-          </div>
-        </div>
-        <p className="text-xs text-slate-400">
-          At {fmt$(parseFloat(entryFee) || 0)} entry × {drawSize} players = {fmt$((parseFloat(entryFee) || 0) * parseInt(drawSize))} potential revenue
-        </p>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-        <h3 className="font-bold text-slate-800">Demo Actions</h3>
-        <p className="text-sm text-slate-500">Archive and email features are available in the real product. In demo mode, changes update the live view instantly.</p>
-        <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-          <span>🧪</span>
-          <span>Demo mode — no data is saved. Settings reset on page refresh.</span>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-90"
-          style={{ backgroundColor: PRIMARY }}
-        >
-          Save Changes
-        </button>
-        {saved && <span className="text-sm text-emerald-600 font-semibold">✓ Saved!</span>}
       </div>
     </form>
   );
