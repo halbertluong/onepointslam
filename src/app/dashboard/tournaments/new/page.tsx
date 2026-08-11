@@ -126,7 +126,7 @@ export default function NewTournamentPage() {
             </select>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
                 Tournament Date (optional)
@@ -149,21 +149,22 @@ export default function NewTournamentPage() {
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Number of Courts
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="20"
-                value={settings.numberOfCourts ?? ''}
-                onChange={(e) => updateSettings('numberOfCourts', e.target.value ? parseInt(e.target.value) : undefined)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-                placeholder="e.g. 4"
-              />
-              <p className="text-xs text-slate-400 mt-1">Courts are auto-assigned to matches when you start live play.</p>
-            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Number of Courts
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="20"
+              value={settings.numberOfCourts ?? ''}
+              onChange={(e) => updateSettings('numberOfCourts', e.target.value ? parseInt(e.target.value) : undefined)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+              placeholder="e.g. 4"
+            />
+            <p className="text-xs text-slate-400 mt-1">Courts are auto-assigned to matches when you start live play.</p>
           </div>
         </div>
 
