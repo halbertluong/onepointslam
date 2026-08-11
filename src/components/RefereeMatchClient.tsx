@@ -14,6 +14,8 @@ interface Props {
   tournamentName: string;
   serveRuleProfile?: string;
   useRandomToss?: boolean;
+  /** Called as soon as the server is determined (via toss or manual assignment), before scoring begins. Caller is responsible for persistence. */
+  onServerDetermined?: (tossWinnerId: string | null, serverPlayerId: string) => void | Promise<void>;
   /** Called when a winner is declared. Caller is responsible for persistence. */
   onDeclareWinner: (winnerId: string) => void | Promise<void>;
   /** Called when a walkover is given. `winnerId` is the advancing player. */
@@ -29,6 +31,7 @@ export default function RefereeMatchClient({
   tournamentName,
   serveRuleProfile = 'one_serve_sudden_death',
   useRandomToss = true,
+  onServerDetermined,
   onDeclareWinner,
   onWalkover,
   onBack,
@@ -67,14 +70,20 @@ export default function RefereeMatchClient({
   function handleServeChoice(choice: 'serve' | 'receive') {
     if (!tossWinner) return;
     const other = tossWinner === 'player1' ? 'player2' : 'player1';
-    setServer(choice === 'serve' ? tossWinner : other);
+    const serverKey = choice === 'serve' ? tossWinner : other;
+    setServer(serverKey);
     setPhase('scoring');
+    const tossWinnerId = tossWinner === 'player1' ? player1.id : player2.id;
+    const serverId = serverKey === 'player1' ? player1.id : player2.id;
+    onServerDetermined?.(tossWinnerId, serverId);
   }
 
   function handleManualServerAssign(val: 'player1' | 'player2') {
     setOverrideServer(val);
     setServer(val);
     setPhase('scoring');
+    const serverId = val === 'player1' ? player1.id : player2.id;
+    onServerDetermined?.(null, serverId);
   }
 
   async function handleDeclareWinner(winnerId: string) {

@@ -131,6 +131,8 @@ export interface Match {
   winnerId: string | null;
   status: MatchStatus;
   courtNumber?: number;
+  /** Tennis: the player who won the pre-match coin toss and chose to serve or receive. */
+  tossWinnerId?: string | null;
   /** One Goal Bowl (soccer): the player who takes the penalty kick, chosen before the kick. */
   kickerPlayerId?: string | null;
   /** One Goal Bowl (soccer): the player defending the goal, auto-assigned as the remaining role. */
@@ -159,6 +161,7 @@ export function mapMatch(row: Record<string, unknown>): Match {
     winnerId: (row.winner_id ?? row.winnerId) as string | null,
     status: (row.status as MatchStatus) ?? 'scheduled',
     courtNumber: (row.court_number ?? row.courtNumber) as number | undefined,
+    tossWinnerId: (row.toss_winner_id ?? row.tossWinnerId) as string | null | undefined,
     kickerPlayerId: (row.kicker_player_id ?? row.kickerPlayerId) as string | null | undefined,
     keeperPlayerId: (row.keeper_player_id ?? row.keeperPlayerId) as string | null | undefined,
     kickOutcome: (row.kick_outcome ?? row.kickOutcome) as KickOutcome | null | undefined,
