@@ -72,7 +72,12 @@ test('waitlist form shows error state on API failure', async ({ page }) => {
   await page.getByPlaceholder('coach@university.edu').fill('error-test@playwright.test');
   await page.getByRole('button', { name: /request early access/i }).click();
 
-  await expect(page.getByText(/wrong|error|try again|failed/i)).toBeVisible({ timeout: 8_000 });
+  // Look for the error feedback within the form section (avoid Next.js error overlay false-positive)
+  await expect(
+    page.getByRole('alert').filter({ hasText: /wrong|error|try again|failed/i })
+      .or(page.locator('form, [data-testid="waitlist"]').getByText(/wrong|error|try again|failed/i))
+      .or(page.getByText(/something went wrong|try again/i))
+  ).toBeVisible({ timeout: 8_000 });
 });
 
 // ── Deep Link Consistency ─────────────────────────────────────────────────────

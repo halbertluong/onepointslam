@@ -1,16 +1,34 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 
-export const adminDb = createClient(supabaseUrl, serviceKey, {
-  auth: { autoRefreshToken: false, persistSession: false },
+// Lazy-initialize so missing credentials don't crash the module at import time.
+// Tests that need the DB call isSupabaseReachable() first and skip if it returns false.
+let _adminDb: SupabaseClient | null = null;
+
+function getAdminDb(): SupabaseClient {
+  if (!_adminDb) {
+    if (!supabaseUrl || !serviceKey) throw new Error('Supabase credentials not configured');
+    _adminDb = createClient(supabaseUrl, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+  }
+  return _adminDb;
+}
+
+// Proxy that forwards any property access to the real client (or throws if unconfigured)
+export const adminDb = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    return (getAdminDb() as unknown as Record<string | symbol, unknown>)[prop];
+  },
 });
 
 /** Returns true if Supabase is reachable from this Node.js process. */
 export async function isSupabaseReachable(): Promise<boolean> {
+  if (!supabaseUrl || !serviceKey) return false;
   try {
-    const { error } = await adminDb.from('waitlist').select('id').limit(1);
+    const { error } = await getAdminDb().from('waitlist').select('id').limit(1);
     // A PostgREST error (e.g. 42P01) means we reached the DB — network is fine
     return !error || error.code !== undefined;
   } catch {
