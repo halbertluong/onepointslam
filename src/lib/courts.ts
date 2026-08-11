@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Match } from '@/types';
 
 /**
  * When a match finishes, its court becomes free. Hand that court number to
@@ -32,4 +33,31 @@ export async function releaseCourtToNextMatch(
       .update({ court_number: freedCourtNumber, status: 'court_assigned' })
       .eq('id', next.id);
   }
+}
+
+/**
+ * Same rule as releaseCourtToNextMatch, for callers working on an in-memory
+ * Match[] instead of Supabase (e.g. the /demo sandbox, which simulates a
+ * tournament entirely in local state).
+ */
+export function releaseCourtToNextMatchLocal(
+  matches: Match[],
+  freedCourtNumber: number | null | undefined,
+): Match[] {
+  if (!freedCourtNumber) return matches;
+
+  const next = matches
+    .filter((m) =>
+      m.status === 'scheduled' &&
+      !m.courtNumber &&
+      m.player1Id && m.player1Id !== 'BYE' &&
+      m.player2Id && m.player2Id !== 'BYE',
+    )
+    .sort((a, b) => a.roundIndex - b.roundIndex || a.matchIndex - b.matchIndex)[0];
+
+  if (!next) return matches;
+
+  return matches.map((m) =>
+    m.id === next.id ? { ...m, courtNumber: freedCourtNumber, status: 'court_assigned' as const } : m,
+  );
 }

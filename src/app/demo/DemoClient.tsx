@@ -17,6 +17,7 @@ import {
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import type { PrizePlace } from '@/types';
 import { advanceWinner, reverseWinner, getRoundName, getRoundsCount } from '@/lib/bracket';
+import { releaseCourtToNextMatchLocal } from '@/lib/courts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -598,7 +599,7 @@ function DemoSettingsTab({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Tournament Date</label>
                 <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
@@ -607,16 +608,15 @@ function DemoSettingsTab({
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Registration Deadline</label>
                 <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Minimum Registrants</label>
-              <input
-                type="number" min="2" max={parseInt(maxPlayers) || 64}
-                value={minReg} onChange={(e) => setMinReg(e.target.value)}
-                placeholder="No minimum" className={inputCls}
-              />
-              <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Minimum Registrants</label>
+                <input
+                  type="number" min="2" max={parseInt(maxPlayers) || 64}
+                  value={minReg} onChange={(e) => setMinReg(e.target.value)}
+                  placeholder="No minimum" className={inputCls}
+                />
+                <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
+              </div>
             </div>
 
             <div>
@@ -1466,7 +1466,11 @@ function BracketStage({
   }
 
   const declareWinner = useCallback((matchId: string, winnerId: string) => {
-    setMatches((prev) => advanceWinner(prev, matchId, winnerId));
+    setMatches((prev) => {
+      const finishing = prev.find((m) => m.id === matchId);
+      const advanced = advanceWinner(prev, matchId, winnerId);
+      return releaseCourtToNextMatchLocal(advanced, finishing?.courtNumber);
+    });
   }, []);
 
   const undoMatchResult = useCallback((matchId: string) => {
@@ -1675,15 +1679,20 @@ export default function DemoClient() {
   function handleParticipantsNext(ps: DemoPlayer[]) {
     const bracket = buildBracket(ps);
     const courts = config?.numberOfCourts ?? 0;
+    // Assign only the first `courts` ready matches, same as the real app's
+    // Start Live Play — the rest stay queued and pick up a court in real
+    // time as matches finish (see declareWinner / releaseCourtToNextMatchLocal).
+    const readyRound0 = bracket
+      .filter((m) => m.roundIndex === 0 && m.player1Id && m.player1Id !== 'BYE' && m.player2Id && m.player2Id !== 'BYE')
+      .sort((a, b) => a.matchIndex - b.matchIndex)
+      .slice(0, courts);
+    const courtByMatchId = new Map(readyRound0.map((m, i) => [m.id, i + 1]));
     const assigned = courts > 0
-      ? bracket.map((m) => {
-          if (m.roundIndex !== 0) return m;
-          if (!m.player1Id || m.player1Id === 'BYE' || !m.player2Id || m.player2Id === 'BYE') return m;
-          const courtIdx = bracket
-            .filter((x) => x.roundIndex === 0 && x.player1Id && x.player1Id !== 'BYE' && x.player2Id && x.player2Id !== 'BYE')
-            .findIndex((x) => x.id === m.id);
-          return { ...m, courtNumber: (courtIdx % courts) + 1, status: 'court_assigned' as const };
-        })
+      ? bracket.map((m) =>
+          courtByMatchId.has(m.id)
+            ? { ...m, courtNumber: courtByMatchId.get(m.id), status: 'court_assigned' as const }
+            : m,
+        )
       : bracket;
     setPlayers(ps);
     setMatches(assigned);
