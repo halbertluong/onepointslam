@@ -85,14 +85,14 @@ function DemoBanner() {
 // ── Setup Form ────────────────────────────────────────────────────────────────
 
 function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
-  const [name, setName] = useState('Spring Charity Cup 2026');
-  const [drawSize, setDrawSize] = useState(16);
+  const [name, setName] = useState('Fall Charity Cup 2026');
+  const [drawSize, setDrawSize] = useState(64);
   const [date, setDate] = useState('');
   // String state so typing feels natural — no leading zeros, no stuck digits on backspace
-  const [entryFee, setEntryFee] = useState('50');
+  const [entryFee, setEntryFee] = useState('100');
   const [numberOfCourts, setNumberOfCourts] = useState('4');
-  const [prizeMoney, setPrizeMoney] = useState('500');
-  const [fundraisingGoal, setFundraisingGoal] = useState('2000');
+  const [prizeMoney, setPrizeMoney] = useState('1000');
+  const [fundraisingGoal, setFundraisingGoal] = useState('5400');
 
   const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none';
 
@@ -148,7 +148,7 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
                 onChange={(e) => setDrawSize(parseInt(e.target.value))}
                 className={inputCls}
               >
-                {[8, 16, 32, 64].map((n) => (
+                {[8, 16, 32, 48, 64, 96, 128, 192, 256].map((n) => (
                   <option key={n} value={n}>{n} players</option>
                 ))}
               </select>
