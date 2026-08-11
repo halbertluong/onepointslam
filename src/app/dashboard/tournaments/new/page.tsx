@@ -4,7 +4,9 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { useRouter } from 'next/navigation';
 import FundraisingCalculator from '@/components/FundraisingCalculator';
-import type { TournamentSettings, MaxPlayers, PrizePlace, Sport } from '@/types';
+import PrizePlacesEditor from '@/components/PrizePlacesEditor';
+import MatchRulesEditor from '@/components/MatchRulesEditor';
+import type { TournamentSettings, MaxPlayers, Sport } from '@/types';
 import { DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
 
 const DEFAULT_SETTINGS: TournamentSettings = {
@@ -109,75 +111,59 @@ export default function NewTournamentPage() {
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Draw Size
+            </label>
+            <select
+              value={settings.maxPlayers}
+              onChange={(e) => updateSettings('maxPlayers', parseInt(e.target.value) as MaxPlayers)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            >
+              {[8, 16, 32, 48, 64, 96, 128, 192, 256].map((n) => (
+                <option key={n} value={n}>{n} players</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Draw Size
+                Tournament Date (optional)
               </label>
-              <select
-                value={settings.maxPlayers}
-                onChange={(e) => updateSettings('maxPlayers', parseInt(e.target.value) as MaxPlayers)}
+              <input
+                type="date"
+                value={settings.tournamentDate ?? ''}
+                onChange={(e) => updateSettings('tournamentDate', e.target.value || undefined)}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-              >
-                {[8, 16, 32, 48, 64, 96, 128, 192, 256].map((n) => (
-                  <option key={n} value={n}>{n} players</option>
-                ))}
-              </select>
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Player Cap (optional)
+                Registration Deadline (optional)
+              </label>
+              <input
+                type="datetime-local"
+                value={settings.registrationDeadline ?? ''}
+                onChange={(e) => updateSettings('registrationDeadline', e.target.value || undefined)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+                Number of Courts
               </label>
               <input
                 type="number"
-                min="2"
-                max={settings.maxPlayers}
-                value={settings.playerRegistrationCap ?? ''}
-                onChange={(e) => updateSettings('playerRegistrationCap', e.target.value ? parseInt(e.target.value) : undefined)}
+                min="1"
+                max="20"
+                value={settings.numberOfCourts ?? ''}
+                onChange={(e) => updateSettings('numberOfCourts', e.target.value ? parseInt(e.target.value) : undefined)}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-                placeholder="No cap"
+                placeholder="e.g. 4"
               />
+              <p className="text-xs text-slate-400 mt-1">Courts are auto-assigned to matches when you start live play.</p>
             </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Tournament Date (optional)
-            </label>
-            <input
-              type="date"
-              value={settings.tournamentDate ?? ''}
-              onChange={(e) => updateSettings('tournamentDate', e.target.value || undefined)}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Registration Deadline (optional)
-            </label>
-            <input
-              type="datetime-local"
-              value={settings.registrationDeadline ?? ''}
-              onChange={(e) => updateSettings('registrationDeadline', e.target.value || undefined)}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Number of Courts
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="20"
-              value={settings.numberOfCourts ?? ''}
-              onChange={(e) => updateSettings('numberOfCourts', e.target.value ? parseInt(e.target.value) : undefined)}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-              placeholder="e.g. 4"
-            />
-            <p className="text-xs text-slate-400 mt-1">Courts are auto-assigned to matches when you start live play.</p>
           </div>
         </div>
 
@@ -199,49 +185,14 @@ export default function NewTournamentPage() {
         ) : (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
           <h2 className="font-bold text-slate-800">Match Rules</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Serve Rule
-              </label>
-              <select
-                value={settings.serveRuleProfile}
-                onChange={(e) => updateSettings('serveRuleProfile', e.target.value as TournamentSettings['serveRuleProfile'])}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-              >
-                <option value="one_serve_sudden_death">1 Serve — Sudden Death (all players)</option>
-                <option value="two_serves_traditional">2 Serves — Traditional (all players)</option>
-                <option value="skill_based">Skill-Based — Pros 1 serve, Amateurs 2 serves</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Server Selection
-              </label>
-              <select
-                value={settings.serverDetermination}
-                onChange={(e) => updateSettings('serverDetermination', e.target.value as TournamentSettings['serverDetermination'])}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-              >
-                <option value="random_coin_toss">Random Coin Toss</option>
-                <option value="referee_manual_override">Referee Manual</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Receiving Side
-              </label>
-              <select
-                value={settings.receivingSideSelection}
-                onChange={(e) => updateSettings('receivingSideSelection', e.target.value as TournamentSettings['receivingSideSelection'])}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-              >
-                <option value="server_choice">Server&apos;s Choice</option>
-                <option value="ad_court_fixed">Ad Court Fixed</option>
-                <option value="deuce_court_fixed">Deuce Court Fixed</option>
-              </select>
-            </div>
-          </div>
+          <MatchRulesEditor
+            serveRuleProfile={settings.serveRuleProfile}
+            onServeRuleProfileChange={(v) => updateSettings('serveRuleProfile', v)}
+            serverDetermination={settings.serverDetermination}
+            onServerDeterminationChange={(v) => updateSettings('serverDetermination', v)}
+            receivingSideSelection={settings.receivingSideSelection}
+            onReceivingSideSelectionChange={(v) => updateSettings('receivingSideSelection', v)}
+          />
         </div>
         )}
 
@@ -291,11 +242,24 @@ export default function NewTournamentPage() {
         </div>
 
         {/* Prize money */}
-        <PrizePlacesEditor
-          places={settings.prizePlaces ?? []}
-          ticketPrice={settings.ticketPriceForFundraiser}
-          onChange={(p) => updateSettings('prizePlaces', p)}
-        />
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-bold text-slate-800">Prize Money</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Optional — earmark winnings by place</p>
+            </div>
+          </div>
+          <PrizePlacesEditor
+            places={settings.prizePlaces ?? []}
+            ticketPrice={settings.ticketPriceForFundraiser}
+            onChange={(p) => updateSettings('prizePlaces', p)}
+          />
+          {(settings.prizePlaces?.length ?? 0) > 0 && (
+            <p className="text-xs text-slate-400">
+              Mixed types allowed — e.g. 1st gets $500 fixed, 2nd gets 15% of the entry pool.
+            </p>
+          )}
+        </div>
 
         {/* Pricing calculator */}
         <FundraisingCalculator
@@ -314,100 +278,6 @@ export default function NewTournamentPage() {
           {loading ? 'Creating…' : 'Create Tournament Draw'}
         </button>
       </form>
-    </div>
-  );
-}
-
-const PLACE_LABELS: Record<number, string> = { 1: '1st Place', 2: '2nd Place', 3: '3rd Place', 4: '4th Place' };
-
-function PrizePlacesEditor({
-  places,
-  ticketPrice,
-  onChange,
-}: {
-  places: PrizePlace[];
-  ticketPrice: number;
-  onChange: (p: PrizePlace[]) => void;
-}) {
-  function addPlace() {
-    const next = places.length + 1;
-    onChange([...places, { place: next, type: 'fixed', value: 0 }]);
-  }
-  function remove(i: number) {
-    const updated = places.filter((_, idx) => idx !== i).map((p, idx) => ({ ...p, place: idx + 1 }));
-    onChange(updated);
-  }
-  function update(i: number, field: 'type' | 'value', val: string) {
-    onChange(places.map((p, idx) =>
-      idx === i ? { ...p, [field]: field === 'value' ? parseFloat(val) || 0 : val } : p
-    ));
-  }
-
-  const totalPct = places.filter(p => p.type === 'percentage').reduce((s, p) => s + p.value, 0);
-
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-bold text-slate-800">Prize Money</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Optional — earmark winnings by place</p>
-        </div>
-        {places.length < 4 && (
-          <button type="button" onClick={addPlace} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600">
-            + Add Place
-          </button>
-        )}
-      </div>
-
-      {places.length === 0 && (
-        <p className="text-sm text-slate-400 text-center py-4">No prize places configured. Click &quot;Add Place&quot; to get started.</p>
-      )}
-
-      <div className="space-y-3">
-        {places.map((p, i) => (
-          <div key={i} className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-slate-600 w-20 shrink-0">{PLACE_LABELS[p.place] ?? `${p.place}th`}</span>
-            <select
-              value={p.type}
-              onChange={(e) => update(i, 'type', e.target.value)}
-              className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none"
-            >
-              <option value="fixed">$ Fixed</option>
-              <option value="percentage">% of pool</option>
-            </select>
-            <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden flex-1">
-              <span className="px-2.5 py-2 bg-slate-50 text-slate-400 text-sm border-r border-slate-200">
-                {p.type === 'fixed' ? '$' : '%'}
-              </span>
-              <input
-                type="number"
-                min="0"
-                step={p.type === 'fixed' ? '5' : '1'}
-                max={p.type === 'percentage' ? 100 : undefined}
-                value={p.value || ''}
-                onChange={(e) => update(i, 'value', e.target.value)}
-                className="flex-1 px-3 py-2 text-sm focus:outline-none"
-                placeholder="0"
-              />
-            </div>
-            {p.type === 'percentage' && ticketPrice > 0 && (
-              <span className="text-xs text-slate-400 shrink-0 w-16 text-right">
-                ≈ ${((p.value / 100) * ticketPrice).toFixed(0)}/player
-              </span>
-            )}
-            <button type="button" onClick={() => remove(i)} className="text-slate-300 hover:text-red-400 text-lg leading-none shrink-0">×</button>
-          </div>
-        ))}
-      </div>
-
-      {totalPct > 100 && (
-        <p className="text-xs text-red-500 font-semibold">⚠ Percentage total exceeds 100% ({totalPct}%)</p>
-      )}
-      {places.length > 0 && (
-        <p className="text-xs text-slate-400">
-          Mixed types allowed — e.g. 1st gets $500 fixed, 2nd gets 15% of the entry pool.
-        </p>
-      )}
     </div>
   );
 }

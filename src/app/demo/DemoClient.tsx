@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import BracketView from '@/components/BracketView';
 import PlayerRegistrationForm from '@/components/PlayerRegistrationForm';
@@ -15,6 +15,7 @@ import {
   type DemoPlayer,
 } from './demoData';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
+import MatchRulesEditor from '@/components/MatchRulesEditor';
 import type { PrizePlace } from '@/types';
 import { advanceWinner, reverseWinner, getRoundName, getRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatchLocal } from '@/lib/courts';
@@ -35,7 +36,7 @@ interface TournamentConfig {
   prizeMoney: number;
   fundraisingGoal: number;
   numberOfCourts: number;
-  playerCap?: number;
+
   minimumRegistrants?: number;
   serveRuleProfile: 'one_serve_sudden_death' | 'two_serves_traditional' | 'skill_based';
   serverDetermination: 'random_coin_toss' | 'referee_manual_override';
@@ -535,7 +536,6 @@ function DemoSettingsTab({
   const [ticketPrice, setTicketPrice] = useState(String(s.entryFee));
   const [tournamentDate, setTournamentDate] = useState(s.date ?? '');
   const [deadline, setDeadline] = useState(s.registrationDeadline ?? '');
-  const [cap, setCap] = useState(String(s.playerCap ?? ''));
   const [minReg, setMinReg] = useState(String(s.minimumRegistrants ?? ''));
   const [courts, setCourts] = useState(String(s.numberOfCourts));
   const [serveRule, setServeRule] = useState(s.serveRuleProfile);
@@ -548,7 +548,6 @@ function DemoSettingsTab({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const capNum = parseInt(cap);
     const minNum = parseInt(minReg);
     onUpdate({
       name: name.trim() || config.name,
@@ -556,7 +555,6 @@ function DemoSettingsTab({
       entryFee: parseFloat(ticketPrice) || 0,
       date: tournamentDate,
       registrationDeadline: deadline,
-      playerCap: (!isNaN(capNum) && capNum > 0) ? capNum : undefined,
       minimumRegistrants: (!isNaN(minNum) && minNum > 0) ? minNum : undefined,
       numberOfCourts: parseInt(courts) || 1,
       serveRuleProfile: serveRule,
@@ -591,12 +589,13 @@ function DemoSettingsTab({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Player Cap (optional)</label>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Minimum Registrants</label>
               <input
                 type="number" min="2" max={parseInt(maxPlayers) || 64}
-                value={cap} onChange={(e) => setCap(e.target.value)}
-                placeholder={`Max ${maxPlayers}`} className={inputCls}
+                value={minReg} onChange={(e) => setMinReg(e.target.value)}
+                placeholder="No minimum" className={inputCls}
               />
+              <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
             </div>
 
             <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -609,20 +608,10 @@ function DemoSettingsTab({
                 <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Minimum Registrants</label>
-                <input
-                  type="number" min="2" max={parseInt(maxPlayers) || 64}
-                  value={minReg} onChange={(e) => setMinReg(e.target.value)}
-                  placeholder="No minimum" className={inputCls}
-                />
-                <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Number of Courts</label>
+                <input type="number" min="1" max="20" value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="e.g. 4" className={inputCls} />
+                <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
               </div>
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Number of Courts</label>
-              <input type="number" min="1" max="20" value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="e.g. 4" className={inputCls} />
-              <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
             </div>
           </div>
         </div>
@@ -649,31 +638,15 @@ function DemoSettingsTab({
         {/* Match Rules */}
         <div className="border-t border-slate-100 pt-5 space-y-4">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Match Rules</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Serve Rule</label>
-              <select value={serveRule} onChange={(e) => setServeRule(e.target.value as TournamentConfig['serveRuleProfile'])} className={inputCls}>
-                <option value="one_serve_sudden_death">1 Serve — Sudden Death</option>
-                <option value="two_serves_traditional">2 Serves — Traditional</option>
-                <option value="skill_based">Skill-Based (Pros 1, Amateurs 2)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Server Selection</label>
-              <select value={serverDetermination} onChange={(e) => setServerDetermination(e.target.value as TournamentConfig['serverDetermination'])} className={inputCls}>
-                <option value="random_coin_toss">Random Coin Toss</option>
-                <option value="referee_manual_override">Referee Manual</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Receiving Side</label>
-              <select value={receivingSide} onChange={(e) => setReceivingSide(e.target.value as TournamentConfig['receivingSideSelection'])} className={inputCls}>
-                <option value="server_choice">Server&apos;s Choice</option>
-                <option value="ad_court_fixed">Ad Court Fixed</option>
-                <option value="deuce_court_fixed">Deuce Court Fixed</option>
-              </select>
-            </div>
-          </div>
+          <MatchRulesEditor
+            serveRuleProfile={serveRule}
+            onServeRuleProfileChange={setServeRule}
+            serverDetermination={serverDetermination}
+            onServerDeterminationChange={setServerDetermination}
+            receivingSideSelection={receivingSide}
+            onReceivingSideSelectionChange={setReceivingSide}
+            className={inputCls}
+          />
         </div>
 
         <div className="flex items-center gap-3 pt-1">
@@ -904,26 +877,16 @@ function RefereeView({
   matches,
   players,
   onDeclareWinner,
-  initialMatchId,
-  onClearInitialMatch,
 }: {
   config: TournamentConfig;
   matches: Match[];
   players: DemoPlayer[];
   onDeclareWinner: (matchId: string, winnerId: string) => void;
-  initialMatchId?: string | null;
-  onClearInitialMatch?: () => void;
 }) {
-  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(initialMatchId ?? null);
-
-  // When parent pushes a match to open (clicked from bracket), sync it in
-  useEffect(() => {
-    if (initialMatchId) setSelectedMatchId(initialMatchId);
-  }, [initialMatchId]);
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
   function selectMatch(id: string | null) {
     setSelectedMatchId(id);
-    if (!id) onClearInitialMatch?.();
   }
 
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
@@ -1334,65 +1297,6 @@ function ResultsView({
   );
 }
 
-// ── View: Bracket Editor ──────────────────────────────────────────────────────
-
-function BracketEditorView({
-  config,
-  matches,
-  players,
-  onSwap,
-  onMatchClick,
-}: {
-  config: TournamentConfig;
-  matches: Match[];
-  players: DemoPlayer[];
-  onSwap: (aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') => void;
-  onMatchClick?: (matchId: string) => void;
-}) {
-  const anyResults = matches.some((m) => m.winnerId);
-  return (
-    <div className="bg-slate-50 min-h-full">
-      <div className="bg-white border-b border-slate-200 px-4 py-3">
-        <h2 className="font-black text-slate-900 text-base">{config.name} — Bracket Editor</h2>
-        <p className="text-xs text-slate-500 mt-0.5">
-          {anyResults
-            ? 'Results are locked in — swap players before matches are played.'
-            : 'Drag any player to a different slot to rearrange the draw.'}
-        </p>
-      </div>
-      {!anyResults && (
-        <div className="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center gap-2">
-          <span className="text-base">🔀</span>
-          <span className="text-xs font-medium text-blue-700">
-            Drag &amp; drop player names to swap matchups. Changes take effect immediately.
-          </span>
-        </div>
-      )}
-      {onMatchClick && (
-        <div className="bg-emerald-50 border-b border-emerald-100 px-4 py-2 flex items-center gap-2">
-          <span className="text-base">🎾</span>
-          <span className="text-xs font-medium text-emerald-700">
-            Click any unplayed match to referee it — coin toss, serve assignment, and declare a winner.
-          </span>
-        </div>
-      )}
-      <div className="px-4 py-6 overflow-x-auto">
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 min-w-max">
-          <BracketView
-            initialMatches={matches}
-            players={players}
-            maxPlayers={Math.max(8, players.length)}
-            liveUpdates={false}
-            editable={!anyResults}
-            onSwap={!anyResults ? onSwap : undefined}
-            onMatchClick={onMatchClick}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Main Demo Shell ───────────────────────────────────────────────────────────
 
 const PERSONAS: { id: DemoView; label: string; emoji: string; desc: string }[] = [
@@ -1455,15 +1359,9 @@ function BracketStage({
   const [matches, setMatches] = useState<Match[]>(initialMatches);
   const [persona, setPersona] = useState<DemoView>('director');
   const [refereeSub, setRefereeSub] = useState<RefereeSubView>('queue');
-  const [pendingMatchId, setPendingMatchId] = useState<string | null>(null);
   const [mobile, setMobile] = useState(false);
   const [speeding, setSpeeding] = useState(false);
   const [shareMsg, setShareMsg] = useState('');
-
-  function openMatchAsReferee(matchId: string) {
-    setPendingMatchId(matchId);
-    if (persona === 'referee') setRefereeSub('queue');
-  }
 
   const declareWinner = useCallback((matchId: string, winnerId: string) => {
     setMatches((prev) => {
@@ -1529,8 +1427,6 @@ function BracketStage({
   const refereeQueueEl = (
     <RefereeView
       config={config} matches={matches} players={players} onDeclareWinner={declareWinner}
-      initialMatchId={pendingMatchId}
-      onClearInitialMatch={() => setPendingMatchId(null)}
     />
   );
 
