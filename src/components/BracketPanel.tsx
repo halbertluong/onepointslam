@@ -14,6 +14,8 @@ interface Props {
   emptyMessage?: string;
   /** When provided, a director can toggle edit mode and click a player to set/override the match winner. */
   onSetWinner?: (match: Match, winnerId: string) => void | Promise<void>;
+  /** When provided (and edit mode is on), shows an undo control on decided matches. */
+  onReverseMatch?: (matchId: string) => void;
 }
 
 /**
@@ -30,6 +32,7 @@ export default function BracketPanel({
   title = 'Bracket',
   emptyMessage = 'No bracket yet.',
   onSetWinner,
+  onReverseMatch,
 }: Props) {
   const [editing, setEditing] = useState(false);
 
@@ -69,6 +72,7 @@ export default function BracketPanel({
         liveUpdates={liveUpdates}
         resultEditable={editing}
         onSetWinner={onSetWinner}
+        onReverseMatch={editing ? onReverseMatch : undefined}
       />
     </div>
   );
