@@ -9,6 +9,7 @@ import BasketballMatchClient from '@/components/BasketballMatchClient';
 import type { Match, Player, Tournament, KickOutcome, PossessionOutcome } from '@/types';
 import { mapPlayer } from '@/types';
 import { advanceWinner, determineOneGoalBowlWinner, determineOnePointBowlWinner } from '@/lib/bracket';
+import { releaseCourtToNextMatch } from '@/lib/courts';
 
 export default function RefereeMatchPage() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -97,6 +98,7 @@ export default function RefereeMatchPage() {
         .eq('tournament_id', match.tournamentId)
         .eq('round_index', match.roundIndex + 1)
         .eq('match_index', Math.floor(match.matchIndex / 2));
+      await releaseCourtToNextMatch(supabase, match.tournamentId, match.courtNumber);
     }
   }
 
@@ -123,6 +125,7 @@ export default function RefereeMatchPage() {
         .eq('tournament_id', match.tournamentId)
         .eq('round_index', match.roundIndex + 1)
         .eq('match_index', Math.floor(match.matchIndex / 2));
+      await releaseCourtToNextMatch(supabase, match.tournamentId, match.courtNumber);
     }
   }
 
@@ -155,6 +158,7 @@ export default function RefereeMatchPage() {
         .eq('tournament_id', match.tournamentId)
         .eq('round_index', match.roundIndex + 1)
         .eq('match_index', Math.floor(match.matchIndex / 2));
+      await releaseCourtToNextMatch(supabase, match.tournamentId, match.courtNumber);
     }
   }
 
@@ -188,6 +192,7 @@ export default function RefereeMatchPage() {
           .eq('round_index', match.roundIndex + 1)
           .eq('match_index', Math.floor(match.matchIndex / 2));
       }
+      await releaseCourtToNextMatch(supabase, match.tournamentId, match.courtNumber);
     }
   }
 

@@ -5,7 +5,7 @@ import CoinTossAnimation from './CoinTossAnimation';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Match, Player } from '@/types';
 
-type Phase = 'player_check' | 'coin_toss' | 'scoring' | 'finalized';
+type Phase = 'player_check' | 'coin_toss' | 'choice' | 'scoring' | 'finalized';
 
 interface Props {
   match: Match;
@@ -42,6 +42,7 @@ export default function RefereeMatchClient({
       : 'player_check';
 
   const [phase, setPhase] = useState<Phase>(initialPhase);
+  const [tossWinner, setTossWinner] = useState<'player1' | 'player2' | null>(null);
   const [server, setServer] = useState<'player1' | 'player2' | null>(null);
   const [overrideServer, setOverrideServer] = useState<'player1' | 'player2' | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -59,7 +60,20 @@ export default function RefereeMatchClient({
   }
 
   function handleCoinTossResult(result: 'player1' | 'player2') {
-    setServer(result);
+    setTossWinner(result);
+    setPhase('choice');
+  }
+
+  function handleServeChoice(choice: 'serve' | 'receive') {
+    if (!tossWinner) return;
+    const other = tossWinner === 'player1' ? 'player2' : 'player1';
+    setServer(choice === 'serve' ? tossWinner : other);
+    setPhase('scoring');
+  }
+
+  function handleManualServerAssign(val: 'player1' | 'player2') {
+    setOverrideServer(val);
+    setServer(val);
     setPhase('scoring');
   }
 
@@ -205,6 +219,8 @@ export default function RefereeMatchClient({
                 player1Name={p1Name}
                 player2Name={p2Name}
                 onResult={handleCoinTossResult}
+                title="Coin Toss"
+                resultLabel="won the toss"
               />
               <div className="px-5 pb-5">
                 <p className="text-xs text-white/30 text-center mb-2">Or manually assign server:</p>
@@ -215,13 +231,53 @@ export default function RefereeMatchClient({
                   ].map(({ label, val }) => (
                     <button
                       key={val}
-                      onClick={() => { setOverrideServer(val); handleCoinTossResult(val); }}
+                      onClick={() => handleManualServerAssign(val)}
                       className="bg-white/5 hover:bg-white/10 rounded-xl py-2.5 text-sm font-semibold text-white/60 transition-colors"
                     >
                       {label} serves
                     </button>
                   ))}
                 </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Serve or receive choice */}
+          {phase === 'choice' && tossWinner && (
+            <motion.div
+              key="choice"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-4"
+            >
+              <div className="bg-white/5 rounded-2xl p-5 text-center">
+                <p className="text-white/80 font-semibold mb-1">
+                  {tossWinner === 'player1' ? p1Name : p2Name} won the toss
+                </p>
+                <p className="text-white/40 text-sm">They choose to serve or receive. The other player gets the remaining side.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => handleServeChoice('serve')}
+                  className="tap-target w-full rounded-2xl transition-all active:scale-95 font-black text-lg tracking-tight"
+                  style={{
+                    background: 'linear-gradient(135deg, var(--tenant-primary), var(--tenant-secondary, var(--tenant-primary)))',
+                    minHeight: '90px',
+                  }}
+                >
+                  Serve 🎾
+                </button>
+                <button
+                  onClick={() => handleServeChoice('receive')}
+                  className="tap-target w-full rounded-2xl transition-all active:scale-95 font-black text-lg tracking-tight"
+                  style={{
+                    background: 'linear-gradient(135deg, var(--tenant-primary), var(--tenant-secondary, var(--tenant-primary)))',
+                    minHeight: '90px',
+                  }}
+                >
+                  Receive
+                </button>
               </div>
             </motion.div>
           )}
