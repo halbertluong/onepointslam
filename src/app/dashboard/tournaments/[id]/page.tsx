@@ -10,6 +10,7 @@ import type { Tournament, Player, Match } from '@/types';
 import { mapPlayer, mapMatch } from '@/types';
 import { calcRaised, formatCurrency } from '@/lib/pricing';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
+import MatchRulesEditor from '@/components/MatchRulesEditor';
 
 function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; isArchived: boolean }) {
   const router = useRouter();
@@ -1055,49 +1056,14 @@ function SettingsEditor({
       {/* Match rules */}
       <div className="border-t border-slate-100 pt-5 space-y-4">
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Match Rules</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Serve Rule
-            </label>
-            <select
-              value={serveRule}
-              onChange={(e) => setServeRule(e.target.value as Tournament['settings']['serveRuleProfile'])}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-            >
-              <option value="one_serve_sudden_death">1 Serve — Sudden Death</option>
-              <option value="two_serves_traditional">2 Serves — Traditional</option>
-              <option value="skill_based">Skill-Based (Pros 1, Amateurs 2)</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Server Selection
-            </label>
-            <select
-              value={serverDetermination}
-              onChange={(e) => setServerDetermination(e.target.value as Tournament['settings']['serverDetermination'])}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-            >
-              <option value="random_coin_toss">Random Coin Toss</option>
-              <option value="referee_manual_override">Referee Manual</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Receiving Side
-            </label>
-            <select
-              value={receivingSide}
-              onChange={(e) => setReceivingSide(e.target.value as Tournament['settings']['receivingSideSelection'])}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-            >
-              <option value="server_choice">Server&apos;s Choice</option>
-              <option value="ad_court_fixed">Ad Court Fixed</option>
-              <option value="deuce_court_fixed">Deuce Court Fixed</option>
-            </select>
-          </div>
-        </div>
+        <MatchRulesEditor
+          serveRuleProfile={serveRule}
+          onServeRuleProfileChange={setServeRule}
+          serverDetermination={serverDetermination}
+          onServerDeterminationChange={setServerDetermination}
+          receivingSideSelection={receivingSide}
+          onReceivingSideSelectionChange={setReceivingSide}
+        />
       </div>
 
       <div className="flex items-center gap-3 pt-1">
