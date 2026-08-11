@@ -6,9 +6,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
 import PlayerRegistrationForm, { type PlayerFormData } from '@/components/PlayerRegistrationForm';
 import TournamentInfoCard from '@/components/TournamentInfoCard';
-import BracketView from '@/components/BracketView';
-import type { Match, Player } from '@/types';
-import { mapPlayer, mapMatch } from '@/types';
+import type { Player } from '@/types';
+import { mapPlayer } from '@/types';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
@@ -210,12 +209,6 @@ export default function RegisterPage() {
   const [savePasswordError, setSavePasswordError] = useState('');
   const [savePasswordSkipped, setSavePasswordSkipped] = useState(false);
 
-  // Tab state for the main view
-  const [activeTab, setActiveTab] = useState<'register' | 'bracket'>('register');
-  const [bracketMatches, setBracketMatches] = useState<Match[] | null>(null);
-  const [bracketPlayers, setBracketPlayers] = useState<Player[]>([]);
-  const [bracketLoading, setBracketLoading] = useState(false);
-
   // Stripe payment state
   const [clientSecret,      setClientSecret]      = useState('');
   const [pendingPlayerData, setPendingPlayerData] = useState<PlayerFormData | null>(null);
@@ -244,7 +237,6 @@ export default function RegisterPage() {
       const mappedPlayers = (playersData ?? []).map((p) => mapPlayer(p as Record<string, unknown>));
       setTournament(t);
       setPlayerCount(mappedPlayers.length);
-      setBracketPlayers(mappedPlayers);
       // Fetch donation total via server endpoint (avoids exposing individual donation amounts to browser)
       fetch(`/api/tournaments/${tournamentId}/donation-total`)
         .then((r) => r.json())
@@ -394,17 +386,6 @@ export default function RegisterPage() {
     }
     setSavePasswordLoading(false);
     setSavePasswordDone(true);
-  }
-
-  async function loadBracket() {
-    if (bracketMatches !== null) return; // already loaded
-    setBracketLoading(true);
-    const supabase = createClient();
-    const { data: matches } = await supabase
-      .from('matches').select('*').eq('tournament_id', tournamentId).order('round_index').order('match_index');
-    setBracketMatches((matches ?? []).map((m) => mapMatch(m as Record<string, unknown>)));
-    // bracketPlayers already populated from the initial players fetch in init()
-    setBracketLoading(false);
   }
 
   async function handleDonatePaymentSuccess(paymentIntentId: string, amountDollars: number) {
@@ -705,68 +686,26 @@ export default function RegisterPage() {
     <div className="min-h-screen bg-slate-50 py-10 px-4">
       <div className="max-w-4xl mx-auto space-y-5">
         {/* Header */}
-        <div>
-          {tenantName && <p className="text-sm text-slate-400 mb-1">{tenantName}</p>}
-          <h1 className="text-2xl font-black text-slate-900">{tournamentName}</h1>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex rounded-xl overflow-hidden border border-slate-200 bg-white w-fit">
-          <button
-            type="button"
-            onClick={() => setActiveTab('register')}
-            className={`px-5 py-2 text-sm font-semibold transition-colors ${
-              activeTab === 'register' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'
-            }`}
-          >
-            Register
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('bracket');
-              if (bracketReady) loadBracket();
-            }}
-            className={`px-5 py-2 text-sm font-semibold transition-colors ${
-              activeTab === 'bracket' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'
-            }`}
-          >
-            Bracket
-            {bracketReady && <span className="ml-1.5 text-[10px] font-bold text-emerald-400 uppercase tracking-wide">Live</span>}
-          </button>
-        </div>
-
-        {/* Bracket tab */}
-        {activeTab === 'bracket' && (
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-            {bracketLoading ? (
-              <div className="py-16 text-center text-slate-400 text-sm">Loading bracket…</div>
-            ) : !bracketReady ? (
-              <div className="py-16 text-center space-y-2">
-                <p className="text-3xl">🎾</p>
-                <p className="font-semibold text-slate-700">Bracket not generated yet</p>
-                <p className="text-sm text-slate-400">Check back once registration closes and the draw is seeded.</p>
-              </div>
-            ) : bracketMatches && bracketMatches.length === 0 ? (
-              <div className="py-16 text-center space-y-2">
-                <p className="text-3xl">🎾</p>
-                <p className="font-semibold text-slate-700">No matches found</p>
-                <p className="text-sm text-slate-400">The bracket may still be processing.</p>
-              </div>
-            ) : bracketMatches ? (
-              <BracketView
-                initialMatches={bracketMatches}
-                players={bracketPlayers}
-                maxPlayers={settings?.maxPlayers as number ?? bracketMatches.length * 2}
-                tournamentId={tournamentId}
-                liveUpdates
-              />
-            ) : null}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            {tenantName && <p className="text-sm text-slate-400 mb-1">{tenantName}</p>}
+            <h1 className="text-2xl font-black text-slate-900">{tournamentName}</h1>
           </div>
-        )}
+          {bracketReady && (
+            <a
+              href={`/t/${slug}/${tournamentId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+            >
+              View Draw ↗
+              <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wide">Live</span>
+            </a>
+          )}
+        </div>
 
         {/* Register tab */}
-        {activeTab === 'register' && (<>
+        {(<>
 
         {/* Tournament details card */}
         <TournamentInfoCard
