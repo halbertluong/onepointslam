@@ -300,12 +300,14 @@ function DrawEditor({
 }
 
 const STATUS_ORDER_REF: Record<string, number> = { playing: 0, court_assigned: 1, warmup: 2, scheduled: 3 };
-const STATUS_LABEL: Record<string, string> = { playing: '● LIVE', court_assigned: 'Court Assigned', warmup: 'Warmup', scheduled: 'Scheduled' };
+const STATUS_LABEL: Record<string, string> = { playing: '● LIVE', court_assigned: 'Court Assigned', warmup: 'Warmup', scheduled: 'Scheduled', finalized: 'Complete', walkover: 'Complete' };
 const STATUS_STYLE: Record<string, string> = {
   playing: 'bg-red-100 text-red-700',
   court_assigned: 'bg-blue-100 text-blue-700',
   warmup: 'bg-amber-100 text-amber-700',
   scheduled: 'bg-slate-100 text-slate-500',
+  finalized: 'bg-emerald-100 text-emerald-700',
+  walkover: 'bg-emerald-100 text-emerald-700',
 };
 
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {

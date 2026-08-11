@@ -174,10 +174,20 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
                           ? { backgroundColor: '#f59e0b22', color: '#f59e0b' }
                           : m.status === 'court_assigned'
                           ? { backgroundColor: '#3b82f622', color: '#3b82f6' }
+                          : m.status === 'finalized' || m.status === 'walkover'
+                          ? { backgroundColor: '#10b98122', color: '#10b981' }
                           : { backgroundColor: '#ffffff10', color: '#94a3b8' }
                         }
                       >
-                        {isLive ? '● LIVE' : m.status === 'warmup' ? 'Warmup' : m.status === 'court_assigned' ? 'Court Assigned' : 'Scheduled'}
+                        {isLive
+                          ? '● LIVE'
+                          : m.status === 'warmup'
+                          ? 'Warmup'
+                          : m.status === 'court_assigned'
+                          ? 'Court Assigned'
+                          : m.status === 'finalized' || m.status === 'walkover'
+                          ? 'Complete'
+                          : 'Scheduled'}
                       </span>
                     </div>
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
