@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import BracketView from '@/components/BracketView';
-import TournamentStatsPanel from '@/components/TournamentStatsPanel';
 import PlayerRegistrationForm from '@/components/PlayerRegistrationForm';
 import RefereeQueueClient, { type MatchRow } from '@/app/referee/RefereeQueueClient';
 import RefereeMatchClient from '@/components/RefereeMatchClient';
@@ -21,7 +20,7 @@ import { advanceWinner, reverseWinner, getRoundName, getRoundsCount } from '@/li
 
 type Stage = 'setup' | 'participants' | 'bracket';
 type DemoView = 'registrant' | 'director' | 'referee' | 'spectator';
-type DirectorSubView = 'dashboard' | 'bracket' | 'queue' | 'stats' | 'results';
+type DirectorSubView = 'bracket' | 'draw' | 'players' | 'referee';
 type RefereeSubView = 'queue' | 'bracket' | 'stats' | 'results';
 
 interface TournamentConfig {
@@ -379,6 +378,133 @@ function ParticipantsStage({
   );
 }
 
+// ── Director: Inline Referee Queue Tab ───────────────────────────────────────
+
+function DirectorRefereeQueue({
+  config,
+  matches,
+  players,
+  onDeclareWinner,
+}: {
+  config: TournamentConfig;
+  matches: Match[];
+  players: DemoPlayer[];
+  onDeclareWinner: (matchId: string, winnerId: string) => void;
+}) {
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
+
+  const STATUS_ORDER: Record<string, number> = { playing: 0, court_assigned: 1, warmup: 2, scheduled: 3 };
+
+  const active = matches
+    .filter((m) => ['playing', 'court_assigned', 'warmup', 'scheduled'].includes(m.status ?? '') && !m.winnerId && m.player1Id && m.player1Id !== 'BYE' && m.player2Id && m.player2Id !== 'BYE')
+    .sort((a, b) => (STATUS_ORDER[a.status ?? ''] ?? 9) - (STATUS_ORDER[b.status ?? ''] ?? 9) || (a.courtNumber ?? 99) - (b.courtNumber ?? 99));
+
+  if (selectedMatchId) {
+    const match = matches.find((m) => m.id === selectedMatchId);
+    const p1 = match ? playerMap[match.player1Id ?? ''] : null;
+    const p2 = match ? playerMap[match.player2Id ?? ''] : null;
+    if (match && p1 && p2) {
+      return (
+        <div style={{ '--tenant-primary': PRIMARY } as React.CSSProperties}>
+          <RefereeMatchClient
+            match={match}
+            player1={p1 as Player}
+            player2={p2 as Player}
+            tournamentName={config.name}
+            useRandomToss
+            onDeclareWinner={(winnerId) => { onDeclareWinner(match.id, winnerId); setSelectedMatchId(null); }}
+            onWalkover={(winnerId) => { onDeclareWinner(match.id, winnerId); setSelectedMatchId(null); }}
+            onBack={() => setSelectedMatchId(null)}
+            onNext={() => setSelectedMatchId(null)}
+          />
+        </div>
+      );
+    }
+  }
+
+  if (active.length === 0) {
+    return (
+      <div className="py-16 text-center">
+        <p className="text-slate-400 text-sm">No active matches in the queue.</p>
+        <p className="text-xs text-slate-300 mt-1">Matches will appear here once the tournament is live.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {active.map((m) => {
+        const p1 = playerMap[m.player1Id ?? ''];
+        const p2 = playerMap[m.player2Id ?? ''];
+        const statusLabel: Record<string, string> = { playing: 'Playing', court_assigned: 'Court Assigned', warmup: 'Warmup', scheduled: 'Scheduled' };
+        const statusColor: Record<string, string> = { playing: 'bg-green-100 text-green-700', court_assigned: 'bg-blue-100 text-blue-700', warmup: 'bg-amber-100 text-amber-700', scheduled: 'bg-slate-100 text-slate-600' };
+        return (
+          <button
+            key={m.id}
+            onClick={() => setSelectedMatchId(m.id)}
+            className="w-full text-left bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 p-4 transition-colors"
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-slate-800 text-sm truncate">
+                  {p1?.fullName ?? '—'} <span className="text-slate-400 font-normal">vs</span> {p2?.fullName ?? '—'}
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {m.courtNumber ? `Court ${m.courtNumber}` : 'No court'} · Round {(m.roundIndex ?? 0) + 1}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${statusColor[m.status ?? ''] ?? 'bg-slate-100 text-slate-600'}`}>
+                  {statusLabel[m.status ?? ''] ?? m.status}
+                </span>
+                <span className="text-xs font-bold text-blue-600">Referee →</span>
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Director: Players Tab ─────────────────────────────────────────────────────
+
+function DirectorPlayersTab({ players }: { players: DemoPlayer[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-100">
+            <th className="text-left pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">#</th>
+            <th className="text-left pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Player</th>
+            <th className="text-left pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wide hidden sm:table-cell">Email</th>
+            <th className="text-left pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">NTRP</th>
+            <th className="text-left pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Seed</th>
+            <th className="text-left pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wide hidden sm:table-cell">Gender</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-50">
+          {players.map((p, i) => (
+            <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+              <td className="py-2.5 pr-3 text-slate-400 text-xs">{i + 1}</td>
+              <td className="py-2.5 pr-3 font-medium text-slate-800">{p.fullName}</td>
+              <td className="py-2.5 pr-3 text-slate-400 text-xs hidden sm:table-cell truncate max-w-[180px]">{p.email}</td>
+              <td className="py-2.5 pr-3 text-slate-600">{p.ntrpRating}</td>
+              <td className="py-2.5 pr-3">
+                {p.seedRating ? (
+                  <span className="text-xs font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">[{p.seedRating}]</span>
+                ) : <span className="text-slate-300">—</span>}
+              </td>
+              <td className="py-2.5 text-slate-400 text-xs hidden sm:table-cell">{p.gender === 'male' ? '♂ Male' : '♀ Female'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── View: Director Dashboard ──────────────────────────────────────────────────
 
 function DirectorView({
@@ -387,61 +513,141 @@ function DirectorView({
   matches,
   onSetWinner,
   onSwap,
+  onReverseMatch,
 }: {
   config: TournamentConfig;
   players: DemoPlayer[];
   matches: Match[];
   onSetWinner: (matchId: string, winnerId: string) => void;
   onSwap: (aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') => void;
+  onReverseMatch: (matchId: string) => void;
 }) {
-  const demoTournament = {
-    name: config.name,
-    status: 'live_play',
-    settings: {
-      ticketPriceForFundraiser: config.entryFee,
-      systemTechFee: 0,
-      maxPlayers: config.drawSize,
-      fundraisingGoal: config.fundraisingGoal,
-      numberOfCourts: config.numberOfCourts,
-    },
-  };
+  const [tab, setTab] = useState<DirectorSubView>('bracket');
+
+  const totalRaised = players.length * config.entryFee;
+  const completedMatches = matches.filter((m) => m.status === 'finalized' || m.status === 'walkover').length;
+
+  const TABS: { id: DirectorSubView; label: string }[] = [
+    { id: 'bracket', label: 'Bracket' },
+    { id: 'draw', label: 'Draw Editor' },
+    { id: 'players', label: `Players (${players.length})` },
+    { id: 'referee', label: 'Referee Queue' },
+  ];
 
   const anyResults = matches.some((m) => m.winnerId);
 
   return (
-    <div className="bg-slate-50 min-h-full px-4 sm:px-6 py-6" style={{ '--tenant-primary': PRIMARY } as React.CSSProperties}>
-      <div className="max-w-[1600px] mx-auto space-y-6">
-        <TournamentStatsPanel
-          tournament={demoTournament}
-          players={players}
-          matches={matches}
-          fundraisingGoal={config.fundraisingGoal}
-          onSetWinner={(match, winnerId) => onSetWinner(match.id, winnerId)}
-        />
-        {/* Bracket editor embedded in dashboard */}
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-            <div>
-              <h3 className="font-bold text-slate-800 text-sm">Bracket Editor</h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {anyResults ? 'Swap players before matches are played.' : 'Drag any player to swap matchups.'}
-              </p>
+    <div className="bg-slate-50 min-h-full" style={{ '--tenant-primary': PRIMARY } as React.CSSProperties}>
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+        {/* Header */}
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl font-black text-slate-900 truncate">{config.name}</h1>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <StatusPill status="live_play" />
+              <span className="text-sm text-slate-500">{players.length} players · {completedMatches} of {matches.length} matches done</span>
+              {config.date && <span className="text-sm text-slate-400">{fmtDate(config.date)}</span>}
             </div>
-            {!anyResults && (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600">
-                <span>🔀</span><span>Drag to rearrange</span>
-              </div>
+          </div>
+        </div>
+
+        {/* Stats grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Players</p>
+            <p className="text-3xl font-black mt-1" style={{ color: PRIMARY }}>{players.length}</p>
+            <p className="text-xs text-slate-400 mt-1">of {config.drawSize} max</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200 p-4">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Entry Fee</p>
+            <p className="text-3xl font-black mt-1 text-slate-800">{fmt$(config.entryFee)}</p>
+            <p className="text-xs text-slate-400 mt-1">per player</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200 p-4">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Total Raised</p>
+            <p className="text-3xl font-black mt-1 text-green-600">{fmt$(totalRaised)}</p>
+            {config.fundraisingGoal > 0 && (
+              <p className="text-xs text-slate-400 mt-1">{Math.round((totalRaised / config.fundraisingGoal) * 100)}% of goal</p>
             )}
           </div>
-          <div className="px-5 py-5 overflow-x-auto">
-            <BracketView
-              initialMatches={matches}
-              players={players}
-              maxPlayers={Math.max(8, players.length)}
-              liveUpdates={false}
-              editable={!anyResults}
-              onSwap={!anyResults ? onSwap : undefined}
-            />
+          <div className="bg-white rounded-2xl border border-slate-200 p-4">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Goal</p>
+            <p className="text-3xl font-black mt-1 text-slate-800">{fmt$(config.fundraisingGoal)}</p>
+            <p className="text-xs text-slate-400 mt-1">fundraising target</p>
+          </div>
+        </div>
+
+        {/* Tab panel */}
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="flex border-b border-slate-200 px-4 overflow-x-auto">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`px-3 py-3.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                  tab === t.id
+                    ? 'text-[--tenant-primary] border-[--tenant-primary]'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="p-5">
+            {tab === 'bracket' && (
+              <>
+                {!anyResults && (
+                  <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-4">
+                    ✏️ Click a player name to set the winner · ↩ to reverse a result
+                  </p>
+                )}
+                <div className="overflow-x-auto">
+                  <BracketView
+                    initialMatches={matches}
+                    players={players}
+                    maxPlayers={Math.max(8, players.length)}
+                    liveUpdates={false}
+                    resultEditable
+                    onSetWinner={(match, winnerId) => onSetWinner(match.id, winnerId)}
+                    onReverseMatch={(matchId) => onReverseMatch(matchId)}
+                  />
+                </div>
+              </>
+            )}
+
+            {tab === 'draw' && (
+              <>
+                <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-4">
+                  {anyResults
+                    ? '⚠️ Some results are locked in — only unreplayed slots can be swapped.'
+                    : '🔀 Drag any player to a different slot to rearrange the draw.'}
+                </p>
+                <div className="overflow-x-auto">
+                  <BracketView
+                    initialMatches={matches}
+                    players={players}
+                    maxPlayers={Math.max(8, players.length)}
+                    liveUpdates={false}
+                    editable={!anyResults}
+                    onSwap={!anyResults ? onSwap : undefined}
+                  />
+                </div>
+              </>
+            )}
+
+            {tab === 'players' && <DirectorPlayersTab players={players} />}
+
+            {tab === 'referee' && (
+              <DirectorRefereeQueue
+                config={config}
+                matches={matches}
+                players={players}
+                onDeclareWinner={onSetWinner}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -999,13 +1205,6 @@ const PERSONAS: { id: DemoView; label: string; emoji: string; desc: string }[] =
   { id: 'spectator', label: 'Spectator', emoji: '📺', desc: 'Read-only live broadcast' },
 ];
 
-const DIRECTOR_SUBS: { id: DirectorSubView; label: string; emoji: string }[] = [
-  { id: 'dashboard', label: 'Dashboard', emoji: '🏆' },
-  { id: 'bracket', label: 'Bracket', emoji: '🔀' },
-  { id: 'queue', label: 'Referee Queue', emoji: '🎾' },
-  { id: 'stats', label: 'Stats', emoji: '📊' },
-  { id: 'results', label: 'Results', emoji: '🥇' },
-];
 
 const REFEREE_SUBS: { id: RefereeSubView; label: string; emoji: string }[] = [
   { id: 'queue', label: 'Match Queue', emoji: '🎾' },
@@ -1057,7 +1256,6 @@ function BracketStage({
 }) {
   const [matches, setMatches] = useState<Match[]>(initialMatches);
   const [persona, setPersona] = useState<DemoView>('director');
-  const [directorSub, setDirectorSub] = useState<DirectorSubView>('dashboard');
   const [refereeSub, setRefereeSub] = useState<RefereeSubView>('queue');
   const [pendingMatchId, setPendingMatchId] = useState<string | null>(null);
   const [mobile, setMobile] = useState(false);
@@ -1066,7 +1264,6 @@ function BracketStage({
 
   function openMatchAsReferee(matchId: string) {
     setPendingMatchId(matchId);
-    if (persona === 'director') setDirectorSub('queue');
     if (persona === 'referee') setRefereeSub('queue');
   }
 
@@ -1100,7 +1297,6 @@ function BracketStage({
     setTimeout(() => {
       setMatches((prev) => speedThroughAll(prev));
       setSpeeding(false);
-      setDirectorSub('results');
       setRefereeSub('results');
       if (persona === 'spectator' || persona === 'registrant') setPersona('director');
     }, 600);
@@ -1143,15 +1339,16 @@ function BracketStage({
     />
   );
 
-  const directorContent = (() => {
-    switch (directorSub) {
-      case 'dashboard': return <DirectorView config={config} players={players} matches={matches} onSetWinner={declareWinner} onSwap={swapPlayers} />;
-      case 'bracket': return bracketDeclareEl;
-      case 'queue': return refereeQueueEl;
-      case 'stats': return <StatsView config={config} players={players} matches={matches} />;
-      case 'results': return <ResultsView config={config} matches={matches} players={players} />;
-    }
-  })();
+  const directorContent = (
+    <DirectorView
+      config={config}
+      players={players}
+      matches={matches}
+      onSetWinner={declareWinner}
+      onSwap={swapPlayers}
+      onReverseMatch={undoMatchResult}
+    />
+  );
 
   const refereeContent = (() => {
     switch (refereeSub) {
@@ -1170,6 +1367,8 @@ function BracketStage({
       {persona === 'spectator' && <SpectatorView config={config} matches={matches} players={players} />}
     </div>
   );
+
+
 
   return (
     <div className="flex flex-col" style={{ minHeight: 'calc(100vh - 36px)' }}>
@@ -1222,10 +1421,7 @@ function BracketStage({
         </div>
       </div>
 
-      {/* Sub-nav for Director / Referee */}
-      {persona === 'director' && (
-        <SubNav items={DIRECTOR_SUBS} active={directorSub} onChange={setDirectorSub} />
-      )}
+      {/* Sub-nav for Referee only — Director tabs are inside DirectorView */}
       {persona === 'referee' && (
         <SubNav items={REFEREE_SUBS} active={refereeSub} onChange={setRefereeSub} />
       )}
