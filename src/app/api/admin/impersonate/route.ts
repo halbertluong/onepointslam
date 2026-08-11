@@ -3,7 +3,6 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 
 export async function POST(req: NextRequest) {
-  // Verify caller is super_admin
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -20,9 +19,8 @@ export async function POST(req: NextRequest) {
 
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-
   if (!serviceRoleKey) {
-    return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY not configured on server' }, { status: 500 });
+    return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY not configured' }, { status: 500 });
   }
 
   const admin = createServiceClient(supabaseUrl, serviceRoleKey, {
@@ -31,43 +29,33 @@ export async function POST(req: NextRequest) {
 
   const base = process.env.NEXT_PUBLIC_SITE_URL || origin;
 
-  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+  const { data, error } = await admin.auth.admin.generateLink({
     type: 'magiclink',
     email: targetEmail,
     options: { redirectTo: `${base}/auth/set-session` },
   });
 
-  if (linkError) {
-    console.error('[impersonate] generateLink error:', linkError);
-    return NextResponse.json({ error: linkError.message }, { status: 500 });
+  if (error) {
+    console.error('[impersonate] generateLink error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Exchange token_hash server-side to get real session tokens, then hand them
-  // to the client via /auth/set-session — avoids the race where the existing
-  // super-admin session fires SIGNED_IN before the hash-based session is parsed.
-  const actionLink = linkData?.properties?.action_link;
+  const actionLink = data?.properties?.action_link;
   if (!actionLink) {
-    return NextResponse.json({ error: 'No action_link returned from Supabase' }, { status: 500 });
+    return NextResponse.json({ error: 'No action_link returned' }, { status: 500 });
   }
 
-  const tokenHash = new URL(actionLink).searchParams.get('token_hash');
+  // Extract token_hash from the Supabase action link and hand it to the
+  // browser — the browser's anon-key client can verify it via verifyOtp(),
+  // which is a public endpoint (service-role cannot call it for itself).
+  const url = new URL(actionLink);
+  const tokenHash = url.searchParams.get('token_hash');
   if (!tokenHash) {
     return NextResponse.json({ error: 'No token_hash in action_link' }, { status: 500 });
   }
 
-  const { data: otpData, error: otpError } = await admin.auth.verifyOtp({
-    token_hash: tokenHash,
-    type: 'magiclink',
-  });
+  const safeLandingPath = landingPath?.startsWith('/') ? landingPath : '/';
+  const setSessionUrl = `${base}/auth/set-session?th=${encodeURIComponent(tokenHash)}&next=${encodeURIComponent(safeLandingPath)}`;
 
-  if (otpError || !otpData.session) {
-    console.error('[impersonate] verifyOtp error:', otpError);
-    return NextResponse.json({ error: otpError?.message ?? 'Failed to exchange token' }, { status: 500 });
-  }
-
-  const { access_token, refresh_token } = otpData.session;
-  const safeLandingPath = (landingPath && landingPath.startsWith('/')) ? landingPath : '/';
-  const setSessionUrl = `${base}/auth/set-session?at=${encodeURIComponent(access_token)}&rt=${encodeURIComponent(refresh_token)}&next=${encodeURIComponent(safeLandingPath)}`;
-
-  return NextResponse.json({ magicLink: setSessionUrl });
+  return NextResponse.json({ url: setSessionUrl });
 }

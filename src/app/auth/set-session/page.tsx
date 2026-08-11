@@ -9,21 +9,23 @@ function SetSessionInner() {
   const params = useSearchParams();
 
   useEffect(() => {
-    const at = params.get('at');
-    const rt = params.get('rt');
+    const tokenHash = params.get('th');
     const rawNext = params.get('next') ?? '/';
     const next = rawNext.startsWith('/') ? rawNext : '/';
 
-    if (!at || !rt) {
+    if (!tokenHash) {
       router.replace('/auth/login?error=invalid_link');
       return;
     }
 
     const supabase = createClient();
-    supabase.auth
-      .setSession({ access_token: at, refresh_token: rt })
-      .then(() => router.replace(next))
-      .catch(() => router.replace('/auth/login?error=link_expired'));
+    // Sign out any existing session first so there's no race with the new one
+    supabase.auth.signOut().then(() =>
+      supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'magiclink' })
+    ).then(({ error }) => {
+      if (error) router.replace('/auth/login?error=link_expired');
+      else router.replace(next);
+    });
   }, [router, params]);
 
   return (

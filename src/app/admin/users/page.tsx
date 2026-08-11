@@ -70,10 +70,9 @@ export default function AdminUsersPage() {
   async function handleImpersonate(email: string, landingPath: string) {
     setImpersonating(email);
     setMsg('');
-    // Open the window immediately inside the click handler so browsers don't
-    // treat it as a popup. We navigate it to the real URL once the API responds.
+    // Open window immediately (in the click handler) so browsers don't block it as a popup
     const newTab = window.open('', '_blank');
-    if (newTab) newTab.document.write('<p style="font-family:sans-serif;padding:2rem">Signing in…</p>');
+    if (newTab) newTab.document.write('<p style="font-family:sans-serif;padding:2rem;color:#64748b">Signing in…</p>');
     try {
       const res = await fetch('/api/admin/impersonate', {
         method: 'POST',
@@ -81,11 +80,11 @@ export default function AdminUsersPage() {
         body: JSON.stringify({ targetEmail: email, origin: window.location.origin, landingPath }),
       });
       const data = await res.json();
-      if (data.magicLink && newTab) {
-        newTab.location.href = data.magicLink;
+      if (data.url && newTab) {
+        newTab.location.href = data.url;
       } else {
         newTab?.close();
-        setMsg(`Error: ${data.error ?? 'Unknown error'}`);
+        setMsg(`Error: ${data.error ?? JSON.stringify(data)}`);
       }
     } catch (e) {
       newTab?.close();
