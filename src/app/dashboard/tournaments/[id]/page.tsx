@@ -629,6 +629,22 @@ export default function TournamentAdminPage() {
               Start Live Play
             </button>
           )}
+          {tournament.status === 'live_play' && (
+            <button
+              onClick={async () => {
+                setSaving(true);
+                const supabase = createClient();
+                await supabase.from('tournaments').update({ status: 'bracket_generated' }).eq('id', id);
+                setMessage('Returned to bracket view.');
+                load();
+                setSaving(false);
+              }}
+              disabled={saving}
+              className="px-3 py-2 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors disabled:opacity-60"
+            >
+              ↩ Stop Live Play
+            </button>
+          )}
         </div>
       </div>
 
@@ -655,7 +671,7 @@ export default function TournamentAdminPage() {
       <div className="flex border-b border-slate-200 gap-1 overflow-x-auto">
         {(['overview', 'draw', 'players', 'referee', 'settings'] as Tab[]).map((t) => {
           if (t === 'draw' && !canManageDraw) return null;
-          if (t === 'referee' && tournament.status !== 'live_play') return null;
+          if (t === 'referee' && !canManageDraw) return null;
           const label = t === 'draw' ? 'Draw Editor' : t === 'overview' ? 'Bracket' : t === 'players' ? 'Players' : t === 'referee' ? 'Referee Queue' : 'Settings';
           return (
             <button
