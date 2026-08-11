@@ -38,6 +38,7 @@ export default function RefereeMatchPage() {
       winnerId: m.winner_id,
       status: m.status,
       courtNumber: m.court_number,
+      tossWinnerId: m.toss_winner_id,
       kickerPlayerId: m.kicker_player_id,
       keeperPlayerId: m.keeper_player_id,
       kickOutcome: m.kick_outcome,
@@ -81,6 +82,14 @@ export default function RefereeMatchPage() {
   }, [matchId]);
 
   useEffect(() => { load(); }, [load]);
+
+  async function handleServerDetermined(tossWinnerId: string | null, serverPlayerId: string) {
+    const supabase = createClient();
+    await supabase
+      .from('matches')
+      .update({ toss_winner_id: tossWinnerId, server_player_id: serverPlayerId })
+      .eq('id', matchId);
+  }
 
   async function handleDeclareWinner(winnerId: string) {
     if (match?.status === 'finalized' || match?.status === 'walkover') return;
@@ -242,6 +251,7 @@ export default function RefereeMatchPage() {
       tournamentName={tournament?.name ?? ''}
       serveRuleProfile={tournament?.settings?.serveRuleProfile}
       useRandomToss={tournament?.settings?.serverDetermination === 'random_coin_toss'}
+      onServerDetermined={handleServerDetermined}
       onDeclareWinner={handleDeclareWinner}
       onWalkover={handleWalkover}
       onBack={() => router.push('/referee')}
