@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { useParams, useRouter } from 'next/navigation';
 import BracketPanel from '@/components/BracketPanel';
+import BracketView from '@/components/BracketView';
 import { generateBracket } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 import type { Tournament, Player, Match } from '@/types';
@@ -11,6 +12,7 @@ import { mapPlayer, mapMatch } from '@/types';
 import { calcRaised, formatCurrency } from '@/lib/pricing';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
+import { MATCH_STATUS_ORDER, MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
 
 function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; isArchived: boolean }) {
   const router = useRouter();
@@ -76,7 +78,6 @@ function DrawEditor({
   tournamentId: string;
   onSaved: () => void;
 }) {
-  const [swapA, setSwapA] = useState<string | null>(null);
   const [seedEdits, setSeedEdits] = useState<Record<string, string>>(() => {
     const m: Record<string, string> = {};
     players.forEach((p) => { m[p.id] = p.seedRating != null ? String(p.seedRating) : ''; });
@@ -86,34 +87,28 @@ function DrawEditor({
   const [msg, setMsg] = useState('');
 
   const round0 = matches.filter((m) => m.roundIndex === 0).sort((a, b) => a.matchIndex - b.matchIndex);
+  const anyResults = matches.some((m) => m.winnerId);
 
-  function playerName(id: string | null | 'BYE') {
-    if (!id || id === 'BYE') return 'BYE';
-    return players.find((p) => p.id === id)?.fullName ?? 'Unknown';
-  }
-
-  async function handleSwap(targetId: string) {
-    if (!swapA) { setSwapA(targetId); return; }
-    if (swapA === targetId) { setSwapA(null); return; }
-    // Swap swapA and targetId in all round-0 matches
+  async function handleBracketSwap(aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') {
+    if (aMatchId === bMatchId && aSlot === bSlot) return;
+    const ma = round0.find((m) => m.id === aMatchId);
+    const mb = round0.find((m) => m.id === bMatchId);
+    if (!ma || !mb) return;
+    const aId = aSlot === 'p1' ? ma.player1Id : ma.player2Id;
+    const bId = bSlot === 'p1' ? mb.player1Id : mb.player2Id;
     setSaving(true);
     const supabase = createClient();
-    const updates: PromiseLike<unknown>[] = [];
-    for (const m of round0) {
-      let p1 = m.player1Id;
-      let p2 = m.player2Id;
-      if (p1 === swapA) p1 = targetId;
-      else if (p1 === targetId) p1 = swapA;
-      if (p2 === swapA) p2 = targetId;
-      else if (p2 === targetId) p2 = swapA;
-      if (p1 !== m.player1Id || p2 !== m.player2Id) {
-        updates.push(
-          supabase.from('matches').update({ player1_id: p1, player2_id: p2 }).eq('id', m.id)
-        );
-      }
+    if (aMatchId === bMatchId) {
+      const update = aSlot === 'p1' ? { player1_id: bId, player2_id: aId } : { player2_id: bId, player1_id: aId };
+      await supabase.from('matches').update(update).eq('id', aMatchId);
+    } else {
+      const aField = aSlot === 'p1' ? 'player1_id' : 'player2_id';
+      const bField = bSlot === 'p1' ? 'player1_id' : 'player2_id';
+      await Promise.all([
+        supabase.from('matches').update({ [aField]: bId }).eq('id', aMatchId),
+        supabase.from('matches').update({ [bField]: aId }).eq('id', bMatchId),
+      ]);
     }
-    await Promise.all(updates);
-    setSwapA(null);
     setSaving(false);
     setMsg('Players swapped!');
     onSaved();
@@ -227,9 +222,9 @@ function DrawEditor({
           <div>
             <h3 className="font-bold text-slate-800">Swap Draw Positions</h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              {swapA
-                ? `Selected: ${playerName(swapA)} — click another player to swap`
-                : 'Click a player to select, then click another to swap positions'}
+              {anyResults
+                ? '⚠️ Some results are locked in — only unreplayed slots can be swapped.'
+                : '🔀 Drag any player to a different slot to rearrange the draw.'}
             </p>
           </div>
           <button
@@ -240,46 +235,15 @@ function DrawEditor({
             🎲 Randomize Unseeded
           </button>
         </div>
-        <div className="p-4 space-y-1.5">
-          {round0.map((m) => (
-            <div key={m.id} className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 w-14 shrink-0">Match {m.matchIndex + 1}</span>
-              {[m.player1Id, m.player2Id].map((pid, slot) => {
-                const isBye = !pid || pid === 'BYE';
-                const isSelected = swapA === pid;
-                return (
-                  <button
-                    key={slot}
-                    onClick={() => !isBye && pid && handleSwap(pid)}
-                    disabled={isBye || saving}
-                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all text-left ${
-                      isBye
-                        ? 'bg-slate-100 text-slate-400 cursor-default'
-                        : isSelected
-                        ? 'ring-2 text-white'
-                        : swapA
-                        ? 'bg-amber-50 border border-amber-200 text-slate-700 hover:bg-amber-100'
-                        : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
-                    }`}
-                    style={isSelected ? { backgroundColor: 'var(--tenant-primary)', borderColor: 'var(--tenant-primary)' } : {}}
-                  >
-                    {isBye ? 'BYE' : (() => {
-                      const p = players.find((pl) => pl.id === pid);
-                      return (
-                        <span className="flex items-center gap-1.5 min-w-0">
-                          {p?.gender && <GenderDot gender={p.gender} size="sm" />}
-                          <span className="truncate">{p?.fullName ?? 'Unknown'}</span>
-                          {p?.ntrpRating != null && <span className="text-blue-400 shrink-0" style={{fontSize:'10px'}}>NTRP {p.ntrpRating}</span>}
-                          {p?.utrRating != null && <span className="text-purple-400 shrink-0" style={{fontSize:'10px'}}>UTR {p.utrRating}</span>}
-                          {p?.age != null && <span className="text-slate-400 shrink-0" style={{fontSize:'10px'}}>{p.age}y</span>}
-                        </span>
-                      );
-                    })()}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+        <div className="p-4 overflow-x-auto">
+          <BracketView
+            initialMatches={matches}
+            players={players}
+            maxPlayers={round0.length * 2}
+            liveUpdates={false}
+            editable={!anyResults}
+            onSwap={!anyResults ? handleBracketSwap : undefined}
+          />
         </div>
       </div>
 
@@ -299,19 +263,10 @@ function DrawEditor({
   );
 }
 
-const STATUS_ORDER_REF: Record<string, number> = { playing: 0, court_assigned: 1, warmup: 2, scheduled: 3 };
-const STATUS_LABEL: Record<string, string> = { playing: '● LIVE', court_assigned: 'Court Assigned', warmup: 'Warmup', scheduled: 'Scheduled' };
-const STATUS_STYLE: Record<string, string> = {
-  playing: 'bg-red-100 text-red-700',
-  court_assigned: 'bg-blue-100 text-blue-700',
-  warmup: 'bg-amber-100 text-amber-700',
-  scheduled: 'bg-slate-100 text-slate-500',
-};
-
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
   const active = matches
     .filter((m) => ['playing', 'court_assigned', 'warmup', 'scheduled'].includes(m.status))
-    .sort((a, b) => (STATUS_ORDER_REF[a.status] ?? 9) - (STATUS_ORDER_REF[b.status] ?? 9) || (a.courtNumber ?? 99) - (b.courtNumber ?? 99));
+    .sort((a, b) => (MATCH_STATUS_ORDER[a.status] ?? 9) - (MATCH_STATUS_ORDER[b.status] ?? 9) || (a.courtNumber ?? 99) - (b.courtNumber ?? 99));
 
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
 
@@ -351,8 +306,8 @@ function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Play
                   <span className="px-2 py-0.5 rounded text-xs text-slate-400 italic">Unassigned</span>
                 )}
               </div>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${STATUS_STYLE[m.status] ?? 'bg-slate-100 text-slate-500'} ${isLive ? 'animate-pulse' : ''}`}>
-                {STATUS_LABEL[m.status] ?? m.status}
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${MATCH_STATUS_STYLE[m.status] ?? 'bg-slate-100 text-slate-500'} ${isLive ? 'animate-pulse' : ''}`}>
+                {MATCH_STATUS_LABEL[m.status] ?? m.status}
               </span>
             </div>
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
@@ -961,7 +916,7 @@ function SettingsEditor({
             <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
           </div>
 
-          <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
                 Tournament Date
@@ -985,22 +940,22 @@ function SettingsEditor({
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
               />
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Number of Courts
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="20"
-                value={courts}
-                onChange={(e) => setCourts(e.target.value)}
-                placeholder="e.g. 4"
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-              />
-              <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Number of Courts
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="20"
+              value={courts}
+              onChange={(e) => setCourts(e.target.value)}
+              placeholder="e.g. 4"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            />
+            <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
           </div>
         </div>
       </div>

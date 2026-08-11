@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import BracketView from '@/components/BracketView';
+import BracketPanel from '@/components/BracketPanel';
 import PlayerRegistrationForm from '@/components/PlayerRegistrationForm';
 import RefereeQueueClient, { type MatchRow } from '@/app/referee/RefereeQueueClient';
 import RefereeMatchClient from '@/components/RefereeMatchClient';
@@ -19,6 +20,7 @@ import MatchRulesEditor from '@/components/MatchRulesEditor';
 import type { PrizePlace } from '@/types';
 import { advanceWinner, reverseWinner, getRoundName, getRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatchLocal } from '@/lib/courts';
+import { MATCH_STATUS_ORDER, MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -410,11 +412,9 @@ function DirectorRefereeQueue({
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
 
-  const STATUS_ORDER: Record<string, number> = { playing: 0, court_assigned: 1, warmup: 2, scheduled: 3 };
-
   const active = matches
     .filter((m) => ['playing', 'court_assigned', 'warmup', 'scheduled'].includes(m.status ?? '') && !m.winnerId && m.player1Id && m.player1Id !== 'BYE' && m.player2Id && m.player2Id !== 'BYE')
-    .sort((a, b) => (STATUS_ORDER[a.status ?? ''] ?? 9) - (STATUS_ORDER[b.status ?? ''] ?? 9) || (a.courtNumber ?? 99) - (b.courtNumber ?? 99));
+    .sort((a, b) => (MATCH_STATUS_ORDER[a.status ?? ''] ?? 9) - (MATCH_STATUS_ORDER[b.status ?? ''] ?? 9) || (a.courtNumber ?? 99) - (b.courtNumber ?? 99));
 
   if (selectedMatchId) {
     const match = matches.find((m) => m.id === selectedMatchId);
@@ -453,8 +453,6 @@ function DirectorRefereeQueue({
       {active.map((m) => {
         const p1 = playerMap[m.player1Id ?? ''];
         const p2 = playerMap[m.player2Id ?? ''];
-        const statusLabel: Record<string, string> = { playing: 'Playing', court_assigned: 'Court Assigned', warmup: 'Warmup', scheduled: 'Scheduled' };
-        const statusColor: Record<string, string> = { playing: 'bg-green-100 text-green-700', court_assigned: 'bg-blue-100 text-blue-700', warmup: 'bg-amber-100 text-amber-700', scheduled: 'bg-slate-100 text-slate-600' };
         return (
           <button
             key={m.id}
@@ -471,8 +469,8 @@ function DirectorRefereeQueue({
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${statusColor[m.status ?? ''] ?? 'bg-slate-100 text-slate-600'}`}>
-                  {statusLabel[m.status ?? ''] ?? m.status}
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${MATCH_STATUS_STYLE[m.status ?? ''] ?? 'bg-slate-100 text-slate-500'} ${m.status === 'playing' ? 'animate-pulse' : ''}`}>
+                  {MATCH_STATUS_LABEL[m.status ?? ''] ?? m.status}
                 </span>
                 <span className="text-xs font-bold text-blue-600">Referee →</span>
               </div>
@@ -491,30 +489,59 @@ function DirectorPlayersTab({ players }: { players: DemoPlayer[] }) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-slate-100">
-            <th className="text-left pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">#</th>
-            <th className="text-left pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Player</th>
-            <th className="text-left pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wide hidden sm:table-cell">Email</th>
-            <th className="text-left pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">NTRP</th>
-            <th className="text-left pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Seed</th>
-            <th className="text-left pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wide hidden sm:table-cell">Gender</th>
+          <tr className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            <th className="px-4 py-3 text-left">#</th>
+            <th className="px-4 py-3 text-left">Name</th>
+            <th className="px-4 py-3 text-left">Gender</th>
+            <th className="px-4 py-3 text-left">NTRP</th>
+            <th className="px-4 py-3 text-left">UTR</th>
+            <th className="px-4 py-3 text-left">Seed</th>
+            <th className="px-4 py-3 text-left">Tier</th>
+            <th className="px-4 py-3 text-left">Status</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-50">
-          {players.map((p, i) => (
-            <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-              <td className="py-2.5 pr-3 text-slate-400 text-xs">{i + 1}</td>
-              <td className="py-2.5 pr-3 font-medium text-slate-800">{p.fullName}</td>
-              <td className="py-2.5 pr-3 text-slate-400 text-xs hidden sm:table-cell truncate max-w-[180px]">{p.email}</td>
-              <td className="py-2.5 pr-3 text-slate-600">{p.ntrpRating}</td>
-              <td className="py-2.5 pr-3">
-                {p.seedRating ? (
-                  <span className="text-xs font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">[{p.seedRating}]</span>
-                ) : <span className="text-slate-300">—</span>}
-              </td>
-              <td className="py-2.5 text-slate-400 text-xs hidden sm:table-cell">{p.gender === 'male' ? '♂ Male' : '♀ Female'}</td>
-            </tr>
-          ))}
+        <tbody className="divide-y divide-slate-100">
+          {players.length === 0 && (
+            <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
+          )}
+          {players
+            .sort((a, b) => {
+              if (a.seedRating && b.seedRating) return a.seedRating - b.seedRating;
+              if (a.seedRating) return -1;
+              if (b.seedRating) return 1;
+              return a.fullName.localeCompare(b.fullName);
+            })
+            .map((p, i) => (
+              <tr key={p.id} className="hover:bg-slate-50">
+                <td className="px-4 py-3 text-slate-400">{i + 1}</td>
+                <td className="px-4 py-3 font-medium text-slate-800">
+                  {p.fullName}
+                  {p.seedRating && (
+                    <span className="ml-1.5 text-xs text-amber-600 font-bold">[{p.seedRating}]</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-slate-500 capitalize">{p.gender ?? '—'}</td>
+                <td className="px-4 py-3">
+                  {p.ntrpRating != null ? (
+                    <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold text-xs">{p.ntrpRating}</span>
+                  ) : '—'}
+                </td>
+                <td className="px-4 py-3">
+                  {p.utrRating != null ? (
+                    <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded font-semibold text-xs">{p.utrRating}</span>
+                  ) : '—'}
+                </td>
+                <td className="px-4 py-3 text-slate-500">{p.seedRating ?? '—'}</td>
+                <td className="px-4 py-3 text-slate-500">{p.skillTier ?? '—'}</td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    p.status === 'checked_in' ? 'bg-emerald-100 text-emerald-700' :
+                    p.status === 'no_show_eliminated' ? 'bg-red-100 text-red-700' :
+                    'bg-slate-100 text-slate-600'
+                  }`}>{p.status.replace(/_/g, ' ')}</span>
+                </td>
+              </tr>
+            ))}
         </tbody>
       </table>
     </div>
@@ -598,7 +625,7 @@ function DemoSettingsTab({
               <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
             </div>
 
-            <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Tournament Date</label>
                 <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
@@ -607,11 +634,12 @@ function DemoSettingsTab({
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Registration Deadline</label>
                 <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Number of Courts</label>
-                <input type="number" min="1" max="20" value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="e.g. 4" className={inputCls} />
-                <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
-              </div>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Number of Courts</label>
+              <input type="number" min="1" max="20" value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="e.g. 4" className={inputCls} />
+              <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
             </div>
           </div>
         </div>
@@ -764,24 +792,17 @@ function DirectorView({
 
           <div className="p-5">
             {tab === 'bracket' && (
-              <>
-                {!anyResults && (
-                  <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-4">
-                    ✏️ Click a player name to set the winner · ↩ to reverse a result
-                  </p>
-                )}
-                <div className="overflow-x-auto">
-                  <BracketView
-                    initialMatches={matches}
-                    players={players}
-                    maxPlayers={Math.max(8, players.length)}
-                    liveUpdates={false}
-                    resultEditable
-                    onSetWinner={(match, winnerId) => onSetWinner(match.id, winnerId)}
-                    onReverseMatch={(matchId) => onReverseMatch(matchId)}
-                  />
-                </div>
-              </>
+              <div className="overflow-x-auto">
+                <BracketPanel
+                  matches={matches}
+                  players={players}
+                  maxPlayers={Math.max(8, players.length)}
+                  liveUpdates={false}
+                  onSetWinner={(match, winnerId) => onSetWinner(match.id, winnerId)}
+                  onReverseMatch={onReverseMatch}
+                  emptyMessage="No bracket yet."
+                />
+              </div>
             )}
 
             {tab === 'draw' && (

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import BracketView from '@/components/BracketView';
 import type { Match, Player } from '@/types';
+import { MATCH_STATUS_ORDER, MATCH_STATUS_LABEL } from '@/lib/matchStatus';
 
 interface MatchRow {
   id: string;
@@ -73,10 +74,9 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
 
   const tournamentMap = Object.fromEntries(tournaments.map((t) => [t.id, t]));
 
-  const activeMatches = matches.sort((a, b) => {
-    const order = { playing: 0, court_assigned: 1, warmup: 2, scheduled: 3 };
-    return (order[a.status as keyof typeof order] ?? 9) - (order[b.status as keyof typeof order] ?? 9);
-  });
+  const activeMatches = matches.sort((a, b) =>
+    (MATCH_STATUS_ORDER[a.status] ?? 9) - (MATCH_STATUS_ORDER[b.status] ?? 9)
+  );
 
   const grouped = activeMatches.reduce<Record<string, MatchRow[]>>((acc, m) => {
     (acc[m.tournament_id] ??= []).push(m);
@@ -177,7 +177,7 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
                           : { backgroundColor: '#ffffff10', color: '#94a3b8' }
                         }
                       >
-                        {isLive ? '● LIVE' : m.status === 'warmup' ? 'Warmup' : m.status === 'court_assigned' ? 'Court Assigned' : 'Scheduled'}
+                        {MATCH_STATUS_LABEL[m.status] ?? m.status}
                       </span>
                     </div>
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
