@@ -881,7 +881,6 @@ function SettingsEditor({
   const [maxPlayers, setMaxPlayers] = useState(String(s?.maxPlayers ?? 32));
   const [tournamentDate, setTournamentDate] = useState(s?.tournamentDate ?? '');
   const [deadline, setDeadline] = useState(s?.registrationDeadline ?? '');
-  const [cap, setCap] = useState(String(s?.playerRegistrationCap ?? ''));
   const [minReg, setMinReg] = useState(String(s?.minimumRegistrants ?? ''));
   const [courts, setCourts] = useState(String(s?.numberOfCourts ?? ''));
   const [serveRule, setServeRule] = useState<Tournament['settings']['serveRuleProfile']>(s?.serveRuleProfile ?? 'one_serve_sudden_death');
@@ -898,8 +897,6 @@ function SettingsEditor({
     if (!isNaN(maxNum) && maxNum > 0) patch.maxPlayers = maxNum as Tournament['settings']['maxPlayers'];
     patch.tournamentDate = tournamentDate || undefined;
     patch.registrationDeadline = deadline || undefined;
-    const capNum = parseInt(cap);
-    patch.playerRegistrationCap = (!isNaN(capNum) && capNum > 0) ? capNum : undefined;
     const minNum = parseInt(minReg);
     patch.minimumRegistrants = (!isNaN(minNum) && minNum > 0) ? minNum : undefined;
     const courtsNum = parseInt(courts);
@@ -950,17 +947,18 @@ function SettingsEditor({
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Player Cap (optional)
+              Minimum Registrants
             </label>
             <input
               type="number"
               min="2"
               max={parseInt(maxPlayers) || 64}
-              value={cap}
-              onChange={(e) => setCap(e.target.value)}
-              placeholder={`Max ${maxPlayers}`}
+              value={minReg}
+              onChange={(e) => setMinReg(e.target.value)}
+              placeholder="No minimum"
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
             />
+            <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
           </div>
 
           <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -990,35 +988,19 @@ function SettingsEditor({
 
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Minimum Registrants
+                Number of Courts
               </label>
               <input
                 type="number"
-                min="2"
-                max={parseInt(maxPlayers) || 64}
-                value={minReg}
-                onChange={(e) => setMinReg(e.target.value)}
-                placeholder="No minimum"
+                min="1"
+                max="20"
+                value={courts}
+                onChange={(e) => setCourts(e.target.value)}
+                placeholder="e.g. 4"
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
               />
-              <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
+              <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
             </div>
-          </div>
-
-          <div className="sm:col-span-2">
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Number of Courts
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="20"
-              value={courts}
-              onChange={(e) => setCourts(e.target.value)}
-              placeholder="e.g. 4"
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
-            />
-            <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
           </div>
         </div>
       </div>

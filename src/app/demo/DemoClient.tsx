@@ -36,7 +36,7 @@ interface TournamentConfig {
   prizeMoney: number;
   fundraisingGoal: number;
   numberOfCourts: number;
-  playerCap?: number;
+
   minimumRegistrants?: number;
   serveRuleProfile: 'one_serve_sudden_death' | 'two_serves_traditional' | 'skill_based';
   serverDetermination: 'random_coin_toss' | 'referee_manual_override';
@@ -536,7 +536,6 @@ function DemoSettingsTab({
   const [ticketPrice, setTicketPrice] = useState(String(s.entryFee));
   const [tournamentDate, setTournamentDate] = useState(s.date ?? '');
   const [deadline, setDeadline] = useState(s.registrationDeadline ?? '');
-  const [cap, setCap] = useState(String(s.playerCap ?? ''));
   const [minReg, setMinReg] = useState(String(s.minimumRegistrants ?? ''));
   const [courts, setCourts] = useState(String(s.numberOfCourts));
   const [serveRule, setServeRule] = useState(s.serveRuleProfile);
@@ -549,7 +548,6 @@ function DemoSettingsTab({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const capNum = parseInt(cap);
     const minNum = parseInt(minReg);
     onUpdate({
       name: name.trim() || config.name,
@@ -557,7 +555,6 @@ function DemoSettingsTab({
       entryFee: parseFloat(ticketPrice) || 0,
       date: tournamentDate,
       registrationDeadline: deadline,
-      playerCap: (!isNaN(capNum) && capNum > 0) ? capNum : undefined,
       minimumRegistrants: (!isNaN(minNum) && minNum > 0) ? minNum : undefined,
       numberOfCourts: parseInt(courts) || 1,
       serveRuleProfile: serveRule,
@@ -592,12 +589,13 @@ function DemoSettingsTab({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Player Cap (optional)</label>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Minimum Registrants</label>
               <input
                 type="number" min="2" max={parseInt(maxPlayers) || 64}
-                value={cap} onChange={(e) => setCap(e.target.value)}
-                placeholder={`Max ${maxPlayers}`} className={inputCls}
+                value={minReg} onChange={(e) => setMinReg(e.target.value)}
+                placeholder="No minimum" className={inputCls}
               />
+              <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
             </div>
 
             <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -610,20 +608,10 @@ function DemoSettingsTab({
                 <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Minimum Registrants</label>
-                <input
-                  type="number" min="2" max={parseInt(maxPlayers) || 64}
-                  value={minReg} onChange={(e) => setMinReg(e.target.value)}
-                  placeholder="No minimum" className={inputCls}
-                />
-                <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Number of Courts</label>
+                <input type="number" min="1" max="20" value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="e.g. 4" className={inputCls} />
+                <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
               </div>
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Number of Courts</label>
-              <input type="number" min="1" max="20" value={courts} onChange={(e) => setCourts(e.target.value)} placeholder="e.g. 4" className={inputCls} />
-              <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
             </div>
           </div>
         </div>
