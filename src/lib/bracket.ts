@@ -233,7 +233,25 @@ export function reverseWinner(matches: Match[], matchId: string): Match[] {
     : [...matches];
 
   return updated.map((m) => {
-    if (m.id === matchId) return { ...m, winnerId: null, status: 'scheduled' as const };
+    // An undone match hasn't been played, so it keeps no record of how it was
+    // played either — the toss/serve and per-sport result fields clear with the
+    // winner. persistReversal writes the same reset to the database.
+    if (m.id === matchId) {
+      return {
+        ...m,
+        winnerId: null,
+        status: 'scheduled' as const,
+        serverPlayerId: null,
+        tossWinnerId: null,
+        kickerPlayerId: null,
+        keeperPlayerId: null,
+        kickOutcome: null,
+        coinFlipWinnerId: null,
+        offensePlayerId: null,
+        defensePlayerId: null,
+        possessionOutcome: null,
+      };
+    }
     if (m.roundIndex === nextRound && m.matchIndex === nextMatchIndex) return { ...m, [slot]: null };
     return m;
   });

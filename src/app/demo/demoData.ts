@@ -91,6 +91,24 @@ export function buildBracket(players: DemoPlayer[]): Match[] {
   );
 }
 
+/**
+ * The pre-match coin toss for a demo match: one player wins it, then elects to
+ * serve or receive and the other takes the remaining role.
+ *
+ * The real product records this when the referee runs the toss on their phone.
+ * The demo decides most of its matches without that screen — Speed-Through, or
+ * a director tapping a winner straight on the bracket — so it stands in for the
+ * toss those paths skip, and the bracket can show who won it and who served.
+ */
+export function simulateCoinToss(match: Match): { tossWinnerId: string; serverPlayerId: string } {
+  const p1 = match.player1Id!;
+  const p2 = match.player2Id!;
+  const tossWinnerId = Math.random() < 0.5 ? p1 : p2;
+  const other = tossWinnerId === p1 ? p2 : p1;
+  const serverPlayerId = Math.random() < 0.5 ? tossWinnerId : other;
+  return { tossWinnerId, serverPlayerId };
+}
+
 export function speedThroughAll(matches: Match[]): Match[] {
   let current = [...matches];
   let safety = 0;
@@ -119,7 +137,12 @@ export function speedThroughAll(matches: Match[]): Match[] {
 
     for (const m of pending) {
       const winnerId = Math.random() < 0.5 ? m.player1Id! : m.player2Id!;
-      current = advanceWinner(current, m.id, winnerId);
+      const toss = simulateCoinToss(m);
+      current = advanceWinner(
+        current.map((x) => (x.id === m.id ? { ...x, ...toss } : x)),
+        m.id,
+        winnerId,
+      );
     }
   }
   return current;
