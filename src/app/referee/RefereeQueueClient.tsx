@@ -174,6 +174,8 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
                           ? { backgroundColor: '#f59e0b22', color: '#f59e0b' }
                           : m.status === 'court_assigned'
                           ? { backgroundColor: '#3b82f622', color: '#3b82f6' }
+                          : m.status === 'finalized' || m.status === 'walkover'
+                          ? { backgroundColor: '#10b98122', color: '#10b981' }
                           : { backgroundColor: '#ffffff10', color: '#94a3b8' }
                         }
                       >
