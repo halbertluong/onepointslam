@@ -914,7 +914,6 @@ function SettingsEditor({
               placeholder="No minimum"
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
             />
-            <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
           </div>
 
           <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">

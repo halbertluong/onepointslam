@@ -622,7 +622,6 @@ function DemoSettingsTab({
                 value={minReg} onChange={(e) => setMinReg(e.target.value)}
                 placeholder="No minimum" className={inputCls}
               />
-              <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
             </div>
 
             <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
