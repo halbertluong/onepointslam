@@ -8,6 +8,7 @@ import PlayersPanel from '@/components/PlayersPanel';
 import SeedAssignmentPanel from '@/components/SeedAssignmentPanel';
 import DrawEditorPanel from '@/components/DrawEditorPanel';
 import LiveScoreboard from '@/components/LiveScoreboard';
+import RegistrationPanel from '@/components/RegistrationPanel';
 import { generateBracket } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 import { persistReversal } from '@/lib/tournamentWrites';
@@ -52,7 +53,7 @@ function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; is
   );
 }
 
-type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'settings';
+type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'settings';
 
 const TAB_LABELS: Record<Tab, string> = {
   players: 'Players',
@@ -61,10 +62,11 @@ const TAB_LABELS: Record<Tab, string> = {
   referee: 'Referee Queue',
   bracket: 'Bracket',
   scoreboard: 'Scoreboard',
+  registration: 'Registration',
   settings: 'Settings',
 };
 
-const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'settings'];
+const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'settings'];
 
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
   const active = matches
@@ -557,6 +559,17 @@ export default function TournamentAdminPage() {
         </div>
       )}
 
+
+      {/* Registration tab — the public sign-up page as registrants see it */}
+      {tab === 'registration' && (
+        <RegistrationPanel
+          tournament={tournament}
+          tournamentId={id}
+          tenantSlug={tenantSlug}
+          playerCount={players.length}
+          donationTotal={donationTotal}
+        />
+      )}
 
       {/* Settings tab */}
       {tab === 'settings' && (
