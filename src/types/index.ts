@@ -44,6 +44,11 @@ export interface TournamentSettings {
   registrationDeadline?: string;
   playerRegistrationCap?: number;
   minimumRegistrants?: number;
+  /** Lets the public registration page accept new signups even after the
+   * tournament has moved past 'registration_open' (bracket already
+   * generated / live play already started), without reopening any of the
+   * status-gated director tooling (Draw Editor, Referee Queue, etc). */
+  allowLateRegistration?: boolean;
   numberOfCourts?: number;
   tournamentDate?: string;
   prizePlaces?: PrizePlace[];

@@ -245,7 +245,8 @@ export default function RegisterPage() {
       const settings = t?.settings as Record<string, unknown> | null;
       setPlatformFee((settings?.systemTechFee as number) ?? (tenant?.platform_fee as number) ?? DEFAULT_PLATFORM_FEE);
 
-      if (t?.status !== 'registration_open' || t?.deleted_at) {
+      const lateRegistrationAllowed = !!settings?.allowLateRegistration && t?.status !== 'completed';
+      if ((t?.status !== 'registration_open' && !lateRegistrationAllowed) || t?.deleted_at) {
         setStep('closed');
         return;
       }
@@ -706,6 +707,13 @@ export default function RegisterPage() {
 
         {/* Register tab */}
         {(<>
+
+        {tournament?.status !== 'registration_open' && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+            ⏰ This tournament&apos;s bracket is already underway — you can still register, but you
+            won&apos;t automatically be placed into the current draw. The organizer will add you in.
+          </div>
+        )}
 
         {/* Tournament details card */}
         <TournamentInfoCard

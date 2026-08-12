@@ -843,6 +843,7 @@ function SettingsEditor({
   const [serverDetermination, setServerDetermination] = useState<Tournament['settings']['serverDetermination']>(s?.serverDetermination ?? 'random_coin_toss');
   const [receivingSide, setReceivingSide] = useState<Tournament['settings']['receivingSideSelection']>(s?.receivingSideSelection ?? 'server_choice');
   const [prizePlaces, setPrizePlaces] = useState(s?.prizePlaces ?? []);
+  const [allowLateRegistration, setAllowLateRegistration] = useState(s?.allowLateRegistration ?? false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -861,6 +862,7 @@ function SettingsEditor({
     patch.serverDetermination = serverDetermination;
     patch.receivingSideSelection = receivingSide;
     patch.prizePlaces = prizePlaces.length > 0 ? prizePlaces : undefined;
+    patch.allowLateRegistration = allowLateRegistration;
     await onSave(patch, name);
   }
 
@@ -957,6 +959,24 @@ function SettingsEditor({
             <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
           </div>
         </div>
+
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3.5 cursor-pointer hover:bg-slate-50 transition-colors">
+          <input
+            type="checkbox"
+            checked={allowLateRegistration}
+            onChange={(e) => setAllowLateRegistration(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300"
+          />
+          <span>
+            <span className="block text-sm font-semibold text-slate-700">Allow Late Registration</span>
+            <span className="block text-xs text-slate-400 mt-0.5">
+              Lets the public registration link keep accepting new players even though the bracket
+              has already been generated{tournament.status === 'registration_open' ? '' : ' (this tournament is currently ' + tournament.status.replace(/_/g, ' ') + ')'}.
+              New registrants show up in the Players tab but aren&apos;t auto-added to the bracket —
+              place them into open slots yourself in the Draw Editor.
+            </span>
+          </span>
+        </label>
       </div>
 
       {/* Ticket price */}
