@@ -431,10 +431,11 @@ export default function TournamentAdminPage() {
     // a court that was already handed off to a different match.
     const wasAlreadyDecided = match.status === 'finalized' || match.status === 'walkover';
     const supabase = createClient();
-    await supabase
+    const { error } = await supabase
       .from('matches')
       .update({ winner_id: winnerId, status: 'finalized' })
       .eq('id', match.id);
+    if (error) { setMessage(`Could not save result: ${error.message}`); return; }
 
     const slot = match.matchIndex % 2 === 0 ? 'player1_id' : 'player2_id';
     await supabase
@@ -913,7 +914,6 @@ function SettingsEditor({
               placeholder="No minimum"
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
             />
-            <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
           </div>
 
           <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">

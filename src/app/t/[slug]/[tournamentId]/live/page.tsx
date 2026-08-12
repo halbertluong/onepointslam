@@ -11,9 +11,13 @@ interface LiveMatch {
   match_index: number;
   court_number: number | null;
   status: string;
+  player1_id: string | null;
+  player2_id: string | null;
   player1_name: string | null;
   player2_name: string | null;
   winner_name: string | null;
+  server_player_id: string | null;
+  toss_winner_name: string | null;
 }
 
 interface TournamentInfo {
@@ -81,9 +85,13 @@ export default function LivePage() {
       match_index: m.match_index,
       court_number: m.court_number,
       status: m.status,
+      player1_id: m.player1_id,
+      player2_id: m.player2_id,
       player1_name: m.player1_id === 'BYE' ? 'BYE' : pMap[m.player1_id] ?? null,
       player2_name: m.player2_id === 'BYE' ? 'BYE' : pMap[m.player2_id] ?? null,
       winner_name: m.winner_id ? pMap[m.winner_id] ?? null : null,
+      server_player_id: m.server_player_id ?? null,
+      toss_winner_name: m.toss_winner_id ? pMap[m.toss_winner_id] ?? null : null,
     }));
 
     setMatches(liveMapped);
@@ -194,13 +202,24 @@ export default function LivePage() {
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: isPlaying ? primary : 'rgba(255,255,255,0.2)' }} />
                         <span className="font-bold text-base text-white truncate">{m.player1_name ?? 'TBD'}</span>
+                        {m.server_player_id && m.server_player_id === m.player1_id && (
+                          <span className="text-xs font-bold shrink-0" style={{ color: primary }}>🎾 serving</span>
+                        )}
                       </div>
                       <div className="text-xs text-white/20 pl-4">vs</div>
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: isPlaying ? primary : 'rgba(255,255,255,0.2)' }} />
                         <span className="font-bold text-base text-white truncate">{m.player2_name ?? 'TBD'}</span>
+                        {m.server_player_id && m.server_player_id === m.player2_id && (
+                          <span className="text-xs font-bold shrink-0" style={{ color: primary }}>🎾 serving</span>
+                        )}
                       </div>
                     </div>
+                    {m.toss_winner_name && (
+                      <div className="mt-3 pt-3 border-t border-white/10 text-xs text-white/30">
+                        🪙 <span className="text-white/50 font-semibold">{m.toss_winner_name}</span> won the toss
+                      </div>
+                    )}
                     {isPlaying && (
                       <div className="mt-3 text-xs font-bold animate-pulse" style={{ color: primary }}>● Playing now</div>
                     )}
