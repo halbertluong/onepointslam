@@ -1,4 +1,4 @@
-import type { Player, Match } from '@/types';
+import type { Player, Match, MaxPlayers } from '@/types';
 import { generateBracket, advanceWinner } from '@/lib/bracket';
 
 // ── Name generation ───────────────────────────────────────────────────────────
@@ -76,11 +76,16 @@ export function generatePlayers(count: number, entryFee: number): DemoPlayer[] {
   });
 }
 
-export function buildBracket(players: DemoPlayer[]): Match[] {
+/**
+ * Builds the demo draw. `drawSize` is the configured bracket size, which the
+ * real generator treats as a floor — pass the participant count to size the
+ * bracket to the field instead.
+ */
+export function buildBracket(players: DemoPlayer[], drawSize?: number): Match[] {
   return generateBracket(
     players,
     {
-      maxPlayers: 32,
+      maxPlayers: (drawSize ?? players.length) as MaxPlayers,
       ticketPriceForFundraiser: 0,
       systemTechFee: 0,
       serveRuleProfile: 'one_serve_sudden_death',

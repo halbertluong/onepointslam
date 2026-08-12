@@ -4,11 +4,13 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import BracketView from '@/components/BracketView';
 import GenderDot from '@/components/GenderDot';
-import { persistReversal, persistSeededRedistribution } from '@/lib/tournamentWrites';
-import { generateBracket } from '@/lib/bracket';
+import { addPlayersToDraw, persistSeededRedistribution } from '@/lib/tournamentWrites';
+import { generateBracket, rankPlayersForSeeding } from '@/lib/bracket';
 import type { Match, Player, Tournament, MaxPlayers } from '@/types';
 
-const DRAW_SIZES: MaxPlayers[] = [8, 16, 32, 48, 64, 96, 128, 192, 256];
+/** Only powers of two: a bracket has 2^n slots, so these are the real sizes. */
+const EXPANDABLE_SIZES: MaxPlayers[] = [8, 16, 32, 64, 128, 256];
+const MAX_DRAW = 256;
 
 /** Match id prefix used by whichever generator built this draw, so new rows match. */
 function idPrefix(matches: Match[], tournamentId: string): string {
@@ -60,8 +62,10 @@ export default function DrawEditorPanel({
 
   async function handleSwap(aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') {
     if (aMatchId === bMatchId && aSlot === bSlot) return;
-    const ma = round0.find((m) => m.id === aMatchId);
-    const mb = round0.find((m) => m.id === bMatchId);
+    // Any round — dragging in round 2+ used to look up round 0 only and silently
+    // do nothing.
+    const ma = matches.find((m) => m.id === aMatchId);
+    const mb = matches.find((m) => m.id === bMatchId);
     if (!ma || !mb) return;
     const aId = aSlot === 'p1' ? ma.player1Id : ma.player2Id;
     const bId = bSlot === 'p1' ? mb.player1Id : mb.player2Id;
@@ -90,76 +94,36 @@ export default function DrawEditorPanel({
   async function handleRedistribute() {
     if (hasResults) return;
     setSaving(true);
-    const { error } = await persistSeededRedistribution(
-      createClient(), matches, players.filter((p) => placedIds.has(p.id)),
-    );
+    // Everyone registered goes into the draw, seeded — including anyone who was
+    // sitting outside it, so a director doesn't have to add them first.
+    const seatable = rankPlayersForSeeding(players).slice(0, bracketSize);
+    const { error } = await persistSeededRedistribution(createClient(), matches, seatable);
     setSaving(false);
     if (error) { setErr(`Could not redistribute the draw: ${error}`); return; }
-    flash('Draw redistributed by seeding.');
+    const left = players.length - seatable.length;
+    flash(
+      left > 0
+        ? `Draw redistributed by seeding. ${left} player${left === 1 ? '' : 's'} did not fit in ${bracketSize} slots — expand the bracket to include them.`
+        : `Draw redistributed by seeding — all ${seatable.length} players placed.`,
+    );
   }
 
-  /**
-   * Puts a registered player into the first open first-round slot. If that slot
-   * belonged to a bye, the bye is undone first so the match becomes a real
-   * contest again instead of leaving a phantom winner in the next round.
-   */
-  async function handleAddToDraw(playerId: string) {
-    const target = round0.find((m) => !m.player1Id || !m.player2Id);
-    if (!target) {
-      setErr('No open slots left in the draw — expand the bracket to make room.');
+  /** Adds specific registered players into open first-round slots. */
+  async function addToDraw(ids: string[]) {
+    setSaving(true);
+    const { added, skipped, noRoom, error } = await addPlayersToDraw(createClient(), tournamentId, ids);
+    setSaving(false);
+    if (error) { setErr(`Could not add to the draw: ${error}`); return; }
+    if (added === 0 && noRoom > 0) {
+      setErr(`No open slots left — expand the bracket to fit ${noRoom} more player${noRoom === 1 ? '' : 's'}.`);
       return;
     }
-    setSaving(true);
-    const supabase = createClient();
-
-    if (target.winnerId) {
-      // Undo the bye (and anything that bye's winner went on to win).
-      const undo = await persistReversal(supabase, matches, target.id);
-      if (undo.error) { setSaving(false); setErr(`Could not free up that slot: ${undo.error}`); return; }
-    }
-
-    const slot = !target.player1Id ? 'player1_id' : 'player2_id';
-    const { error } = await supabase
-      .from('matches')
-      .update({ [slot]: playerId, winner_id: null, status: target.courtNumber ? 'court_assigned' : 'scheduled' })
-      .eq('id', target.id);
-
-    setSaving(false);
-    if (error) { setErr(`Could not add the player to the draw: ${error.message}`); return; }
-    const name = players.find((p) => p.id === playerId)?.fullName ?? 'Player';
-    flash(`${name} added to the draw.`);
-  }
-
-  async function handleAddAll() {
-    if (unplaced.length > openSlots) {
-      setErr(`Only ${openSlots} open slot${openSlots === 1 ? '' : 's'} for ${unplaced.length} players — expand the bracket first.`);
-      return;
-    }
-    setSaving(true);
-    const supabase = createClient();
-    // Sequential: each insert consumes a slot the next one must not reuse.
-    let working = matches;
-    for (const p of unplaced) {
-      const target = working.find((m) => m.roundIndex === 0 && (!m.player1Id || !m.player2Id));
-      if (!target) break;
-      if (target.winnerId) {
-        const undo = await persistReversal(supabase, working, target.id);
-        if (undo.error) { setSaving(false); setErr(`Could not free up a slot: ${undo.error}`); return; }
-      }
-      const slot = !target.player1Id ? 'player1_id' : 'player2_id';
-      const { error } = await supabase
-        .from('matches')
-        .update({ [slot]: p.id, winner_id: null, status: target.courtNumber ? 'court_assigned' : 'scheduled' })
-        .eq('id', target.id);
-      if (error) { setSaving(false); setErr(`Could not add ${p.fullName} to the draw: ${error.message}`); return; }
-      working = working.map((m) =>
-        m.id === target.id
-          ? { ...m, [slot === 'player1_id' ? 'player1Id' : 'player2Id']: p.id, winnerId: null }
-          : m,
-      );
-    }
-    setSaving(false);
-    flash(`${unplaced.length} player${unplaced.length === 1 ? '' : 's'} added to the draw.`);
+    const notes = [
+      `${added} player${added === 1 ? '' : 's'} added to the draw`,
+      skipped > 0 ? `${skipped} already in it` : '',
+      noRoom > 0 ? `${noRoom} left out — no open slots` : '',
+    ].filter(Boolean);
+    flash(`${notes.join(' · ')}.`);
   }
 
   /**
@@ -202,7 +166,8 @@ export default function DrawEditorPanel({
     flash(`Bracket expanded to ${newSize} slots and redrawn.`);
   }
 
-  const nextSizeUp = DRAW_SIZES.find((s) => s > Math.max(bracketSize, players.length));
+  const nextSizeUp = EXPANDABLE_SIZES.find((s) => s > bracketSize);
+  const atMaxDraw = bracketSize >= MAX_DRAW;
 
   return (
     <div className="space-y-6">
@@ -220,11 +185,13 @@ export default function DrawEditorPanel({
               <p className="text-xs text-amber-700 mt-0.5">
                 {openSlots > 0
                   ? `${openSlots} open slot${openSlots === 1 ? '' : 's'} available in the first round.`
+                  : atMaxDraw
+                  ? `The draw is full at ${MAX_DRAW} slots, the largest supported — remove a player to make room.`
                   : 'The draw is full — expand the bracket to make room.'}
               </p>
             </div>
             <button
-              onClick={handleAddAll}
+              onClick={() => addToDraw(unplaced.map((p) => p.id))}
               disabled={saving || openSlots === 0}
               className="btn-primary px-4 py-2 rounded-xl text-xs font-bold disabled:opacity-50"
             >
@@ -248,7 +215,7 @@ export default function DrawEditorPanel({
                   )}
                 </div>
                 <button
-                  onClick={() => handleAddToDraw(p.id)}
+                  onClick={() => addToDraw([p.id])}
                   disabled={saving || openSlots === 0}
                   className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40"
                 >

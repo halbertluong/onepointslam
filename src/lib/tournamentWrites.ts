@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Match, Player } from '@/types';
+import { mapMatch } from '@/types';
 import { reverseWinner, distributeBySeeding } from './bracket';
 
 /**
@@ -166,4 +167,76 @@ export async function persistSeededRedistribution(
   );
   const propErr = propagated.find((r) => r.error);
   return propErr?.error ? { error: propErr.error.message } : {};
+}
+
+/**
+ * Puts registered players into open first-round slots.
+ *
+ * Reads the draw fresh from the database rather than trusting the caller's
+ * snapshot, and skips anyone already holding a slot. Both matter: a stale
+ * snapshot plus no duplicate check is what previously let the same player be
+ * written into two slots at once, which silently corrupts a draw.
+ *
+ * Filling a slot that belonged to a bye undoes that bye first, so the match
+ * becomes a real contest instead of leaving a phantom winner in the next round.
+ */
+export async function addPlayersToDraw(
+  supabase: SupabaseClient,
+  tournamentId: string,
+  playerIds: string[],
+): Promise<WriteResult & { added: number; skipped: number; noRoom: number }> {
+  const fail = (error: string) => ({ error, added: 0, skipped: 0, noRoom: 0 });
+
+  const { data: rows, error: readErr } = await supabase
+    .from('matches')
+    .select('*')
+    .eq('tournament_id', tournamentId)
+    .order('round_index')
+    .order('match_index');
+  if (readErr) return fail(readErr.message);
+
+  let working: Match[] = (rows ?? []).map((r) => mapMatch(r as Record<string, unknown>));
+  const round0 = () => working.filter((m) => m.roundIndex === 0).sort((a, b) => a.matchIndex - b.matchIndex);
+
+  const placed = new Set(
+    round0().flatMap((m) => [m.player1Id, m.player2Id]).filter((id): id is string => !!id && id !== 'BYE'),
+  );
+
+  let added = 0;
+  let skipped = 0;
+  let noRoom = 0;
+
+  for (const playerId of playerIds) {
+    if (placed.has(playerId)) { skipped += 1; continue; }
+
+    const target = round0().find((m) => !m.player1Id || !m.player2Id);
+    if (!target) { noRoom += 1; continue; }
+
+    if (target.winnerId) {
+      const undo = await persistReversal(supabase, working, target.id);
+      if (undo.error) return { error: undo.error, added, skipped, noRoom };
+      working = reverseWinner(working, target.id);
+    }
+
+    const field = !target.player1Id ? 'player1_id' : 'player2_id';
+    const { error } = await supabase
+      .from('matches')
+      .update({
+        [field]: playerId,
+        winner_id: null,
+        status: target.courtNumber ? 'court_assigned' : 'scheduled',
+      })
+      .eq('id', target.id);
+    if (error) return { error: error.message, added, skipped, noRoom };
+
+    working = working.map((m) =>
+      m.id === target.id
+        ? { ...m, [field === 'player1_id' ? 'player1Id' : 'player2Id']: playerId, winnerId: null }
+        : m,
+    );
+    placed.add(playerId);
+    added += 1;
+  }
+
+  return { added, skipped, noRoom };
 }

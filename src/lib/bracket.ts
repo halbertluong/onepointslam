@@ -82,11 +82,15 @@ export function distributeBySeeding(players: Player[], bracketSize: number): (st
 
 export function generateBracket(
   players: Player[],
-  _settings: TournamentSettings,
+  settings: TournamentSettings,
   tournamentId: string,
 ): Match[] {
   const N = players.length;
-  const P = nextPowerOf2(N);
+  // The configured draw size is a floor, not a suggestion: a 64-player draw with
+  // 20 entrants still gets 64 slots (the rest byes), which is what makes
+  // resizing a draw possible at all. Always rounded up to a power of two, and
+  // never smaller than the field actually needs.
+  const P = Math.max(nextPowerOf2(N), nextPowerOf2(settings?.maxPlayers ?? 0));
 
   // Seeded players keep their declared order; unseeded are shuffled so each
   // generation produces a fresh draw. Both then go through the standard

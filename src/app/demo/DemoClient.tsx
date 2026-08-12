@@ -1592,7 +1592,7 @@ export default function DemoClient() {
   }
 
   function handleParticipantsNext(ps: DemoPlayer[]) {
-    const bracket = buildBracket(ps);
+    const bracket = buildBracket(ps, config?.drawSize);
     const courts = config?.numberOfCourts ?? 0;
     // Assign only the first `courts` ready matches, same as the real app's
     // Start Live Play — the rest stay queued and pick up a court in real
