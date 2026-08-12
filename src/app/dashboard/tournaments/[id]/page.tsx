@@ -922,7 +922,7 @@ function SettingsEditor({
               Tournament Date
             </label>
             <input
-              type="date"
+              type="datetime-local"
               value={tournamentDate}
               onChange={(e) => setTournamentDate(e.target.value)}
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"

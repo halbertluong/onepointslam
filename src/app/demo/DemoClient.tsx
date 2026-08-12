@@ -192,7 +192,7 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
               Tournament Date
             </label>
             <input
-              type="date"
+              type="datetime-local"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               className={`${inputCls} appearance-none`}
@@ -627,7 +627,7 @@ function DemoSettingsTab({
 
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Tournament Date</label>
-              <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
+              <input type="datetime-local" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
             </div>
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Registration Deadline</label>
