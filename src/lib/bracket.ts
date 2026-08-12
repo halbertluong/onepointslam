@@ -219,15 +219,17 @@ export function reverseWinner(matches: Match[], matchId: string): Match[] {
   const match = matches.find((m) => m.id === matchId);
   if (!match?.winnerId) return matches;
 
-  const prevWinnerId = match.winnerId;
   const nextRound = match.roundIndex + 1;
   const nextMatchIndex = Math.floor(match.matchIndex / 2);
   const slot = match.matchIndex % 2 === 0 ? 'player1Id' : 'player2Id';
 
   const nextMatch = matches.find((m) => m.roundIndex === nextRound && m.matchIndex === nextMatchIndex);
-  // Cascade: if the player already won their next match, reverse that too first
-  const updated = nextMatch?.winnerId === prevWinnerId
-    ? reverseWinner(matches, nextMatch!.id)
+  // Undoing this result pulls its winner back out of the next match, so any
+  // result already recorded there is void — whoever won it did so against a
+  // player who is no longer in that slot. Unwind it too, and recursively on up
+  // the bracket, so the draw never keeps a result that outlived its own inputs.
+  const updated = nextMatch?.winnerId
+    ? reverseWinner(matches, nextMatch.id)
     : [...matches];
 
   return updated.map((m) => {
