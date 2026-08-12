@@ -622,17 +622,16 @@ function DemoSettingsTab({
                 value={minReg} onChange={(e) => setMinReg(e.target.value)}
                 placeholder="No minimum" className={inputCls}
               />
+              <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
             </div>
 
-            <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Tournament Date</label>
-                <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Registration Deadline</label>
-                <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
-              </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Tournament Date</label>
+              <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Registration Deadline</label>
+              <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
             </div>
 
             <div className="sm:col-span-2">
