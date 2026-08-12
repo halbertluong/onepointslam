@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { registrationIsOpen, verifyDirector } from '@/lib/registrationAccess';
 
 export async function POST(req: NextRequest) {
   // Auth optional — guests may pay entry fees too. The amount and tournament are
@@ -7,7 +8,7 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  let body: { tournamentId?: string };
+  let body: { tournamentId?: string; directorEntry?: boolean };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
   const { tournamentId } = body;
@@ -16,17 +17,29 @@ export async function POST(req: NextRequest) {
   // Look up the fee server-side — never trust caller-supplied amounts
   const { data: tournament } = await supabase
     .from('tournaments')
-    .select('settings, status, tenants(platform_fee, stripe_connect_account_id)')
+    .select('settings, status, tenant_id, tenants(platform_fee, stripe_connect_account_id)')
     .eq('id', tournamentId)
     .single();
 
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
-  if ((tournament as Record<string, unknown>).status !== 'registration_open') {
-    return NextResponse.json({ error: 'Registration is not open for this tournament' }, { status: 400 });
-  }
 
+  const status = (tournament as Record<string, unknown>).status as string;
   const settings = tournament.settings as Record<string, unknown> | null;
   const entranceFee = (settings?.ticketPriceForFundraiser as number) ?? 0;
+
+  // A director taking payment from the dashboard can charge after the public
+  // link has closed; everyone else is held to the same gate as the sign-up form
+  // so a registrant can never get through the form only to fail at payment.
+  let isDirector = false;
+  if (body.directorEntry) {
+    const check = await verifyDirector(supabase, user?.id, (tournament as Record<string, unknown>).tenant_id as string);
+    if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status });
+    isDirector = true;
+  }
+
+  if (!registrationIsOpen(status, settings) && !(isDirector && status !== 'completed')) {
+    return NextResponse.json({ error: 'Registration is not open for this tournament' }, { status: 400 });
+  }
 
   if (entranceFee <= 0) {
     return NextResponse.json({ error: 'This tournament has no entry fee' }, { status: 400 });

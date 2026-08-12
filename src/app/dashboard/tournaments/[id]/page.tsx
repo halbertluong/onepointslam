@@ -567,7 +567,6 @@ export default function TournamentAdminPage() {
           tournamentId={id}
           tenantSlug={tenantSlug}
           playerCount={players.length}
-          donationTotal={donationTotal}
           onRegistered={load}
         />
       )}

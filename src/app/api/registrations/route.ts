@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { registrationIsOpen, verifyDirector } from '@/lib/registrationAccess';
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -42,37 +43,20 @@ export async function POST(req: NextRequest) {
   const settings = tournament.settings as Record<string, unknown> | null;
   const entranceFee = (settings?.ticketPriceForFundraiser as number) ?? 0;
 
-  // A director adding a player at the desk bypasses online payment and the
-  // registration-open gate, so it has to be proven — not just claimed.
+  // A director acting from the dashboard may register a player the public
+  // couldn't — after registration closed, or with the fee collected offline —
+  // so the claim is verified against the session rather than trusted.
   let isDirector = false;
   if (body.directorEntry) {
-    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    const { data: appUser } = await supabase
-      .from('users')
-      .select('role, assigned_tenant_ids')
-      .eq('id', user.id)
-      .single();
-    const role = appUser?.role ?? '';
-    if (!['super_admin', 'tenant_admin'].includes(role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    if (role !== 'super_admin') {
-      const assigned: string[] = appUser?.assigned_tenant_ids ?? [];
-      if (!assigned.includes(tournament.tenant_id)) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-      }
-    }
+    const check = await verifyDirector(supabase, user?.id, tournament.tenant_id);
+    if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status });
     isDirector = true;
   }
 
-  // Late registration keeps the public link open after the bracket exists;
-  // directors can add players at any point short of a finished tournament.
-  const lateAllowed = !!settings?.allowLateRegistration && tournament.status !== 'completed';
-  const registrationAllowed =
-    tournament.status === 'registration_open' ||
-    lateAllowed ||
-    (isDirector && tournament.status !== 'completed');
-  if (!registrationAllowed) {
+  // Directors can add players right up until the tournament is finished.
+  const allowed = registrationIsOpen(tournament.status, settings)
+    || (isDirector && tournament.status !== 'completed');
+  if (!allowed) {
     return NextResponse.json({ error: 'Registration is not open' }, { status: 400 });
   }
 
@@ -80,14 +64,17 @@ export async function POST(req: NextRequest) {
   let paymentStatus: 'pending' | 'paid' = 'pending';
   let verifiedPaymentIntentId: string | null = null;
 
-  if (isDirector) {
-    // No online payment is taken at the desk; the director states whether the
-    // fee was collected so the roster reflects who still owes.
-    paymentStatus = body.markPaid ? 'paid' : 'pending';
-  } else if (entranceFee > 0) {
-    if (!stripePaymentIntentId) {
+  // A card payment is verified the same way no matter who took it — a director
+  // collecting at the desk gets no shortcut around Stripe. Only a director
+  // submitting without a payment at all may settle the fee offline.
+  if (entranceFee > 0 && !stripePaymentIntentId) {
+    if (!isDirector) {
       return NextResponse.json({ error: 'Payment required for this tournament' }, { status: 402 });
     }
+    paymentStatus = body.markPaid ? 'paid' : 'pending';
+  } else if (entranceFee <= 0) {
+    if (isDirector) paymentStatus = body.markPaid ? 'paid' : 'pending';
+  } else {
 
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeKey) {
@@ -101,7 +88,7 @@ export async function POST(req: NextRequest) {
 
     let pi;
     try {
-      pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId);
+      pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId!);
     } catch {
       return NextResponse.json({ error: 'Invalid payment reference' }, { status: 400 });
     }
@@ -124,7 +111,7 @@ export async function POST(req: NextRequest) {
     }
 
     paymentStatus = 'paid';
-    verifiedPaymentIntentId = stripePaymentIntentId;
+    verifiedPaymentIntentId = stripePaymentIntentId!;
   }
 
   const admin = createAdminClient(
