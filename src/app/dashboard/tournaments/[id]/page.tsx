@@ -942,7 +942,7 @@ function SettingsEditor({
             </div>
           </div>
 
-          <div>
+          <div className="sm:col-span-2">
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
               Number of Courts
             </label>
