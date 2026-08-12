@@ -265,10 +265,14 @@ export default function TournamentAdminPage() {
    */
   async function handleReverseWinner(matchId: string) {
     setSaving(true);
-    await persistReversal(createClient(), matches, matchId);
+    const { error } = await persistReversal(createClient(), matches, matchId);
+    setSaving(false);
+    if (error) {
+      setMessage(`Could not undo the result: ${error}`);
+      return;
+    }
     setMessage('Result undone — the match is back in the queue.');
     load();
-    setSaving(false);
     setTimeout(() => setMessage(''), 3000);
   }
 

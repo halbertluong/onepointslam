@@ -29,13 +29,16 @@ export default function PlayersPanel({
   });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
 
   const dirty = players.some((p) => (seedEdits[p.id] ?? '') !== (p.seedRating != null ? String(p.seedRating) : ''));
 
   async function handleSaveSeeds() {
     setSaving(true);
-    await saveSeedRatings(createClient(), seedEdits);
+    const { error } = await saveSeedRatings(createClient(), seedEdits);
     setSaving(false);
+    if (error) { setErr(`Could not save seeds: ${error}`); return; }
+    setErr('');
     setMsg('Seeds saved!');
     onSaved();
     setTimeout(() => setMsg(''), 2000);
@@ -93,6 +96,7 @@ export default function PlayersPanel({
   return (
     <div className="space-y-4">
       {msg && <p className="text-sm bg-emerald-50 text-emerald-700 rounded-xl p-3">{msg}</p>}
+      {err && <p className="text-sm bg-red-50 text-red-700 rounded-xl p-3">{err}</p>}
 
       {unplaced.length > 0 && (
         <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 flex items-start gap-3">

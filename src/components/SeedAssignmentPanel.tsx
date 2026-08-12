@@ -25,11 +25,14 @@ export default function SeedAssignmentPanel({
   });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
 
   async function handleSaveSeeds() {
     setSaving(true);
-    await saveSeedRatings(createClient(), seedEdits);
+    const { error } = await saveSeedRatings(createClient(), seedEdits);
     setSaving(false);
+    if (error) { setErr(`Could not save seeds: ${error}`); return; }
+    setErr('');
     setMsg('Seeds saved!');
     onSaved();
     setTimeout(() => setMsg(''), 2000);
@@ -61,6 +64,7 @@ export default function SeedAssignmentPanel({
   return (
     <div className="space-y-6">
       {msg && <p className="text-sm bg-emerald-50 text-emerald-700 rounded-xl p-3">{msg}</p>}
+      {err && <p className="text-sm bg-red-50 text-red-700 rounded-xl p-3">{err}</p>}
 
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">

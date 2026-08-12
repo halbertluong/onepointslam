@@ -68,26 +68,33 @@ export default function DrawEditorPanel({
 
     setSaving(true);
     const supabase = createClient();
+    let swapError: string | undefined;
     if (aMatchId === bMatchId) {
       const update = aSlot === 'p1' ? { player1_id: bId, player2_id: aId } : { player2_id: bId, player1_id: aId };
-      await supabase.from('matches').update(update).eq('id', aMatchId);
+      const { error } = await supabase.from('matches').update(update).eq('id', aMatchId);
+      swapError = error?.message;
     } else {
       const aField = aSlot === 'p1' ? 'player1_id' : 'player2_id';
       const bField = bSlot === 'p1' ? 'player1_id' : 'player2_id';
-      await Promise.all([
+      const results = await Promise.all([
         supabase.from('matches').update({ [aField]: bId }).eq('id', aMatchId),
         supabase.from('matches').update({ [bField]: aId }).eq('id', bMatchId),
       ]);
+      swapError = results.find((r) => r.error)?.error?.message;
     }
     setSaving(false);
+    if (swapError) { setErr(`Could not swap those players: ${swapError}`); return; }
     flash('Players swapped.');
   }
 
   async function handleRedistribute() {
     if (hasResults) return;
     setSaving(true);
-    await persistSeededRedistribution(createClient(), matches, players.filter((p) => placedIds.has(p.id)));
+    const { error } = await persistSeededRedistribution(
+      createClient(), matches, players.filter((p) => placedIds.has(p.id)),
+    );
     setSaving(false);
+    if (error) { setErr(`Could not redistribute the draw: ${error}`); return; }
     flash('Draw redistributed by seeding.');
   }
 
@@ -107,16 +114,18 @@ export default function DrawEditorPanel({
 
     if (target.winnerId) {
       // Undo the bye (and anything that bye's winner went on to win).
-      await persistReversal(supabase, matches, target.id);
+      const undo = await persistReversal(supabase, matches, target.id);
+      if (undo.error) { setSaving(false); setErr(`Could not free up that slot: ${undo.error}`); return; }
     }
 
     const slot = !target.player1Id ? 'player1_id' : 'player2_id';
-    await supabase
+    const { error } = await supabase
       .from('matches')
       .update({ [slot]: playerId, winner_id: null, status: target.courtNumber ? 'court_assigned' : 'scheduled' })
       .eq('id', target.id);
 
     setSaving(false);
+    if (error) { setErr(`Could not add the player to the draw: ${error.message}`); return; }
     const name = players.find((p) => p.id === playerId)?.fullName ?? 'Player';
     flash(`${name} added to the draw.`);
   }
@@ -133,12 +142,16 @@ export default function DrawEditorPanel({
     for (const p of unplaced) {
       const target = working.find((m) => m.roundIndex === 0 && (!m.player1Id || !m.player2Id));
       if (!target) break;
-      if (target.winnerId) await persistReversal(supabase, working, target.id);
+      if (target.winnerId) {
+        const undo = await persistReversal(supabase, working, target.id);
+        if (undo.error) { setSaving(false); setErr(`Could not free up a slot: ${undo.error}`); return; }
+      }
       const slot = !target.player1Id ? 'player1_id' : 'player2_id';
-      await supabase
+      const { error } = await supabase
         .from('matches')
         .update({ [slot]: p.id, winner_id: null, status: target.courtNumber ? 'court_assigned' : 'scheduled' })
         .eq('id', target.id);
+      if (error) { setSaving(false); setErr(`Could not add ${p.fullName} to the draw: ${error.message}`); return; }
       working = working.map((m) =>
         m.id === target.id
           ? { ...m, [slot === 'player1_id' ? 'player1Id' : 'player2Id']: p.id, winnerId: null }
