@@ -476,6 +476,9 @@ export default function TournamentAdminPage() {
           // The draw and referee tools only mean anything once a bracket exists.
           if ((t === 'draw' || t === 'referee') && !canManageDraw) return null;
           const needsAttention = t === 'players' && unplacedCount > 0;
+          // Carry the roster size in the tab itself, the way the demo does — a
+          // director glancing at the menu shouldn't have to open it to see it.
+          const label = t === 'players' ? `${TAB_LABELS[t]} (${players.length})` : TAB_LABELS[t];
           return (
             <button
               key={t}
@@ -487,7 +490,7 @@ export default function TournamentAdminPage() {
               }`}
               style={tab === t ? { borderColor: 'var(--tenant-primary)', color: 'var(--tenant-primary)' } : {}}
             >
-              {TAB_LABELS[t]}
+              {label}
               {needsAttention && (
                 <span
                   className="px-1.5 py-0.5 rounded-full bg-amber-400 text-amber-950 text-[10px] font-black leading-none"
