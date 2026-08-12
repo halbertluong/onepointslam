@@ -21,6 +21,7 @@ export default function RefereeMatchPage() {
   const [player2, setPlayer2] = useState<Player | null>(null);
   const [allMatches, setAllMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saveError, setSaveError] = useState('');
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -94,10 +95,12 @@ export default function RefereeMatchPage() {
   async function handleDeclareWinner(winnerId: string) {
     if (match?.status === 'finalized' || match?.status === 'walkover') return;
     const supabase = createClient();
-    await supabase
+    const { error } = await supabase
       .from('matches')
       .update({ winner_id: winnerId, status: 'finalized' })
       .eq('id', matchId);
+    if (error) { setSaveError(`Could not save result: ${error.message}`); return; }
+    setSaveError('');
 
     if (match) {
       const slot = match.matchIndex % 2 === 0 ? 'player1_id' : 'player2_id';
@@ -115,7 +118,7 @@ export default function RefereeMatchPage() {
     if (match?.status === 'finalized' || match?.status === 'walkover') return;
     const supabase = createClient();
     const winnerId = determineOneGoalBowlWinner(kickerPlayerId, keeperPlayerId, outcome);
-    await supabase
+    const { error } = await supabase
       .from('matches')
       .update({
         kicker_player_id: kickerPlayerId,
@@ -125,6 +128,8 @@ export default function RefereeMatchPage() {
         status: 'finalized',
       })
       .eq('id', matchId);
+    if (error) { setSaveError(`Could not save result: ${error.message}`); return; }
+    setSaveError('');
 
     if (match) {
       const slot = match.matchIndex % 2 === 0 ? 'player1_id' : 'player2_id';
@@ -147,7 +152,7 @@ export default function RefereeMatchPage() {
     if (match?.status === 'finalized' || match?.status === 'walkover') return;
     const supabase = createClient();
     const winnerId = determineOnePointBowlWinner(offensePlayerId, defensePlayerId, outcome);
-    await supabase
+    const { error } = await supabase
       .from('matches')
       .update({
         coin_flip_winner_id: coinFlipWinnerId,
@@ -158,6 +163,8 @@ export default function RefereeMatchPage() {
         status: 'finalized',
       })
       .eq('id', matchId);
+    if (error) { setSaveError(`Could not save result: ${error.message}`); return; }
+    setSaveError('');
 
     if (match) {
       const slot = match.matchIndex % 2 === 0 ? 'player1_id' : 'player2_id';
@@ -179,10 +186,12 @@ export default function RefereeMatchPage() {
       await supabase.from('players').update({ status: 'no_show_eliminated' }).eq('id', loserId);
     }
 
-    await supabase
+    const { error } = await supabase
       .from('matches')
       .update({ winner_id: winnerId, status: 'walkover' })
       .eq('id', matchId);
+    if (error) { setSaveError(`Could not save result: ${error.message}`); return; }
+    setSaveError('');
 
     if (match) {
       const updated = advanceWinner(allMatches, matchId, winnerId);
@@ -213,49 +222,65 @@ export default function RefereeMatchPage() {
     );
   }
 
+  const errorBanner = saveError && (
+    <div className="fixed top-0 inset-x-0 z-50 bg-red-600 text-white text-sm font-semibold px-4 py-2.5 flex items-center justify-between gap-3">
+      <span>⚠️ {saveError}</span>
+      <button onClick={() => setSaveError('')} className="shrink-0 underline">Dismiss</button>
+    </div>
+  );
+
   if (tournament?.settings?.sport === 'soccer') {
     return (
-      <SoccerMatchClient
-        match={match}
-        player1={player1}
-        player2={player2}
-        tournamentName={tournament?.name ?? ''}
-        onDeclareResult={handleDeclareSoccerResult}
-        onWalkover={handleWalkover}
-        onBack={() => router.push('/referee')}
-        onNext={() => router.push('/referee')}
-      />
+      <>
+        {errorBanner}
+        <SoccerMatchClient
+          match={match}
+          player1={player1}
+          player2={player2}
+          tournamentName={tournament?.name ?? ''}
+          onDeclareResult={handleDeclareSoccerResult}
+          onWalkover={handleWalkover}
+          onBack={() => router.push('/referee')}
+          onNext={() => router.push('/referee')}
+        />
+      </>
     );
   }
 
   if (tournament?.settings?.sport === 'basketball') {
     return (
-      <BasketballMatchClient
-        match={match}
-        player1={player1}
-        player2={player2}
-        tournamentName={tournament?.name ?? ''}
-        onDeclareResult={handleDeclareBasketballResult}
-        onWalkover={handleWalkover}
-        onBack={() => router.push('/referee')}
-        onNext={() => router.push('/referee')}
-      />
+      <>
+        {errorBanner}
+        <BasketballMatchClient
+          match={match}
+          player1={player1}
+          player2={player2}
+          tournamentName={tournament?.name ?? ''}
+          onDeclareResult={handleDeclareBasketballResult}
+          onWalkover={handleWalkover}
+          onBack={() => router.push('/referee')}
+          onNext={() => router.push('/referee')}
+        />
+      </>
     );
   }
 
   return (
-    <RefereeMatchClient
-      match={match}
-      player1={player1}
-      player2={player2}
-      tournamentName={tournament?.name ?? ''}
-      serveRuleProfile={tournament?.settings?.serveRuleProfile}
-      useRandomToss={tournament?.settings?.serverDetermination === 'random_coin_toss'}
-      onServerDetermined={handleServerDetermined}
-      onDeclareWinner={handleDeclareWinner}
-      onWalkover={handleWalkover}
-      onBack={() => router.push('/referee')}
-      onNext={() => router.push('/referee')}
-    />
+    <>
+      {errorBanner}
+      <RefereeMatchClient
+        match={match}
+        player1={player1}
+        player2={player2}
+        tournamentName={tournament?.name ?? ''}
+        serveRuleProfile={tournament?.settings?.serveRuleProfile}
+        useRandomToss={tournament?.settings?.serverDetermination === 'random_coin_toss'}
+        onServerDetermined={handleServerDetermined}
+        onDeclareWinner={handleDeclareWinner}
+        onWalkover={handleWalkover}
+        onBack={() => router.push('/referee')}
+        onNext={() => router.push('/referee')}
+      />
+    </>
   );
 }
