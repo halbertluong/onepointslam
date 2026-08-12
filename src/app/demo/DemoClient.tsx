@@ -625,13 +625,13 @@ function DemoSettingsTab({
               <p className="text-xs text-slate-400 mt-1">Tournament flagged if below this number.</p>
             </div>
 
-            <div>
+            <div className="min-w-0">
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Tournament Date</label>
-              <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
+              <input type="date" value={tournamentDate} onChange={(e) => setTournamentDate(e.target.value)} className={inputCls + ' min-w-0'} style={{ colorScheme: 'light' }} />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Registration Deadline</label>
-              <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} className={inputCls} style={{ colorScheme: 'light' }} />
+              <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} className={inputCls + ' min-w-0'} style={{ colorScheme: 'light' }} />
             </div>
 
             <div className="sm:col-span-2">
