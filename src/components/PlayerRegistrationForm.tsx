@@ -45,6 +45,16 @@ interface Props {
   welcomeBack?: WelcomeBackProps;
   /** When set, renders a secondary "Donate instead" link below the submit button */
   onDonate?: () => void;
+  /** Hide the payment breakdown — for flows that collect no payment here
+   *  (e.g. a director adding a player at the desk). */
+  hidePaymentBreakdown?: boolean;
+  /** Override the submit button label, which otherwise derives from the fee. */
+  submitLabel?: string;
+  /** Replace the "no account required, confirmation by email" footnote. */
+  footnote?: string;
+  /** Heading for the details section. Defaults to "Your Details"; a director
+   *  entering someone else's details wants "Player Details". */
+  detailsTitle?: string;
   onSubmit: (data: PlayerFormData) => Promise<{ error?: string } | void>;
 }
 
@@ -60,6 +70,10 @@ export default function PlayerRegistrationForm({
   onEmailBlur,
   welcomeBack,
   onDonate,
+  hidePaymentBreakdown,
+  submitLabel,
+  footnote,
+  detailsTitle,
   onSubmit,
 }: Props) {
   const [fullName, setFullName] = useState('');
@@ -104,7 +118,7 @@ export default function PlayerRegistrationForm({
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-          <h2 className="font-bold text-slate-800">Your Details</h2>
+          <h2 className="font-bold text-slate-800">{detailsTitle ?? 'Your Details'}</h2>
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
@@ -279,6 +293,7 @@ export default function PlayerRegistrationForm({
         </div>
 
         {/* Payment breakdown */}
+        {!hidePaymentBreakdown && (
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-3 border-b border-slate-100">
             <h3 className="font-bold text-slate-800">Payment Breakdown</h3>
@@ -305,6 +320,7 @@ export default function PlayerRegistrationForm({
             </div>
           </div>
         </div>
+        )}
 
         {formError && (
           <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{formError}</p>
@@ -317,13 +333,15 @@ export default function PlayerRegistrationForm({
         >
           {submitting
             ? 'Registering…'
+            : submitLabel
+            ? submitLabel
             : totalPrice > 0
             ? `Pay ${formatCurrency(totalPrice)} & Register`
             : 'Register Free'}
         </button>
 
         <p className="text-center text-xs text-slate-400">
-          No account required. You&apos;ll receive confirmation by email.
+          {footnote ?? "No account required. You'll receive confirmation by email."}
         </p>
 
         {onDonate && (

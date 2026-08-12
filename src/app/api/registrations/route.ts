@@ -17,6 +17,11 @@ export async function POST(req: NextRequest) {
     age?: string;
     skillTier?: string;
     stripePaymentIntentId?: string;
+    /** Set by the director dashboard to add a player at the desk. Authorization
+     *  is verified server-side below — the flag alone grants nothing. */
+    directorEntry?: boolean;
+    /** Director entry only: whether the entry fee was collected offline. */
+    markPaid?: boolean;
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
@@ -28,23 +33,58 @@ export async function POST(req: NextRequest) {
   // Look up tournament fee server-side
   const { data: tournament } = await supabase
     .from('tournaments')
-    .select('settings, status')
+    .select('settings, status, tenant_id')
     .eq('id', tournamentId)
     .single();
 
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
-  if (tournament.status !== 'registration_open') {
-    return NextResponse.json({ error: 'Registration is not open' }, { status: 400 });
-  }
 
   const settings = tournament.settings as Record<string, unknown> | null;
   const entranceFee = (settings?.ticketPriceForFundraiser as number) ?? 0;
+
+  // A director adding a player at the desk bypasses online payment and the
+  // registration-open gate, so it has to be proven — not just claimed.
+  let isDirector = false;
+  if (body.directorEntry) {
+    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    const { data: appUser } = await supabase
+      .from('users')
+      .select('role, assigned_tenant_ids')
+      .eq('id', user.id)
+      .single();
+    const role = appUser?.role ?? '';
+    if (!['super_admin', 'tenant_admin'].includes(role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (role !== 'super_admin') {
+      const assigned: string[] = appUser?.assigned_tenant_ids ?? [];
+      if (!assigned.includes(tournament.tenant_id)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
+    isDirector = true;
+  }
+
+  // Late registration keeps the public link open after the bracket exists;
+  // directors can add players at any point short of a finished tournament.
+  const lateAllowed = !!settings?.allowLateRegistration && tournament.status !== 'completed';
+  const registrationAllowed =
+    tournament.status === 'registration_open' ||
+    lateAllowed ||
+    (isDirector && tournament.status !== 'completed');
+  if (!registrationAllowed) {
+    return NextResponse.json({ error: 'Registration is not open' }, { status: 400 });
+  }
 
   // Verify payment when a fee applies
   let paymentStatus: 'pending' | 'paid' = 'pending';
   let verifiedPaymentIntentId: string | null = null;
 
-  if (entranceFee > 0) {
+  if (isDirector) {
+    // No online payment is taken at the desk; the director states whether the
+    // fee was collected so the roster reflects who still owes.
+    paymentStatus = body.markPaid ? 'paid' : 'pending';
+  } else if (entranceFee > 0) {
     if (!stripePaymentIntentId) {
       return NextResponse.json({ error: 'Payment required for this tournament' }, { status: 402 });
     }
