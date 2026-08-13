@@ -797,6 +797,12 @@ function SettingsEditor({
                 <option value="double_elimination">Double Elimination</option>
               </select>
             )}
+            {!bracketGenerated && bracketFormat !== 'single_elimination' && (
+              <p className="text-xs text-amber-700 mt-1">
+                Needs a full draw — one entrant per slot. A bye leaves no loser to send onward, so
+                a player can land in the second bracket with nobody to play.
+              </p>
+            )}
           </div>
 
           <div>

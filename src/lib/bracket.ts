@@ -459,21 +459,32 @@ export function determineOnePointBowlWinner(
  * Where a winners-bracket match's loser was dropped, for undo purposes —
  * mirrors the forward routing in `resolveAdvancement` but only needs the
  * destination (roundIndex/matchIndex/slot), not the player id, since it's
- * clearing a slot rather than filling one. Checks the losers bracket first,
- * then the consolation bracket; returns null for single elimination (no
- * secondary bracket exists) or for a non-round-0 match under consolation
- * (which only ever receives round-0 losers).
+ * clearing a slot rather than filling one.
+ *
+ * Which secondary bracket a loser went to is decided by which one the
+ * tournament actually has, not by round arithmetic: a round-0 loser drops
+ * the same way under both formats, so the maths alone cannot tell them
+ * apart. `resolveAdvancement` routes forward by looking for the destination
+ * match and doing nothing when it is absent, and `hasBracket` is how this
+ * side stays in step with it. Returns null for single elimination, which has
+ * no secondary bracket, and for a non-round-0 match under consolation, which
+ * only ever receives round-0 losers.
  */
 function loserDropDestination(
   match: Match,
   winnersRounds: number,
+  hasBracket: (bracket: Match['bracket']) => boolean,
 ): { bracket: Match['bracket']; roundIndex: number; matchIndex: number; slot: 'player1Id' | 'player2Id' } | null {
-  if (match.roundIndex === winnersRounds - 1) {
-    return { bracket: 'losers', roundIndex: 2 * (winnersRounds - 1) - 1, matchIndex: 0, slot: 'player2Id' };
+  if (hasBracket('losers')) {
+    if (match.roundIndex === winnersRounds - 1) {
+      return { bracket: 'losers', roundIndex: 2 * (winnersRounds - 1) - 1, matchIndex: 0, slot: 'player2Id' };
+    }
+    const dest = wbLoserDestination(match.roundIndex, match.matchIndex, winnersRounds);
+    return dest ? { bracket: 'losers', ...dest } : null;
   }
-  const dest = wbLoserDestination(match.roundIndex, match.matchIndex, winnersRounds);
-  if (dest) return { bracket: 'losers', ...dest };
-  if (match.roundIndex === 0) return { bracket: 'consolation', ...round0DropDestination(match.matchIndex) };
+  if (hasBracket('consolation') && match.roundIndex === 0) {
+    return { bracket: 'consolation', ...round0DropDestination(match.matchIndex) };
+  }
   return null;
 }
 
@@ -504,7 +515,10 @@ export function reverseWinner(matches: Match[], matchId: string, winnersRounds?:
     : [...matches];
 
   // Same cascade, but for the loser's cross-bracket drop (double elim / consolation).
-  const dropDest = match.bracket === 'main' && winnersRounds ? loserDropDestination(match, winnersRounds) : null;
+  const dropDest =
+    match.bracket === 'main' && winnersRounds
+      ? loserDropDestination(match, winnersRounds, (bracket) => matches.some((m) => m.bracket === bracket))
+      : null;
   const dropMatch = dropDest
     ? updated.find((m) => m.bracket === dropDest.bracket && m.roundIndex === dropDest.roundIndex && m.matchIndex === dropDest.matchIndex)
     : null;
