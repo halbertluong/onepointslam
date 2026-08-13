@@ -16,68 +16,100 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 /**
- * Places seeded players at standard bracket positions so seeds 1 & 2
- * can only meet in the final. Returns slot indices for a bracket of size P.
+ * Standard single-elimination seeding order, generated for any bracket size.
+ *
+ * Returns one entry per bracket slot, in slot order, holding the 1-indexed
+ * seed number that belongs in that slot. Built by the usual "fold" method:
+ * start with [1, 2], then repeatedly replace every seed s in the list with
+ * the pair (s, roundTotal + 1 - s), which doubles the field each pass.
+ *
+ * The result is the bracket every real tournament uses: seed 1 sits at the
+ * top and seed 2 at the bottom so they can only meet in the final, 3 and 4
+ * land in the opposite halves from each other (and away from 1 and 2), and
+ * so on down the list — each seed is placed as far from its closest rivals
+ * as the bracket allows, and every seed's first-round opponent is the
+ * lowest-ranked player still available.
+ *
+ * e.g. size 8 -> [1, 8, 4, 5, 2, 7, 3, 6]
+ *   round 1: 1v8, 4v5, 2v7, 3v6
+ *   semis:   1v4, 2v3
+ *   final:   1v2
  */
-function seededSlots(P: number): number[] {
-  // Standard seeding positions for single-elimination brackets
-  const positions: Record<number, number[]> = {
-    2: [0, 1],
-    4: [0, 3, 1, 2],
-    8: [0, 7, 3, 4, 1, 6, 2, 5],
-    16: [0, 15, 7, 8, 3, 12, 4, 11, 1, 14, 6, 9, 2, 13, 5, 10],
-    32: [
-      0, 31, 15, 16, 7, 24, 8, 23, 3, 28, 12, 19, 4, 27, 11, 20,
-      1, 30, 14, 17, 6, 25, 9, 22, 2, 29, 13, 18, 5, 26, 10, 21,
-    ],
-    64: Array.from({ length: 64 }, (_, i) => i), // simplified for 64+
-    128: Array.from({ length: 128 }, (_, i) => i),
-  };
-  return positions[P] ?? Array.from({ length: P }, (_, i) => i);
+export function seedSlotOrder(bracketSize: number): number[] {
+  let order = [1, 2];
+  while (order.length < bracketSize) {
+    const roundTotal = order.length * 2 + 1;
+    const next: number[] = [];
+    for (const seed of order) {
+      next.push(seed, roundTotal - seed);
+    }
+    order = next;
+  }
+  return order.slice(0, bracketSize);
+}
+
+/**
+ * Orders players into the seeding ranks used for bracket placement: explicitly
+ * seeded players first (by their seed number), then everyone else strongest
+ * first, so unseeded talent still gets spread across the draw rather than
+ * clustered. Deterministic, so a director pressing "redistribute" twice gets
+ * the same draw both times.
+ */
+export function rankPlayersForSeeding(players: Player[]): Player[] {
+  const seeded = players
+    .filter((p) => p.seedRating != null)
+    .sort((a, b) => (a.seedRating ?? 99) - (b.seedRating ?? 99));
+  const unseeded = players
+    .filter((p) => p.seedRating == null)
+    .sort((a, b) =>
+      (b.ntrpRating ?? 0) - (a.ntrpRating ?? 0) ||
+      (b.utrRating ?? 0) - (a.utrRating ?? 0) ||
+      a.fullName.localeCompare(b.fullName),
+    );
+  return [...seeded, ...unseeded];
+}
+
+/**
+ * Lays players out across a bracket's first-round slots using standard
+ * tournament seeding. Slots with no player left to fill come back as null,
+ * which the caller turns into a BYE — and because byes fall on the seeds'
+ * opponents first, the top seeds are the ones who get them.
+ */
+export function distributeBySeeding(players: Player[], bracketSize: number): (string | null)[] {
+  const ranked = rankPlayersForSeeding(players);
+  return seedSlotOrder(bracketSize).map((seedNo) => ranked[seedNo - 1]?.id ?? null);
 }
 
 export function generateBracket(
   players: Player[],
-  _settings: TournamentSettings,
+  settings: TournamentSettings,
   tournamentId: string,
 ): Match[] {
   const N = players.length;
-  const P = nextPowerOf2(N);
-  const byeCount = P - N;
+  // The configured draw size is a floor, not a suggestion: a 64-player draw with
+  // 20 entrants still gets 64 slots (the rest byes), which is what makes
+  // resizing a draw possible at all. Always rounded up to a power of two, and
+  // never smaller than the field actually needs.
+  const P = Math.max(nextPowerOf2(N), nextPowerOf2(settings?.maxPlayers ?? 0));
 
-  // Sort seeds first, then randomize unseeded
+  // Seeded players keep their declared order; unseeded are shuffled so each
+  // generation produces a fresh draw. Both then go through the standard
+  // seeding layout, so slot i holds the player at seeding rank seedSlotOrder[i].
   const seeded = players.filter((p) => p.seedRating != null).sort((a, b) => (a.seedRating ?? 99) - (b.seedRating ?? 99));
   const unseeded = shuffle(players.filter((p) => p.seedRating == null));
-  const ordered = [...seeded, ...unseeded];
+  const ranked = [...seeded, ...unseeded];
 
-  // Build slot assignment: slot -> playerId or 'BYE'
-  const slots: (string | 'BYE')[] = new Array(P).fill('BYE');
-  const slotOrder = seededSlots(P);
-
-  // Fill seeded players into their proper slots
-  seeded.forEach((p, i) => {
-    if (i < slotOrder.length) slots[slotOrder[i]] = p.id;
-  });
-
-  // Fill unseeded into remaining slots (non-bye slots)
-  let unseededIdx = 0;
-  for (let s = 0; s < P; s++) {
-    if (slots[s] === 'BYE' && unseededIdx < unseeded.length) {
-      slots[s] = unseeded[unseededIdx++].id;
-    }
-  }
+  // Empty slots stay null — 'BYE' is an internal sentinel only, never written to the DB
+  const slots: (string | null)[] = seedSlotOrder(P).map((seedNo) => ranked[seedNo - 1]?.id ?? null);
 
   const matches: Match[] = [];
   const matchesPerRound = P / 2;
 
   // Round 0 (first round)
   for (let i = 0; i < matchesPerRound; i++) {
-    const raw1 = slots[i * 2];
-    const raw2 = slots[i * 2 + 1];
-    const isByeMatch = raw1 === 'BYE' || raw2 === 'BYE';
-    // Store null for BYE slots — 'BYE' is an internal sentinel only, never written to the DB
-    const p1: string | null = raw1 === 'BYE' ? null : raw1;
-    const p2: string | null = raw2 === 'BYE' ? null : raw2;
+    const p1 = slots[i * 2];
+    const p2 = slots[i * 2 + 1];
+    const isByeMatch = p1 == null || p2 == null;
 
     matches.push({
       id: `${tournamentId}-r0-${i}`,
@@ -191,19 +223,39 @@ export function reverseWinner(matches: Match[], matchId: string): Match[] {
   const match = matches.find((m) => m.id === matchId);
   if (!match?.winnerId) return matches;
 
-  const prevWinnerId = match.winnerId;
   const nextRound = match.roundIndex + 1;
   const nextMatchIndex = Math.floor(match.matchIndex / 2);
   const slot = match.matchIndex % 2 === 0 ? 'player1Id' : 'player2Id';
 
   const nextMatch = matches.find((m) => m.roundIndex === nextRound && m.matchIndex === nextMatchIndex);
-  // Cascade: if the player already won their next match, reverse that too first
-  let updated = nextMatch?.winnerId === prevWinnerId
-    ? reverseWinner(matches, nextMatch!.id)
+  // Undoing this result pulls its winner back out of the next match, so any
+  // result already recorded there is void — whoever won it did so against a
+  // player who is no longer in that slot. Unwind it too, and recursively on up
+  // the bracket, so the draw never keeps a result that outlived its own inputs.
+  const updated = nextMatch?.winnerId
+    ? reverseWinner(matches, nextMatch.id)
     : [...matches];
 
   return updated.map((m) => {
-    if (m.id === matchId) return { ...m, winnerId: null, status: 'scheduled' as const };
+    // An undone match hasn't been played, so it keeps no record of how it was
+    // played either — the toss/serve and per-sport result fields clear with the
+    // winner. persistReversal writes the same reset to the database.
+    if (m.id === matchId) {
+      return {
+        ...m,
+        winnerId: null,
+        status: 'scheduled' as const,
+        serverPlayerId: null,
+        tossWinnerId: null,
+        kickerPlayerId: null,
+        keeperPlayerId: null,
+        kickOutcome: null,
+        coinFlipWinnerId: null,
+        offensePlayerId: null,
+        defensePlayerId: null,
+        possessionOutcome: null,
+      };
+    }
     if (m.roundIndex === nextRound && m.matchIndex === nextMatchIndex) return { ...m, [slot]: null };
     return m;
   });

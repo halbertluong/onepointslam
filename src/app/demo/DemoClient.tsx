@@ -12,6 +12,7 @@ import {
   generatePlayers,
   buildBracket,
   speedThroughAll,
+  simulateCoinToss,
   getTournamentStats,
   type DemoPlayer,
 } from './demoData';
@@ -42,7 +43,7 @@ interface TournamentConfig {
   minimumRegistrants?: number;
   serveRuleProfile: 'one_serve_sudden_death' | 'two_serves_traditional' | 'skill_based';
   serverDetermination: 'random_coin_toss' | 'referee_manual_override';
-  receivingSideSelection: 'server_choice' | 'ad_court_fixed' | 'deuce_court_fixed';
+  receivingSideSelection: 'server_choice' | 'receiver_choice' | 'ad_court_fixed' | 'deuce_court_fixed';
   prizePlaces: PrizePlace[];
 }
 
@@ -403,11 +404,13 @@ function DirectorRefereeQueue({
   matches,
   players,
   onDeclareWinner,
+  onRecordToss,
 }: {
   config: TournamentConfig;
   matches: Match[];
   players: DemoPlayer[];
   onDeclareWinner: (matchId: string, winnerId: string) => void;
+  onRecordToss: (matchId: string, tossWinnerId: string | null, serverPlayerId: string) => void;
 }) {
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
@@ -429,6 +432,7 @@ function DirectorRefereeQueue({
             player2={p2 as Player}
             tournamentName={config.name}
             useRandomToss
+            onServerDetermined={(tossWinnerId, serverPlayerId) => onRecordToss(match.id, tossWinnerId, serverPlayerId)}
             onDeclareWinner={(winnerId) => { onDeclareWinner(match.id, winnerId); setSelectedMatchId(null); }}
             onWalkover={(winnerId) => { onDeclareWinner(match.id, winnerId); setSelectedMatchId(null); }}
             onBack={() => setSelectedMatchId(null)}
@@ -701,6 +705,7 @@ function DirectorView({
   players,
   matches,
   onSetWinner,
+  onRecordToss,
   onSwap,
   onReverseMatch,
   onUpdateConfig,
@@ -709,6 +714,7 @@ function DirectorView({
   players: DemoPlayer[];
   matches: Match[];
   onSetWinner: (matchId: string, winnerId: string) => void;
+  onRecordToss: (matchId: string, tossWinnerId: string | null, serverPlayerId: string) => void;
   onSwap: (aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') => void;
   onReverseMatch: (matchId: string) => void;
   onUpdateConfig: (patch: Partial<TournamentConfig>) => void;
@@ -831,6 +837,7 @@ function DirectorView({
                 matches={matches}
                 players={players}
                 onDeclareWinner={onSetWinner}
+                onRecordToss={onRecordToss}
               />
             )}
 
@@ -896,11 +903,13 @@ function RefereeView({
   matches,
   players,
   onDeclareWinner,
+  onRecordToss,
 }: {
   config: TournamentConfig;
   matches: Match[];
   players: DemoPlayer[];
   onDeclareWinner: (matchId: string, winnerId: string) => void;
+  onRecordToss: (matchId: string, tossWinnerId: string | null, serverPlayerId: string) => void;
 }) {
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
@@ -958,6 +967,7 @@ function RefereeView({
             player2={p2 as Player}
             tournamentName={config.name}
             useRandomToss
+            onServerDetermined={(tossWinnerId, serverPlayerId) => onRecordToss(match.id, tossWinnerId, serverPlayerId)}
             onDeclareWinner={(winnerId) => { onDeclareWinner(match.id, winnerId); selectMatch(null); }}
             onWalkover={(winnerId) => { onDeclareWinner(match.id, winnerId); selectMatch(null); }}
             onBack={() => selectMatch(null)}
@@ -1385,9 +1395,22 @@ function BracketStage({
   const declareWinner = useCallback((matchId: string, winnerId: string) => {
     setMatches((prev) => {
       const finishing = prev.find((m) => m.id === matchId);
-      const advanced = advanceWinner(prev, matchId, winnerId);
+      // A match decided without going through the referee's toss screen still
+      // gets a toss on the record, so every played match can show who won it
+      // and who served rather than only the ones refereed by hand.
+      const withToss = finishing && !finishing.serverPlayerId
+        ? prev.map((m) => (m.id === matchId ? { ...m, ...simulateCoinToss(m) } : m))
+        : prev;
+      const advanced = advanceWinner(withToss, matchId, winnerId);
       return releaseCourtToNextMatchLocal(advanced, finishing?.courtNumber);
     });
+  }, []);
+
+  /** The referee ran the real toss on screen — record it before the result. */
+  const recordToss = useCallback((matchId: string, tossWinnerId: string | null, serverPlayerId: string) => {
+    setMatches((prev) =>
+      prev.map((m) => (m.id === matchId ? { ...m, tossWinnerId, serverPlayerId } : m)),
+    );
   }, []);
 
   const undoMatchResult = useCallback((matchId: string) => {
@@ -1446,6 +1469,7 @@ function BracketStage({
   const refereeQueueEl = (
     <RefereeView
       config={config} matches={matches} players={players} onDeclareWinner={declareWinner}
+      onRecordToss={recordToss}
     />
   );
 
@@ -1462,6 +1486,7 @@ function BracketStage({
       players={players}
       matches={matches}
       onSetWinner={declareWinner}
+      onRecordToss={recordToss}
       onSwap={swapPlayers}
       onReverseMatch={undoMatchResult}
       onUpdateConfig={(patch) => setConfig((c) => ({ ...c, ...patch }))}
@@ -1592,7 +1617,7 @@ export default function DemoClient() {
   }
 
   function handleParticipantsNext(ps: DemoPlayer[]) {
-    const bracket = buildBracket(ps);
+    const bracket = buildBracket(ps, config?.drawSize);
     const courts = config?.numberOfCourts ?? 0;
     // Assign only the first `courts` ready matches, same as the real app's
     // Start Live Play — the rest stay queued and pick up a court in real

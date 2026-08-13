@@ -74,6 +74,7 @@ function hideGhost() {
 // ── Player slot ───────────────────────────────────────────────────────────────
 function PlayerSlot({
   id, players, isWinner, isBye, matchId, slot, dragging, onDragStart, onDrop, editable, onSetWinner,
+  wonToss, isServer, reserveRightGutter,
 }: {
   id: string | null | undefined;
   players: Player[];
@@ -87,6 +88,12 @@ function PlayerSlot({
   editable?: boolean;
   /** Present only when this slot can be clicked to set the match winner. */
   onSetWinner?: () => void;
+  /** This player won the pre-match coin toss (tennis) or coin flip (basketball). */
+  wonToss?: boolean;
+  /** This player served (tennis) / took the kick or the shot (soccer, basketball). */
+  isServer?: boolean;
+  /** Leave room on the right for the card's overlaid control (undo / edit hint). */
+  reserveRightGutter?: boolean;
 }) {
   const name = getPlayerName(id, players, isBye);
   const p    = id ? getPlayer(id, players) : null;
@@ -140,7 +147,8 @@ function PlayerSlot({
       onTouchEnd={isDraggable ? handleTouchEnd : undefined}
       style={{ height: CARD_H / 2 }}
       className={[
-        'w-full px-3 flex items-center justify-between gap-1 border-b border-slate-100 overflow-hidden transition-colors select-none text-left',
+        'w-full flex items-center justify-between gap-1 border-b border-slate-100 overflow-hidden transition-colors select-none text-left',
+        reserveRightGutter ? 'pl-3 pr-8' : 'px-3',
         isWinner ? 'bg-emerald-50' : '',
         isSource  ? 'opacity-40 bg-blue-50' : '',
         isDraggable ? 'cursor-grab active:cursor-grabbing hover:bg-slate-50' : '',
@@ -162,7 +170,11 @@ function PlayerSlot({
           </span>
         )}
       </div>
-      {isWinner && <span className="text-emerald-500 text-xs font-bold shrink-0">WIN</span>}
+      <span className="flex items-center gap-0.5 shrink-0">
+        {wonToss && <span className="text-[10px] leading-none" title="Won the coin toss">🪙</span>}
+        {isServer && <span className="text-[10px] leading-none" title="Served">🎾</span>}
+        {isWinner && <span className="text-emerald-500 text-xs font-bold">WIN</span>}
+      </span>
     </Tag>
   );
 }
@@ -199,6 +211,17 @@ function MatchCard({
     !!match.player1Id && !!match.player2Id && match.player1Id !== 'BYE' && match.player2Id !== 'BYE';
   const isResultEditable = resultEditable && bothRealPlayers && !!onSetWinner;
 
+  // Who won the pre-match toss, and who put the ball in play. Tennis records a
+  // toss winner and a server; soccer and basketball record the coin-flip winner
+  // and the player on the ball (kicker / offense).
+  const tossWinnerId = match.tossWinnerId ?? match.coinFlipWinnerId ?? null;
+  const servedId = match.serverPlayerId ?? match.kickerPlayerId ?? match.offensePlayerId ?? null;
+
+  // An overlaid control sits in the card's top-right corner; when one is shown
+  // the player rows give up that space so badges don't sit underneath it.
+  const showUndo = !!onReverseMatch && !!match.winnerId && match.status !== 'walkover';
+  const hasOverlay = showUndo || (isResultEditable && !match.winnerId);
+
   return (
     <div
       className={`absolute bracket-match ${statusClass} overflow-hidden ${isResultEditable ? 'ring-1 ring-blue-200' : ''} ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-blue-400 hover:ring-offset-1 transition-shadow' : ''}`}
@@ -212,10 +235,10 @@ function MatchCard({
       {isResultEditable && !match.winnerId && (
         <span className="absolute top-1 right-1 text-[10px] leading-none z-10" title="Click a player to set the winner">✏️</span>
       )}
-      {onReverseMatch && match.winnerId && match.status !== 'walkover' && (
+      {showUndo && (
         <button
-          onClick={(e) => { e.stopPropagation(); onReverseMatch(match.id); }}
-          className="absolute top-1 right-1 z-10 text-[10px] px-1.5 py-0.5 rounded bg-slate-100 hover:bg-red-100 hover:text-red-600 text-slate-400 font-bold leading-none transition-colors"
+          onClick={(e) => { e.stopPropagation(); onReverseMatch!(match.id); }}
+          className="absolute top-1 right-1 z-10 text-[10px] px-1.5 py-0.5 rounded bg-white border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-slate-400 font-bold leading-none transition-colors shadow-sm"
           title="Reset result"
         >
           ↩
@@ -227,6 +250,9 @@ function MatchCard({
         matchId={match.id} slot="p1"
         editable={editable} dragging={dragging} onDragStart={onDragStart} onDrop={onDrop}
         onSetWinner={isResultEditable ? () => onSetWinner!(match, match.player1Id as string) : undefined}
+        wonToss={!!tossWinnerId && tossWinnerId === match.player1Id}
+        isServer={!!servedId && servedId === match.player1Id}
+        reserveRightGutter={hasOverlay}
       />
       <PlayerSlot
         id={match.player2Id} players={players} isWinner={isP2Winner}
@@ -234,6 +260,9 @@ function MatchCard({
         matchId={match.id} slot="p2"
         editable={editable} dragging={dragging} onDragStart={onDragStart} onDrop={onDrop}
         onSetWinner={isResultEditable ? () => onSetWinner!(match, match.player2Id as string) : undefined}
+        wonToss={!!tossWinnerId && tossWinnerId === match.player2Id}
+        isServer={!!servedId && servedId === match.player2Id}
+        reserveRightGutter={hasOverlay}
       />
     </div>
   );

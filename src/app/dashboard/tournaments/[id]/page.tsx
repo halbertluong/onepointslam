@@ -4,9 +4,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { useParams, useRouter } from 'next/navigation';
 import BracketPanel from '@/components/BracketPanel';
-import BracketView from '@/components/BracketView';
+import PlayersPanel from '@/components/PlayersPanel';
+import SeedAssignmentPanel from '@/components/SeedAssignmentPanel';
+import DrawEditorPanel from '@/components/DrawEditorPanel';
+import LiveScoreboard from '@/components/LiveScoreboard';
+import RegistrationPanel from '@/components/RegistrationPanel';
 import { generateBracket } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
+import { persistReversal } from '@/lib/tournamentWrites';
 import type { Tournament, Player, Match } from '@/types';
 import { mapPlayer, mapMatch } from '@/types';
 import { calcRaised, formatCurrency } from '@/lib/pricing';
@@ -48,220 +53,20 @@ function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; is
   );
 }
 
-type Tab = 'overview' | 'draw' | 'players' | 'referee' | 'settings';
+type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'settings';
 
-const GENDER_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  male:       { bg: 'bg-blue-100',   text: 'text-blue-600',   label: '♂' },
-  female:     { bg: 'bg-pink-100',   text: 'text-pink-600',   label: '♀' },
-  non_binary: { bg: 'bg-purple-100', text: 'text-purple-600', label: '⚧' },
+const TAB_LABELS: Record<Tab, string> = {
+  players: 'Players',
+  seeds: 'Seed Assignment',
+  draw: 'Draw Editor',
+  referee: 'Referee Queue',
+  bracket: 'Bracket',
+  scoreboard: 'Scoreboard',
+  registration: 'Registration',
+  settings: 'Settings',
 };
 
-function GenderDot({ gender, size = 'md' }: { gender?: string; size?: 'sm' | 'md' }) {
-  if (!gender) return null;
-  const g = gender.toLowerCase().replace('-', '_').replace(' ', '_');
-  const style = GENDER_STYLES[g] ?? { bg: 'bg-slate-100', text: 'text-slate-500', label: gender[0].toUpperCase() };
-  return (
-    <span className={`inline-flex items-center justify-center rounded-full font-bold shrink-0 ${style.bg} ${style.text} ${size === 'sm' ? 'w-4 h-4 text-[9px]' : 'w-5 h-5 text-xs'}`}>
-      {style.label}
-    </span>
-  );
-}
-
-function DrawEditor({
-  players,
-  matches,
-  tournamentId,
-  onSaved,
-}: {
-  players: Player[];
-  matches: Match[];
-  tournamentId: string;
-  onSaved: () => void;
-}) {
-  const [seedEdits, setSeedEdits] = useState<Record<string, string>>(() => {
-    const m: Record<string, string> = {};
-    players.forEach((p) => { m[p.id] = p.seedRating != null ? String(p.seedRating) : ''; });
-    return m;
-  });
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState('');
-
-  const round0 = matches.filter((m) => m.roundIndex === 0).sort((a, b) => a.matchIndex - b.matchIndex);
-  const anyResults = matches.some((m) => m.winnerId);
-
-  async function handleBracketSwap(aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') {
-    if (aMatchId === bMatchId && aSlot === bSlot) return;
-    const ma = round0.find((m) => m.id === aMatchId);
-    const mb = round0.find((m) => m.id === bMatchId);
-    if (!ma || !mb) return;
-    const aId = aSlot === 'p1' ? ma.player1Id : ma.player2Id;
-    const bId = bSlot === 'p1' ? mb.player1Id : mb.player2Id;
-    setSaving(true);
-    const supabase = createClient();
-    if (aMatchId === bMatchId) {
-      const update = aSlot === 'p1' ? { player1_id: bId, player2_id: aId } : { player2_id: bId, player1_id: aId };
-      await supabase.from('matches').update(update).eq('id', aMatchId);
-    } else {
-      const aField = aSlot === 'p1' ? 'player1_id' : 'player2_id';
-      const bField = bSlot === 'p1' ? 'player1_id' : 'player2_id';
-      await Promise.all([
-        supabase.from('matches').update({ [aField]: bId }).eq('id', aMatchId),
-        supabase.from('matches').update({ [bField]: aId }).eq('id', bMatchId),
-      ]);
-    }
-    setSaving(false);
-    setMsg('Players swapped!');
-    onSaved();
-    setTimeout(() => setMsg(''), 2000);
-  }
-
-  async function handleSaveSeeds() {
-    setSaving(true);
-    const supabase = createClient();
-    await Promise.all(
-      players.map((p) => {
-        const val = seedEdits[p.id];
-        const seed = val ? parseInt(val) : null;
-        return supabase.from('players').update({ seed_rating: seed }).eq('id', p.id);
-      })
-    );
-    setSaving(false);
-    setMsg('Seeds saved!');
-    onSaved();
-    setTimeout(() => setMsg(''), 2000);
-  }
-
-  async function handleRandomizeUnseeded() {
-    const unseeded = round0
-      .flatMap((m) => [m.player1Id, m.player2Id])
-      .filter((id): id is string => !!id && id !== 'BYE');
-    const seededIds = players.filter((p) => p.seedRating).map((p) => p.id);
-    const unseededIds = unseeded.filter((id) => !seededIds.includes(id));
-    const shuffled = [...unseededIds].sort(() => Math.random() - 0.5);
-
-    // Build new order: seeded players keep their positions, unseeded get shuffled
-    const newOrder = unseeded.map((id) =>
-      seededIds.includes(id) ? id : shuffled.splice(0, 1)[0]
-    );
-
-    setSaving(true);
-    const supabase = createClient();
-    let idx = 0;
-    for (const m of round0) {
-      const updates: Record<string, string | null> = {};
-      if (m.player1Id && m.player1Id !== 'BYE') {
-        updates.player1_id = newOrder[idx++] ?? m.player1Id;
-      }
-      if (m.player2Id && m.player2Id !== 'BYE') {
-        updates.player2_id = newOrder[idx++] ?? m.player2Id;
-      }
-      if (Object.keys(updates).length > 0) {
-        await supabase.from('matches').update(updates).eq('id', m.id);
-      }
-    }
-    setSaving(false);
-    setMsg('Unseeded players randomized!');
-    onSaved();
-    setTimeout(() => setMsg(''), 2000);
-  }
-
-  const seeded = players.filter((p) => p.seedRating).sort((a, b) => (a.seedRating ?? 0) - (b.seedRating ?? 0));
-
-  return (
-    <div className="space-y-6">
-      {msg && <p className="text-sm bg-emerald-50 text-emerald-700 rounded-xl p-3">{msg}</p>}
-
-      {/* Seed Assignment */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-bold text-slate-800">Seed Assignments</h3>
-          <button
-            onClick={handleSaveSeeds}
-            disabled={saving}
-            className="btn-primary px-3 py-2 rounded-xl text-xs font-bold disabled:opacity-60"
-          >
-            Save Seeds
-          </button>
-        </div>
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-          {players
-            .sort((a, b) => {
-              if (a.seedRating && b.seedRating) return a.seedRating - b.seedRating;
-              if (a.seedRating) return -1;
-              if (b.seedRating) return 1;
-              return a.fullName.localeCompare(b.fullName);
-            })
-            .map((p) => (
-              <div key={p.id} className="flex items-center gap-2 bg-slate-50 rounded-xl p-2.5 border border-slate-100">
-                <GenderDot gender={p.gender} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-slate-700 truncate">{p.fullName}</p>
-                  <div className="flex flex-wrap gap-x-2 gap-y-0 mt-0.5">
-                    {p.ntrpRating != null && <span className="text-xs text-blue-500 font-medium">NTRP {p.ntrpRating}</span>}
-                    {p.utrRating != null && <span className="text-xs text-purple-500 font-medium">UTR {p.utrRating}</span>}
-                    {p.age != null && <span className="text-xs text-slate-400">{p.age}y</span>}
-                  </div>
-                </div>
-                <input
-                  type="number"
-                  min="1"
-                  max={players.length}
-                  value={seedEdits[p.id] ?? ''}
-                  onChange={(e) => setSeedEdits((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                  placeholder="—"
-                  className="w-10 text-center border border-slate-200 rounded-lg py-1 text-xs focus:outline-none"
-                />
-              </div>
-            ))}
-        </div>
-      </div>
-
-      {/* Bracket slot swap */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h3 className="font-bold text-slate-800">Swap Draw Positions</h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              {anyResults
-                ? '⚠️ Some results are locked in — only unreplayed slots can be swapped.'
-                : '🔀 Drag any player to a different slot to rearrange the draw.'}
-            </p>
-          </div>
-          <button
-            onClick={handleRandomizeUnseeded}
-            disabled={saving}
-            className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-          >
-            🎲 Randomize Unseeded
-          </button>
-        </div>
-        <div className="p-4 overflow-x-auto">
-          <BracketView
-            initialMatches={matches}
-            players={players}
-            maxPlayers={round0.length * 2}
-            liveUpdates={false}
-            editable={!anyResults}
-            onSwap={!anyResults ? handleBracketSwap : undefined}
-          />
-        </div>
-      </div>
-
-      {seeded.length > 0 && (
-        <div className="bg-slate-50 rounded-2xl p-4">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Current Seeds</p>
-          <div className="flex flex-wrap gap-2">
-            {seeded.map((p) => (
-              <span key={p.id} className="px-2.5 py-1 bg-white border border-slate-200 rounded-full text-xs font-semibold text-slate-700">
-                [{p.seedRating}] {p.fullName}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'settings'];
 
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
   const active = matches
@@ -346,7 +151,7 @@ export default function TournamentAdminPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>('players');
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [tenantSlug, setTenantSlug] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
@@ -453,6 +258,24 @@ export default function TournamentAdminPage() {
     load();
   }
 
+  /**
+   * Undo a recorded result. Cascades through any later matches the winner had
+   * already advanced into, so the bracket never keeps a player in a round they
+   * no longer earned.
+   */
+  async function handleReverseWinner(matchId: string) {
+    setSaving(true);
+    const { error } = await persistReversal(createClient(), matches, matchId);
+    setSaving(false);
+    if (error) {
+      setMessage(`Could not undo the result: ${error}`);
+      return;
+    }
+    setMessage('Result undone — the match is back in the queue.');
+    load();
+    setTimeout(() => setMessage(''), 3000);
+  }
+
   async function handleStartPlay() {
     setSaving(true);
     const supabase = createClient();
@@ -532,6 +355,20 @@ export default function TournamentAdminPage() {
 
   const canManageDraw =
     tournament.status === 'bracket_generated' || tournament.status === 'live_play';
+
+  // Registered players holding no first-round slot. Once a bracket exists these
+  // are people who will not play unless a director places them, so the count is
+  // surfaced on the Players tab itself.
+  const bracketGenerated = matches.length > 0;
+  const placedPlayerIds = new Set(
+    matches
+      .filter((m) => m.roundIndex === 0)
+      .flatMap((m) => [m.player1Id, m.player2Id])
+      .filter((pid): pid is string => !!pid && pid !== 'BYE'),
+  );
+  const unplacedCount = bracketGenerated
+    ? players.filter((p) => !placedPlayerIds.has(p.id)).length
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -639,15 +476,18 @@ export default function TournamentAdminPage() {
 
       {/* Tabs */}
       <div className="flex border-b border-slate-200 gap-1 overflow-x-auto">
-        {(['overview', 'draw', 'players', 'referee', 'settings'] as Tab[]).map((t) => {
-          if (t === 'draw' && !canManageDraw) return null;
-          if (t === 'referee' && !canManageDraw) return null;
-          const label = t === 'draw' ? 'Draw Editor' : t === 'overview' ? 'Bracket' : t === 'players' ? 'Players' : t === 'referee' ? 'Referee Queue' : 'Settings';
+        {TAB_ORDER.map((t) => {
+          // The draw and referee tools only mean anything once a bracket exists.
+          if ((t === 'draw' || t === 'referee') && !canManageDraw) return null;
+          const needsAttention = t === 'players' && unplacedCount > 0;
+          // Carry the roster size in the tab itself, the way the demo does — a
+          // director glancing at the menu shouldn't have to open it to see it.
+          const label = t === 'players' ? `${TAB_LABELS[t]} (${players.length})` : TAB_LABELS[t];
           return (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-colors whitespace-nowrap ${
+              className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-colors whitespace-nowrap flex items-center gap-1.5 ${
                 tab === t
                   ? 'border-b-2 text-slate-900'
                   : 'text-slate-500 hover:text-slate-700'
@@ -655,13 +495,52 @@ export default function TournamentAdminPage() {
               style={tab === t ? { borderColor: 'var(--tenant-primary)', color: 'var(--tenant-primary)' } : {}}
             >
               {label}
+              {needsAttention && (
+                <span
+                  className="px-1.5 py-0.5 rounded-full bg-amber-400 text-amber-950 text-[10px] font-black leading-none"
+                  title={`${unplacedCount} registered player${unplacedCount === 1 ? '' : 's'} not in the bracket`}
+                >
+                  {unplacedCount}
+                </span>
+              )}
             </button>
           );
         })}
       </div>
 
+      {/* Players tab */}
+      {tab === 'players' && (
+        <PlayersPanel
+          players={players}
+          matches={matches}
+          bracketGenerated={bracketGenerated}
+          onSaved={load}
+        />
+      )}
+
+      {/* Seed Assignment tab */}
+      {tab === 'seeds' && (
+        <SeedAssignmentPanel players={players} onSaved={load} />
+      )}
+
+      {/* Draw editor tab */}
+      {tab === 'draw' && canManageDraw && (
+        <DrawEditorPanel
+          tournament={tournament}
+          players={players}
+          matches={matches}
+          tournamentId={id}
+          onSaved={load}
+        />
+      )}
+
+      {/* Referee Queue tab */}
+      {tab === 'referee' && (
+        <RefereeQueueTab matches={matches} players={players} />
+      )}
+
       {/* Bracket tab */}
-      {tab === 'overview' && (
+      {tab === 'bracket' && (
         <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6">
           <BracketPanel
             matches={matches}
@@ -670,92 +549,33 @@ export default function TournamentAdminPage() {
             tournamentId={id}
             liveUpdates
             onSetWinner={handleOverrideWinner}
+            onReverseMatch={handleReverseWinner}
             emptyMessage="No bracket yet. Generate one above."
           />
         </div>
       )}
 
-      {/* Draw editor tab */}
-      {tab === 'draw' && canManageDraw && (
-        <DrawEditor
-          players={players}
-          matches={matches}
-          tournamentId={id}
-          onSaved={load}
-        />
-      )}
-
-      {/* Players tab */}
-      {tab === 'players' && (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 className="font-bold text-slate-800">Registered Players ({players.length})</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  <th className="px-4 py-3 text-left">#</th>
-                  <th className="px-4 py-3 text-left">Name</th>
-                  <th className="px-4 py-3 text-left">Gender</th>
-                  <th className="px-4 py-3 text-left">NTRP</th>
-                  <th className="px-4 py-3 text-left">UTR</th>
-                  <th className="px-4 py-3 text-left">Seed</th>
-                  <th className="px-4 py-3 text-left">Tier</th>
-                  <th className="px-4 py-3 text-left">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {players.length === 0 && (
-                  <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
-                )}
-                {players
-                  .sort((a, b) => {
-                    if (a.seedRating && b.seedRating) return a.seedRating - b.seedRating;
-                    if (a.seedRating) return -1;
-                    if (b.seedRating) return 1;
-                    return a.fullName.localeCompare(b.fullName);
-                  })
-                  .map((p, i) => (
-                    <tr key={p.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-slate-400">{i + 1}</td>
-                      <td className="px-4 py-3 font-medium text-slate-800">
-                        {p.fullName}
-                        {p.seedRating && (
-                          <span className="ml-1.5 text-xs text-amber-600 font-bold">[{p.seedRating}]</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-slate-500 capitalize">{p.gender ?? '—'}</td>
-                      <td className="px-4 py-3">
-                        {p.ntrpRating != null ? (
-                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold text-xs">{p.ntrpRating}</span>
-                        ) : '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        {p.utrRating != null ? (
-                          <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded font-semibold text-xs">{p.utrRating}</span>
-                        ) : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-slate-500">{p.seedRating ?? '—'}</td>
-                      <td className="px-4 py-3 text-slate-500">{p.skillTier ?? '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          p.status === 'checked_in' ? 'bg-emerald-100 text-emerald-700' :
-                          p.status === 'no_show_eliminated' ? 'bg-red-100 text-red-700' :
-                          'bg-slate-100 text-slate-600'
-                        }`}>{p.status.replace(/_/g, ' ')}</span>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
+      {/* Scoreboard tab — the same view spectators see on the public live link */}
+      {tab === 'scoreboard' && (
+        <div className="space-y-3">
+          <p className="text-xs text-slate-400">
+            This is exactly what spectators see on the public live scoreboard link. It updates in real
+            time as referees record results.
+          </p>
+          <LiveScoreboard tournamentId={id} embedded />
         </div>
       )}
 
-      {/* Referee Queue tab */}
-      {tab === 'referee' && (
-        <RefereeQueueTab matches={matches} players={players} />
+
+      {/* Registration tab — the public sign-up page as registrants see it */}
+      {tab === 'registration' && (
+        <RegistrationPanel
+          tournament={tournament}
+          tournamentId={id}
+          tenantSlug={tenantSlug}
+          playerCount={players.length}
+          onRegistered={load}
+        />
       )}
 
       {/* Settings tab */}
@@ -843,6 +663,7 @@ function SettingsEditor({
   const [serverDetermination, setServerDetermination] = useState<Tournament['settings']['serverDetermination']>(s?.serverDetermination ?? 'random_coin_toss');
   const [receivingSide, setReceivingSide] = useState<Tournament['settings']['receivingSideSelection']>(s?.receivingSideSelection ?? 'server_choice');
   const [prizePlaces, setPrizePlaces] = useState(s?.prizePlaces ?? []);
+  const [allowLateRegistration, setAllowLateRegistration] = useState(s?.allowLateRegistration ?? false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -861,6 +682,7 @@ function SettingsEditor({
     patch.serverDetermination = serverDetermination;
     patch.receivingSideSelection = receivingSide;
     patch.prizePlaces = prizePlaces.length > 0 ? prizePlaces : undefined;
+    patch.allowLateRegistration = allowLateRegistration;
     await onSave(patch, name);
   }
 
@@ -957,6 +779,24 @@ function SettingsEditor({
             <p className="text-xs text-slate-400 mt-1">Auto-assigned when live play starts.</p>
           </div>
         </div>
+
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3.5 cursor-pointer hover:bg-slate-50 transition-colors">
+          <input
+            type="checkbox"
+            checked={allowLateRegistration}
+            onChange={(e) => setAllowLateRegistration(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300"
+          />
+          <span>
+            <span className="block text-sm font-semibold text-slate-700">Allow Late Registration</span>
+            <span className="block text-xs text-slate-400 mt-0.5">
+              Lets the public registration link keep accepting new players even though the bracket
+              has already been generated{tournament.status === 'registration_open' ? '' : ' (this tournament is currently ' + tournament.status.replace(/_/g, ' ') + ')'}.
+              New registrants show up in the Players tab but aren&apos;t auto-added to the bracket —
+              place them into open slots yourself in the Draw Editor.
+            </span>
+          </span>
+        </label>
       </div>
 
       {/* Ticket price */}

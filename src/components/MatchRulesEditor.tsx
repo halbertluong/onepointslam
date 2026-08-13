@@ -58,6 +58,7 @@ export default function MatchRulesEditor({
           className={className}
         >
           <option value="server_choice">Server&apos;s Choice</option>
+          <option value="receiver_choice">Receiver&apos;s Choice</option>
           <option value="ad_court_fixed">Ad Court Fixed</option>
           <option value="deuce_court_fixed">Deuce Court Fixed</option>
         </select>

@@ -44,25 +44,31 @@ export default function BracketPanel({
     <div>
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <h3 className="font-bold text-slate-800 text-sm">{title}</h3>
-        {onSetWinner && (
-          <div className="flex items-center gap-2">
-            {editing && (
-              <span className="text-xs text-blue-600 font-semibold hidden sm:inline">
-                ✏️ Click a player to set the winner
-              </span>
-            )}
-            <button
-              onClick={() => setEditing((e) => !e)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                editing
-                  ? 'bg-slate-900 text-white border-slate-900'
-                  : 'border-slate-200 text-slate-600 hover:border-slate-300'
-              }`}
-            >
-              {editing ? '✓ Done Editing' : '✏️ Edit Bracket'}
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs text-slate-400 flex items-center gap-2">
+            <span title="Won the coin toss">🪙 won toss</span>
+            <span title="Served / put the ball in play">🎾 served</span>
+          </span>
+          {onSetWinner && (
+            <div className="flex items-center gap-2">
+              {editing && (
+                <span className="text-xs text-blue-600 font-semibold hidden sm:inline">
+                  ✏️ Click a player to set the winner{onReverseMatch ? ' · ↩ to undo a result' : ''}
+                </span>
+              )}
+              <button
+                onClick={() => setEditing((e) => !e)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                  editing
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                }`}
+              >
+                {editing ? '✓ Done Editing' : '✏️ Edit Bracket'}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       <BracketView
         initialMatches={matches}

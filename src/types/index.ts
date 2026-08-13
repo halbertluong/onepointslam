@@ -21,7 +21,7 @@ export interface Tenant {
 export type MaxPlayers = 8 | 16 | 32 | 48 | 64 | 96 | 128 | 192 | 256;
 export type ServeRuleProfile = 'one_serve_sudden_death' | 'two_serves_traditional' | 'skill_based';
 export type ServerDetermination = 'random_coin_toss' | 'referee_manual_override';
-export type ReceivingSideSelection = 'server_choice' | 'ad_court_fixed' | 'deuce_court_fixed';
+export type ReceivingSideSelection = 'server_choice' | 'receiver_choice' | 'ad_court_fixed' | 'deuce_court_fixed';
 
 /** Which sport a tournament runs. Defaults to 'tennis' when unset, for backward compatibility. */
 export type Sport = 'tennis' | 'basketball' | 'soccer';
@@ -44,6 +44,11 @@ export interface TournamentSettings {
   registrationDeadline?: string;
   playerRegistrationCap?: number;
   minimumRegistrants?: number;
+  /** Lets the public registration page accept new signups even after the
+   * tournament has moved past 'registration_open' (bracket already
+   * generated / live play already started), without reopening any of the
+   * status-gated director tooling (Draw Editor, Referee Queue, etc). */
+  allowLateRegistration?: boolean;
   numberOfCourts?: number;
   tournamentDate?: string;
   prizePlaces?: PrizePlace[];

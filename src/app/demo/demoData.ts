@@ -1,4 +1,4 @@
-import type { Player, Match } from '@/types';
+import type { Player, Match, MaxPlayers } from '@/types';
 import { generateBracket, advanceWinner } from '@/lib/bracket';
 
 // ── Name generation ───────────────────────────────────────────────────────────
@@ -76,11 +76,16 @@ export function generatePlayers(count: number, entryFee: number): DemoPlayer[] {
   });
 }
 
-export function buildBracket(players: DemoPlayer[]): Match[] {
+/**
+ * Builds the demo draw. `drawSize` is the configured bracket size, which the
+ * real generator treats as a floor — pass the participant count to size the
+ * bracket to the field instead.
+ */
+export function buildBracket(players: DemoPlayer[], drawSize?: number): Match[] {
   return generateBracket(
     players,
     {
-      maxPlayers: 32,
+      maxPlayers: (drawSize ?? players.length) as MaxPlayers,
       ticketPriceForFundraiser: 0,
       systemTechFee: 0,
       serveRuleProfile: 'one_serve_sudden_death',
@@ -89,6 +94,24 @@ export function buildBracket(players: DemoPlayer[]): Match[] {
     },
     'demo',
   );
+}
+
+/**
+ * The pre-match coin toss for a demo match: one player wins it, then elects to
+ * serve or receive and the other takes the remaining role.
+ *
+ * The real product records this when the referee runs the toss on their phone.
+ * The demo decides most of its matches without that screen — Speed-Through, or
+ * a director tapping a winner straight on the bracket — so it stands in for the
+ * toss those paths skip, and the bracket can show who won it and who served.
+ */
+export function simulateCoinToss(match: Match): { tossWinnerId: string; serverPlayerId: string } {
+  const p1 = match.player1Id!;
+  const p2 = match.player2Id!;
+  const tossWinnerId = Math.random() < 0.5 ? p1 : p2;
+  const other = tossWinnerId === p1 ? p2 : p1;
+  const serverPlayerId = Math.random() < 0.5 ? tossWinnerId : other;
+  return { tossWinnerId, serverPlayerId };
 }
 
 export function speedThroughAll(matches: Match[]): Match[] {
@@ -119,7 +142,12 @@ export function speedThroughAll(matches: Match[]): Match[] {
 
     for (const m of pending) {
       const winnerId = Math.random() < 0.5 ? m.player1Id! : m.player2Id!;
-      current = advanceWinner(current, m.id, winnerId);
+      const toss = simulateCoinToss(m);
+      current = advanceWinner(
+        current.map((x) => (x.id === m.id ? { ...x, ...toss } : x)),
+        m.id,
+        winnerId,
+      );
     }
   }
   return current;

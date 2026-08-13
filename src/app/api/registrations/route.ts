@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { registrationIsOpen, verifyDirector } from '@/lib/registrationAccess';
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -17,6 +18,11 @@ export async function POST(req: NextRequest) {
     age?: string;
     skillTier?: string;
     stripePaymentIntentId?: string;
+    /** Set by the director dashboard to add a player at the desk. Authorization
+     *  is verified server-side below — the flag alone grants nothing. */
+    directorEntry?: boolean;
+    /** Director entry only: whether the entry fee was collected offline. */
+    markPaid?: boolean;
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
@@ -28,26 +34,47 @@ export async function POST(req: NextRequest) {
   // Look up tournament fee server-side
   const { data: tournament } = await supabase
     .from('tournaments')
-    .select('settings, status')
+    .select('settings, status, tenant_id')
     .eq('id', tournamentId)
     .single();
 
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
-  if (tournament.status !== 'registration_open') {
-    return NextResponse.json({ error: 'Registration is not open' }, { status: 400 });
-  }
 
   const settings = tournament.settings as Record<string, unknown> | null;
   const entranceFee = (settings?.ticketPriceForFundraiser as number) ?? 0;
+
+  // A director acting from the dashboard may register a player the public
+  // couldn't — after registration closed, or with the fee collected offline —
+  // so the claim is verified against the session rather than trusted.
+  let isDirector = false;
+  if (body.directorEntry) {
+    const check = await verifyDirector(supabase, user?.id, tournament.tenant_id);
+    if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status });
+    isDirector = true;
+  }
+
+  // Directors can add players right up until the tournament is finished.
+  const allowed = registrationIsOpen(tournament.status, settings)
+    || (isDirector && tournament.status !== 'completed');
+  if (!allowed) {
+    return NextResponse.json({ error: 'Registration is not open' }, { status: 400 });
+  }
 
   // Verify payment when a fee applies
   let paymentStatus: 'pending' | 'paid' = 'pending';
   let verifiedPaymentIntentId: string | null = null;
 
-  if (entranceFee > 0) {
-    if (!stripePaymentIntentId) {
+  // A card payment is verified the same way no matter who took it — a director
+  // collecting at the desk gets no shortcut around Stripe. Only a director
+  // submitting without a payment at all may settle the fee offline.
+  if (entranceFee > 0 && !stripePaymentIntentId) {
+    if (!isDirector) {
       return NextResponse.json({ error: 'Payment required for this tournament' }, { status: 402 });
     }
+    paymentStatus = body.markPaid ? 'paid' : 'pending';
+  } else if (entranceFee <= 0) {
+    if (isDirector) paymentStatus = body.markPaid ? 'paid' : 'pending';
+  } else {
 
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeKey) {
@@ -61,7 +88,7 @@ export async function POST(req: NextRequest) {
 
     let pi;
     try {
-      pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId);
+      pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId!);
     } catch {
       return NextResponse.json({ error: 'Invalid payment reference' }, { status: 400 });
     }
@@ -84,7 +111,7 @@ export async function POST(req: NextRequest) {
     }
 
     paymentStatus = 'paid';
-    verifiedPaymentIntentId = stripePaymentIntentId;
+    verifiedPaymentIntentId = stripePaymentIntentId!;
   }
 
   const admin = createAdminClient(
