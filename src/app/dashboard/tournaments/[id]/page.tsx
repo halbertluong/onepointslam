@@ -9,7 +9,7 @@ import SeedAssignmentPanel from '@/components/SeedAssignmentPanel';
 import DrawEditorPanel from '@/components/DrawEditorPanel';
 import LiveScoreboard from '@/components/LiveScoreboard';
 import RegistrationPanel from '@/components/RegistrationPanel';
-import { generateBracket } from '@/lib/bracket';
+import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 import { persistReversal } from '@/lib/tournamentWrites';
 import type { Tournament, Player, Match } from '@/types';
@@ -216,7 +216,9 @@ export default function TournamentAdminPage() {
         player2_id: m.player2Id,
         server_player_id: m.serverPlayerId,
         winner_id: m.winnerId,
+        loser_id: m.loserId ?? null,
         status: m.status,
+        bracket: m.bracket,
         court_number: m.courtNumber ?? null,
       })),
     );
@@ -236,19 +238,14 @@ export default function TournamentAdminPage() {
     // a court that was already handed off to a different match.
     const wasAlreadyDecided = match.status === 'finalized' || match.status === 'walkover';
     const supabase = createClient();
-    const { error } = await supabase
-      .from('matches')
-      .update({ winner_id: winnerId, status: 'finalized' })
-      .eq('id', match.id);
-    if (error) { setMessage(`Could not save result: ${error.message}`); return; }
+    const loserId = winnerId === match.player1Id ? match.player2Id : match.player1Id;
+    const winnersRounds = getRoundsCount(tournament?.settings?.maxPlayers ?? 8);
+    const advancement = resolveAdvancement(matches, match, winnerId, loserId ?? null, winnersRounds);
 
-    const slot = match.matchIndex % 2 === 0 ? 'player1_id' : 'player2_id';
-    await supabase
-      .from('matches')
-      .update({ [slot]: winnerId })
-      .eq('tournament_id', id)
-      .eq('round_index', match.roundIndex + 1)
-      .eq('match_index', Math.floor(match.matchIndex / 2));
+    for (const { matchId: mid, updates } of advancement) {
+      const { error } = await supabase.from('matches').update(matchUpdatesToColumns(updates)).eq('id', mid);
+      if (error) { setMessage(`Could not save result: ${error.message}`); return; }
+    }
 
     if (!wasAlreadyDecided) {
       await releaseCourtToNextMatch(supabase, id, match.courtNumber);
@@ -265,7 +262,8 @@ export default function TournamentAdminPage() {
    */
   async function handleReverseWinner(matchId: string) {
     setSaving(true);
-    const { error } = await persistReversal(createClient(), matches, matchId);
+    const winnersRounds = getRoundsCount(tournament?.settings?.maxPlayers ?? 8);
+    const { error } = await persistReversal(createClient(), matches, matchId, winnersRounds);
     setSaving(false);
     if (error) {
       setMessage(`Could not undo the result: ${error}`);
@@ -287,7 +285,7 @@ export default function TournamentAdminPage() {
     const courts = tournament?.settings?.numberOfCourts ?? 0;
     if (courts > 0) {
       const round0 = matches
-        .filter((m) => m.roundIndex === 0 && m.player1Id && m.player2Id && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
+        .filter((m) => m.bracket === 'main' && m.roundIndex === 0 && m.player1Id && m.player2Id && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
         .sort((a, b) => a.matchIndex - b.matchIndex)
         .slice(0, courts);
       await Promise.all(
@@ -362,7 +360,7 @@ export default function TournamentAdminPage() {
   const bracketGenerated = matches.length > 0;
   const placedPlayerIds = new Set(
     matches
-      .filter((m) => m.roundIndex === 0)
+      .filter((m) => m.bracket === 'main' && m.roundIndex === 0)
       .flatMap((m) => [m.player1Id, m.player2Id])
       .filter((pid): pid is string => !!pid && pid !== 'BYE'),
   );
@@ -540,20 +538,66 @@ export default function TournamentAdminPage() {
       )}
 
       {/* Bracket tab */}
-      {tab === 'bracket' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6">
-          <BracketPanel
-            matches={matches}
-            players={players}
-            maxPlayers={tournament.settings?.maxPlayers ?? 32}
-            tournamentId={id}
-            liveUpdates
-            onSetWinner={handleOverrideWinner}
-            onReverseMatch={handleReverseWinner}
-            emptyMessage="No bracket yet. Generate one above."
-          />
-        </div>
-      )}
+      {tab === 'bracket' && (() => {
+        const maxPlayers = tournament.settings?.maxPlayers ?? 32;
+        const format = tournament.settings?.bracketFormat ?? 'single_elimination';
+        const mainMatches = matches.filter((m) => m.bracket === 'main');
+        const sharedProps = {
+          players,
+          tournamentId: id,
+          liveUpdates: true as const,
+          onSetWinner: handleOverrideWinner,
+          onReverseMatch: handleReverseWinner,
+        };
+        return (
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6">
+              <BracketPanel
+                {...sharedProps}
+                matches={mainMatches}
+                maxPlayers={maxPlayers}
+                title={format === 'single_elimination' ? 'Bracket' : 'Winners Bracket'}
+                emptyMessage="No bracket yet. Generate one above."
+              />
+            </div>
+            {format === 'consolation' && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6">
+                <BracketPanel
+                  {...sharedProps}
+                  matches={matches.filter((m) => m.bracket === 'consolation')}
+                  maxPlayers={maxPlayers}
+                  title="Consolation Bracket"
+                  emptyMessage="No consolation bracket yet."
+                />
+              </div>
+            )}
+            {format === 'double_elimination' && (
+              <>
+                <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6">
+                  <BracketPanel
+                    {...sharedProps}
+                    matches={matches.filter((m) => m.bracket === 'losers')}
+                    maxPlayers={maxPlayers}
+                    totalRoundsOverride={getLosersRoundsCount(maxPlayers)}
+                    title="Losers Bracket"
+                    emptyMessage="No losers bracket yet."
+                  />
+                </div>
+                <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6">
+                  <BracketPanel
+                    {...sharedProps}
+                    matches={matches.filter((m) => m.bracket === 'grand_final' && (m.player1Id || m.matchIndex === 0))}
+                    maxPlayers={2}
+                    totalRoundsOverride={1}
+                    title="Grand Final"
+                    emptyMessage="Grand final not reached yet."
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Scoreboard tab — the same view spectators see on the public live link */}
       {tab === 'scoreboard' && (
@@ -585,6 +629,7 @@ export default function TournamentAdminPage() {
             tournament={tournament}
             saving={saving}
             saved={settingsSaved}
+            bracketGenerated={bracketGenerated}
             onSave={(patch, newName) => handleSaveSettings(patch, newName)}
           />
 
@@ -645,16 +690,19 @@ function SettingsEditor({
   saving,
   saved,
   onSave,
+  bracketGenerated,
 }: {
   tournament: Tournament;
   saving: boolean;
   saved: boolean;
+  bracketGenerated: boolean;
   onSave: (patch: Partial<Tournament['settings']>, newName?: string) => Promise<void>;
 }) {
   const s = tournament.settings;
   const [name, setName] = useState(tournament.name);
   const [ticketPrice, setTicketPrice] = useState(String(s?.ticketPriceForFundraiser ?? ''));
   const [maxPlayers, setMaxPlayers] = useState(String(s?.maxPlayers ?? 32));
+  const [bracketFormat, setBracketFormat] = useState<Tournament['settings']['bracketFormat']>(s?.bracketFormat ?? 'single_elimination');
   const [tournamentDate, setTournamentDate] = useState(s?.tournamentDate ?? '');
   const [deadline, setDeadline] = useState(s?.registrationDeadline ?? '');
   const [minReg, setMinReg] = useState(String(s?.minimumRegistrants ?? ''));
@@ -683,6 +731,7 @@ function SettingsEditor({
     patch.receivingSideSelection = receivingSide;
     patch.prizePlaces = prizePlaces.length > 0 ? prizePlaces : undefined;
     patch.allowLateRegistration = allowLateRegistration;
+    patch.bracketFormat = bracketFormat;
     await onSave(patch, name);
   }
 
@@ -721,6 +770,28 @@ function SettingsEditor({
                 <option key={n} value={n}>{n} players</option>
               ))}
             </select>
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Bracket Format
+            </label>
+            {bracketGenerated ? (
+              <p className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-slate-50 text-slate-500">
+                {bracketFormat === 'double_elimination' ? 'Double Elimination' : bracketFormat === 'consolation' ? 'Consolation Bracket' : 'Single Elimination'}
+                <span className="block text-xs text-slate-400 mt-0.5">Locked once the bracket is generated.</span>
+              </p>
+            ) : (
+              <select
+                value={bracketFormat}
+                onChange={(e) => setBracketFormat(e.target.value as Tournament['settings']['bracketFormat'])}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+              >
+                <option value="single_elimination">Single Elimination</option>
+                <option value="consolation">Consolation Bracket</option>
+                <option value="double_elimination">Double Elimination</option>
+              </select>
+            )}
           </div>
 
           <div>

@@ -46,6 +46,7 @@ export default async function PublicBracketPage({ params }: Props) {
     serverPlayerId: m.server_player_id,
     winnerId: m.winner_id,
     status: m.status,
+    bracket: m.bracket ?? 'main',
     courtNumber: m.court_number,
   }));
 

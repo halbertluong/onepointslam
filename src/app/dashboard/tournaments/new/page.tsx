@@ -12,6 +12,7 @@ import { DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
 const DEFAULT_SETTINGS: TournamentSettings = {
   sport: 'tennis',
   maxPlayers: 32,
+  bracketFormat: 'single_elimination',
   ticketPriceForFundraiser: 20,
   systemTechFee: DEFAULT_PLATFORM_FEE,
   serveRuleProfile: 'one_serve_sudden_death',
@@ -138,6 +139,21 @@ export default function NewTournamentPage() {
               {[8, 16, 32, 48, 64, 96, 128, 192, 256].map((n) => (
                 <option key={n} value={n}>{n} players</option>
               ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Bracket Format
+            </label>
+            <select
+              value={settings.bracketFormat ?? 'single_elimination'}
+              onChange={(e) => updateSettings('bracketFormat', e.target.value as TournamentSettings['bracketFormat'])}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            >
+              <option value="single_elimination">Single Elimination</option>
+              <option value="consolation">Consolation Bracket</option>
+              <option value="double_elimination">Double Elimination</option>
             </select>
           </div>
 
