@@ -43,7 +43,7 @@ interface TournamentConfig {
   minimumRegistrants?: number;
   serveRuleProfile: 'one_serve_sudden_death' | 'two_serves_traditional' | 'skill_based';
   serverDetermination: 'random_coin_toss' | 'referee_manual_override';
-  receivingSideSelection: 'server_choice' | 'ad_court_fixed' | 'deuce_court_fixed';
+  receivingSideSelection: 'server_choice' | 'receiver_choice' | 'ad_court_fixed' | 'deuce_court_fixed';
   prizePlaces: PrizePlace[];
 }
 
