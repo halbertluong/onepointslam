@@ -8,6 +8,7 @@ interface Props {
   matches: Match[];
   players: Player[];
   maxPlayers: number;
+  totalRoundsOverride?: number;
   tournamentId?: string;
   liveUpdates?: boolean;
   title?: string;
@@ -27,6 +28,7 @@ export default function BracketPanel({
   matches,
   players,
   maxPlayers,
+  totalRoundsOverride,
   tournamentId,
   liveUpdates = false,
   title = 'Bracket',
@@ -74,6 +76,7 @@ export default function BracketPanel({
         initialMatches={matches}
         players={players}
         maxPlayers={maxPlayers}
+        totalRoundsOverride={totalRoundsOverride}
         tournamentId={tournamentId}
         liveUpdates={liveUpdates}
         resultEditable={editing}

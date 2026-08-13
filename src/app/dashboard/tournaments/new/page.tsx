@@ -12,6 +12,7 @@ import { DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
 const DEFAULT_SETTINGS: TournamentSettings = {
   sport: 'tennis',
   maxPlayers: 32,
+  bracketFormat: 'single_elimination',
   ticketPriceForFundraiser: 20,
   systemTechFee: DEFAULT_PLATFORM_FEE,
   serveRuleProfile: 'one_serve_sudden_death',
@@ -139,6 +140,27 @@ export default function NewTournamentPage() {
                 <option key={n} value={n}>{n} players</option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Bracket Format
+            </label>
+            <select
+              value={settings.bracketFormat ?? 'single_elimination'}
+              onChange={(e) => updateSettings('bracketFormat', e.target.value as TournamentSettings['bracketFormat'])}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
+            >
+              <option value="single_elimination">Single Elimination</option>
+              <option value="consolation">Consolation Bracket</option>
+              <option value="double_elimination">Double Elimination</option>
+            </select>
+            {settings.bracketFormat && settings.bracketFormat !== 'single_elimination' && (
+              <p className="text-xs text-amber-700 mt-1">
+                Needs a full draw — one entrant per slot. A bye leaves no loser to send onward, so
+                a player can land in the second bracket with nobody to play.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

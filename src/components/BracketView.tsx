@@ -15,6 +15,8 @@ interface BracketViewProps {
   initialMatches: Match[];
   players: Player[];
   maxPlayers: number;
+  /** Overrides the round count computed from maxPlayers — needed for a losers bracket, whose round count doesn't follow the log2(maxPlayers) formula. */
+  totalRoundsOverride?: number;
   tournamentId?: string;
   liveUpdates?: boolean;
   /** Enable drag-and-drop reordering (pre-tournament seeding, demo only) */
@@ -391,6 +393,7 @@ export default function BracketView({
   initialMatches,
   players,
   maxPlayers,
+  totalRoundsOverride,
   tournamentId,
   liveUpdates = false,
   editable,
@@ -533,7 +536,7 @@ export default function BracketView({
     latest.current.onSwap(from.matchId, from.slot, to.matchId, to.slot);
   }, []);
 
-  const totalRounds = getRoundsCount(maxPlayers);
+  const totalRounds = totalRoundsOverride ?? getRoundsCount(maxPlayers);
   // One pass over the draw instead of one filter+sort per round, which was
   // eight scans of 255 matches on every render of a full bracket.
   const rounds = useMemo(() => {

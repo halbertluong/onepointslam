@@ -47,8 +47,9 @@ export async function persistReversal(
   supabase: SupabaseClient,
   matches: Match[],
   matchId: string,
+  winnersRounds?: number,
 ): Promise<WriteResult> {
-  const updated = reverseWinner(matches, matchId);
+  const updated = reverseWinner(matches, matchId, winnersRounds);
 
   const changed = updated.filter((next) => {
     const before = matches.find((m) => m.id === next.id);
@@ -66,6 +67,7 @@ export async function persistReversal(
   for (const match of changed) {
     const patch: Record<string, unknown> = {
       winner_id: match.winnerId,
+      loser_id: match.loserId ?? null,
       player1_id: match.player1Id,
       player2_id: match.player2Id,
       status: statusAfterUndo(match),
@@ -106,7 +108,7 @@ export async function persistSeededRedistribution(
   matches: Match[],
   players: Player[],
 ): Promise<WriteResult> {
-  const round0 = matches.filter((m) => m.roundIndex === 0).sort((a, b) => a.matchIndex - b.matchIndex);
+  const round0 = matches.filter((m) => m.bracket === 'main' && m.roundIndex === 0).sort((a, b) => a.matchIndex - b.matchIndex);
   if (round0.length === 0) return { error: 'There is no bracket to redistribute.' };
 
   const slots = distributeBySeeding(players, round0.length * 2);
@@ -137,7 +139,7 @@ export async function persistSeededRedistribution(
 
   // Later rounds are emptied, then the byes are propagated forward into round 1.
   const later = await Promise.all(
-    matches.filter((m) => m.roundIndex > 0).map((match) =>
+    matches.filter((m) => m.bracket === 'main' && m.roundIndex > 0).map((match) =>
       supabase
         .from('matches')
         .update({
@@ -154,7 +156,7 @@ export async function persistSeededRedistribution(
   const laterErr = later.find((r) => r.error);
   if (laterErr?.error) return { error: laterErr.error.message };
 
-  const round1 = matches.filter((m) => m.roundIndex === 1);
+  const round1 = matches.filter((m) => m.bracket === 'main' && m.roundIndex === 1);
   const propagated = await Promise.all(
     round0.flatMap((match, i) => {
       if (!byeAt(i)) return [];
@@ -196,7 +198,7 @@ export async function addPlayersToDraw(
   if (readErr) return fail(readErr.message);
 
   let working: Match[] = (rows ?? []).map((r) => mapMatch(r as Record<string, unknown>));
-  const round0 = () => working.filter((m) => m.roundIndex === 0).sort((a, b) => a.matchIndex - b.matchIndex);
+  const round0 = () => working.filter((m) => m.bracket === 'main' && m.roundIndex === 0).sort((a, b) => a.matchIndex - b.matchIndex);
 
   const placed = new Set(
     round0().flatMap((m) => [m.player1Id, m.player2Id]).filter((id): id is string => !!id && id !== 'BYE'),

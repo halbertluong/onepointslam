@@ -49,6 +49,7 @@ function toMatchType(m: MatchRow): Match {
     serverPlayerId: null,
     winnerId: m.winner_id,
     status: m.status as Match['status'],
+    bracket: 'main',
     courtNumber: m.court_number ?? undefined,
   };
 }
