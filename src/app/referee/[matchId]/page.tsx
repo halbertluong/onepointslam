@@ -8,7 +8,7 @@ import SoccerMatchClient from '@/components/SoccerMatchClient';
 import BasketballMatchClient from '@/components/BasketballMatchClient';
 import type { Match, Player, Tournament, KickOutcome, PossessionOutcome } from '@/types';
 import { mapPlayer } from '@/types';
-import { advanceWinner, determineOneGoalBowlWinner, determineOnePointBowlWinner } from '@/lib/bracket';
+import { determineOneGoalBowlWinner, determineOnePointBowlWinner, resolveAdvancement, matchUpdatesToColumns, getRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 
 export default function RefereeMatchPage() {
@@ -37,7 +37,9 @@ export default function RefereeMatchPage() {
       player2Id: m.player2_id,
       serverPlayerId: m.server_player_id,
       winnerId: m.winner_id,
+      loserId: m.loser_id,
       status: m.status,
+      bracket: m.bracket ?? 'main',
       courtNumber: m.court_number,
       tossWinnerId: m.toss_winner_id,
       kickerPlayerId: m.kicker_player_id,
@@ -75,7 +77,9 @@ export default function RefereeMatchPage() {
         player2Id: x.player2_id,
         serverPlayerId: x.server_player_id,
         winnerId: x.winner_id,
+        loserId: x.loser_id,
         status: x.status,
+        bracket: x.bracket ?? 'main',
         courtNumber: x.court_number,
       })),
     );
@@ -92,55 +96,39 @@ export default function RefereeMatchPage() {
       .eq('id', matchId);
   }
 
-  async function handleDeclareWinner(winnerId: string) {
-    if (match?.status === 'finalized' || match?.status === 'walkover') return;
+  async function applyAdvancement(winnerId: string, extraFields?: Record<string, unknown>): Promise<boolean> {
+    if (!match || !tournament) return false;
     const supabase = createClient();
+    const loserId = winnerId === player1?.id ? (player2?.id ?? null) : (player1?.id ?? null);
+    const winnersRounds = getRoundsCount(tournament.settings?.maxPlayers ?? 8);
+    const advancement = resolveAdvancement(allMatches, match, winnerId, loserId, winnersRounds);
+    const [first, ...rest] = advancement;
     const { error } = await supabase
       .from('matches')
-      .update({ winner_id: winnerId, status: 'finalized' })
-      .eq('id', matchId);
-    if (error) { setSaveError(`Could not save result: ${error.message}`); return; }
+      .update({ ...matchUpdatesToColumns(first.updates), ...extraFields })
+      .eq('id', first.matchId);
+    if (error) { setSaveError(`Could not save result: ${error.message}`); return false; }
     setSaveError('');
-
-    if (match) {
-      const slot = match.matchIndex % 2 === 0 ? 'player1_id' : 'player2_id';
-      await supabase
-        .from('matches')
-        .update({ [slot]: winnerId })
-        .eq('tournament_id', match.tournamentId)
-        .eq('round_index', match.roundIndex + 1)
-        .eq('match_index', Math.floor(match.matchIndex / 2));
-      await releaseCourtToNextMatch(supabase, match.tournamentId, match.courtNumber);
+    for (const { matchId: id, updates } of rest) {
+      await supabase.from('matches').update(matchUpdatesToColumns(updates)).eq('id', id);
     }
+    await releaseCourtToNextMatch(supabase, match.tournamentId, match.courtNumber);
+    return true;
+  }
+
+  async function handleDeclareWinner(winnerId: string) {
+    if (match?.status === 'finalized' || match?.status === 'walkover') return;
+    await applyAdvancement(winnerId);
   }
 
   async function handleDeclareSoccerResult(kickerPlayerId: string, keeperPlayerId: string, outcome: KickOutcome) {
     if (match?.status === 'finalized' || match?.status === 'walkover') return;
-    const supabase = createClient();
     const winnerId = determineOneGoalBowlWinner(kickerPlayerId, keeperPlayerId, outcome);
-    const { error } = await supabase
-      .from('matches')
-      .update({
-        kicker_player_id: kickerPlayerId,
-        keeper_player_id: keeperPlayerId,
-        kick_outcome: outcome,
-        winner_id: winnerId,
-        status: 'finalized',
-      })
-      .eq('id', matchId);
-    if (error) { setSaveError(`Could not save result: ${error.message}`); return; }
-    setSaveError('');
-
-    if (match) {
-      const slot = match.matchIndex % 2 === 0 ? 'player1_id' : 'player2_id';
-      await supabase
-        .from('matches')
-        .update({ [slot]: winnerId })
-        .eq('tournament_id', match.tournamentId)
-        .eq('round_index', match.roundIndex + 1)
-        .eq('match_index', Math.floor(match.matchIndex / 2));
-      await releaseCourtToNextMatch(supabase, match.tournamentId, match.courtNumber);
-    }
+    await applyAdvancement(winnerId, {
+      kicker_player_id: kickerPlayerId,
+      keeper_player_id: keeperPlayerId,
+      kick_outcome: outcome,
+    });
   }
 
   async function handleDeclareBasketballResult(
@@ -150,32 +138,13 @@ export default function RefereeMatchPage() {
     outcome: PossessionOutcome,
   ) {
     if (match?.status === 'finalized' || match?.status === 'walkover') return;
-    const supabase = createClient();
     const winnerId = determineOnePointBowlWinner(offensePlayerId, defensePlayerId, outcome);
-    const { error } = await supabase
-      .from('matches')
-      .update({
-        coin_flip_winner_id: coinFlipWinnerId,
-        offense_player_id: offensePlayerId,
-        defense_player_id: defensePlayerId,
-        possession_outcome: outcome,
-        winner_id: winnerId,
-        status: 'finalized',
-      })
-      .eq('id', matchId);
-    if (error) { setSaveError(`Could not save result: ${error.message}`); return; }
-    setSaveError('');
-
-    if (match) {
-      const slot = match.matchIndex % 2 === 0 ? 'player1_id' : 'player2_id';
-      await supabase
-        .from('matches')
-        .update({ [slot]: winnerId })
-        .eq('tournament_id', match.tournamentId)
-        .eq('round_index', match.roundIndex + 1)
-        .eq('match_index', Math.floor(match.matchIndex / 2));
-      await releaseCourtToNextMatch(supabase, match.tournamentId, match.courtNumber);
-    }
+    await applyAdvancement(winnerId, {
+      coin_flip_winner_id: coinFlipWinnerId,
+      offense_player_id: offensePlayerId,
+      defense_player_id: defensePlayerId,
+      possession_outcome: outcome,
+    });
   }
 
   async function handleWalkover(winnerId: string) {
@@ -185,33 +154,7 @@ export default function RefereeMatchPage() {
     if (loserId) {
       await supabase.from('players').update({ status: 'no_show_eliminated' }).eq('id', loserId);
     }
-
-    const { error } = await supabase
-      .from('matches')
-      .update({ winner_id: winnerId, status: 'walkover' })
-      .eq('id', matchId);
-    if (error) { setSaveError(`Could not save result: ${error.message}`); return; }
-    setSaveError('');
-
-    if (match) {
-      const updated = advanceWinner(allMatches, matchId, winnerId);
-      const nextMatch = updated.find(
-        (m) =>
-          m.roundIndex === match.roundIndex + 1 &&
-          m.matchIndex === Math.floor(match.matchIndex / 2) &&
-          m.id !== matchId,
-      );
-      if (nextMatch) {
-        const slot = match.matchIndex % 2 === 0 ? 'player1_id' : 'player2_id';
-        await supabase
-          .from('matches')
-          .update({ [slot]: winnerId })
-          .eq('tournament_id', match.tournamentId)
-          .eq('round_index', match.roundIndex + 1)
-          .eq('match_index', Math.floor(match.matchIndex / 2));
-      }
-      await releaseCourtToNextMatch(supabase, match.tournamentId, match.courtNumber);
-    }
+    await applyAdvancement(winnerId, { status: 'walkover' });
   }
 
   if (loading || !match || !player1 || !player2) {

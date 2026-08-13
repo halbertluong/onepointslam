@@ -22,6 +22,7 @@ export type MaxPlayers = 8 | 16 | 32 | 48 | 64 | 96 | 128 | 192 | 256;
 export type ServeRuleProfile = 'one_serve_sudden_death' | 'two_serves_traditional' | 'skill_based';
 export type ServerDetermination = 'random_coin_toss' | 'referee_manual_override';
 export type ReceivingSideSelection = 'server_choice' | 'receiver_choice' | 'ad_court_fixed' | 'deuce_court_fixed';
+export type BracketFormat = 'single_elimination' | 'consolation' | 'double_elimination';
 
 /** Which sport a tournament runs. Defaults to 'tennis' when unset, for backward compatibility. */
 export type Sport = 'tennis' | 'basketball' | 'soccer';
@@ -54,6 +55,8 @@ export interface TournamentSettings {
   prizePlaces?: PrizePlace[];
   fundraisingGoal?: number;
   inviteCode?: string;
+  /** Defaults to 'single_elimination' when omitted (pre-dates other formats). */
+  bracketFormat?: BracketFormat;
 }
 
 export type TournamentStatus =
@@ -134,7 +137,11 @@ export interface Match {
   player2Id: string | 'BYE' | null;
   serverPlayerId: string | null;
   winnerId: string | null;
+  /** Only meaningful for double-elimination winners-bracket matches, where the loser drops into the losers bracket. */
+  loserId?: string | null;
   status: MatchStatus;
+  /** Which structure this match belongs to. 'main' is the only value for single elimination. */
+  bracket: 'main' | 'consolation' | 'losers' | 'grand_final';
   courtNumber?: number;
   /** Tennis: the player who won the pre-match coin toss and chose to serve or receive. */
   tossWinnerId?: string | null;
@@ -164,7 +171,9 @@ export function mapMatch(row: Record<string, unknown>): Match {
     player2Id: (row.player2_id ?? row.player2Id) as string | null,
     serverPlayerId: (row.server_player_id ?? row.serverPlayerId) as string | null,
     winnerId: (row.winner_id ?? row.winnerId) as string | null,
+    loserId: (row.loser_id ?? row.loserId) as string | null | undefined,
     status: (row.status as MatchStatus) ?? 'scheduled',
+    bracket: ((row.bracket as Match['bracket']) ?? 'main'),
     courtNumber: (row.court_number ?? row.courtNumber) as number | undefined,
     tossWinnerId: (row.toss_winner_id ?? row.tossWinnerId) as string | null | undefined,
     kickerPlayerId: (row.kicker_player_id ?? row.kickerPlayerId) as string | null | undefined,
