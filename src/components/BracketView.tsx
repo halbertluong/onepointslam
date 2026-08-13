@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import type { Match, Player } from '@/types';
 import { mapMatch } from '@/types';
 import { getRoundName, getRoundsCount } from '@/lib/bracket';
@@ -33,16 +33,18 @@ interface BracketViewProps {
 
 type DragKey = { matchId: string; slot: 'p1' | 'p2' } | null;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function getPlayer(id: string | null | undefined, players: Player[]) {
-  if (!id) return null;
-  return players.find((p) => p.id === id) ?? null;
-}
+/**
+ * Players indexed by id. A full draw renders two slots per match — 510 of them
+ * at 256 players — so looking each one up by scanning the roster was quadratic
+ * and cost most of a second of blocked main thread per render.
+ */
+type PlayerIndex = Map<string, Player>;
 
-function getPlayerName(id: string | null | undefined, players: Player[], isBye?: boolean) {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function getPlayerName(id: string | null | undefined, players: PlayerIndex, isBye?: boolean) {
   if (isBye) return 'BYE';
   if (!id) return 'TBD';
-  return players.find((p) => p.id === id)?.fullName ?? 'TBD';
+  return players.get(id)?.fullName ?? 'TBD';
 }
 
 // ── Drag ghost (touch) ────────────────────────────────────────────────────────
@@ -73,16 +75,17 @@ function hideGhost() {
 
 // ── Player slot ───────────────────────────────────────────────────────────────
 function PlayerSlot({
-  id, players, isWinner, isBye, matchId, slot, dragging, onDragStart, onDrop, editable, onSetWinner,
+  id, players, isWinner, isBye, matchId, slot, isSource, onDragStart, onDrop, editable, onSetWinner,
   wonToss, isServer, reserveRightGutter,
 }: {
   id: string | null | undefined;
-  players: Player[];
+  players: PlayerIndex;
   isWinner: boolean;
   isBye?: boolean;
   matchId: string;
   slot: 'p1' | 'p2';
-  dragging: DragKey;
+  /** This slot is the one currently being dragged. */
+  isSource: boolean;
   onDragStart: (k: DragKey) => void;
   onDrop: (to: { matchId: string; slot: 'p1' | 'p2' }) => void;
   editable?: boolean;
@@ -96,29 +99,23 @@ function PlayerSlot({
   reserveRightGutter?: boolean;
 }) {
   const name = getPlayerName(id, players, isBye);
-  const p    = id ? getPlayer(id, players) : null;
+  const p    = id ? players.get(id) ?? null : null;
   const isDraggable = editable && !!id && id !== 'BYE' && name !== 'TBD';
-  const isSource    = dragging?.matchId === matchId && dragging?.slot === slot;
   const isClickable = !!onSetWinner;
   const Tag = isClickable ? 'button' : 'div';
 
   function handleTouchStart(e: React.TouchEvent) {
-    if (!isDraggable) return;
-    e.preventDefault();
     const t = e.touches[0];
     onDragStart({ matchId, slot });
     showGhost(t.clientX, t.clientY, name);
   }
 
   function handleTouchMove(e: React.TouchEvent) {
-    if (!isDraggable) return;
-    e.preventDefault();
     const t = e.touches[0];
     moveGhost(t.clientX, t.clientY);
   }
 
   function handleTouchEnd(e: React.TouchEvent) {
-    if (!isDraggable) return;
     hideGhost();
     const t = e.changedTouches[0];
     const el = document.elementFromPoint(t.clientX, t.clientY);
@@ -142,9 +139,6 @@ function PlayerSlot({
       onDragStart={isDraggable ? () => onDragStart({ matchId, slot }) : undefined}
       onDragOver={editable ? (e) => e.preventDefault() : undefined}
       onDrop={editable ? () => onDrop({ matchId, slot }) : undefined}
-      onTouchStart={isDraggable ? handleTouchStart : undefined}
-      onTouchMove={isDraggable ? handleTouchMove : undefined}
-      onTouchEnd={isDraggable ? handleTouchEnd : undefined}
       style={{ height: CARD_H / 2 }}
       className={[
         'w-full flex items-center justify-between gap-1 border-b border-slate-100 overflow-hidden transition-colors select-none text-left',
@@ -174,29 +168,57 @@ function PlayerSlot({
         {wonToss && <span className="text-[10px] leading-none" title="Won the coin toss">🪙</span>}
         {isServer && <span className="text-[10px] leading-none" title="Served">🎾</span>}
         {isWinner && <span className="text-emerald-500 text-xs font-bold">WIN</span>}
+        {/*
+          Touch dragging happens from this grip alone. A finger can only either
+          pan or drag, and the browser decides which at the moment it lands — so
+          the only element that gives up panning is the grip itself. Suppressing
+          it across the whole bracket, as this once did, left a 10,000px-tall
+          draw that no finger could scroll.
+        */}
+        {isDraggable && (
+          <span
+            role="button"
+            aria-label={`Move ${name}`}
+            title="Drag to move this player"
+            style={{ touchAction: 'none' }}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onClick={(e) => e.stopPropagation()}
+            className="px-1.5 -mr-1 text-slate-300 hover:text-slate-500 text-xs leading-none cursor-grab active:cursor-grabbing"
+          >
+            ⠿
+          </span>
+        )}
       </span>
     </Tag>
   );
 }
 
 // ── Match card ────────────────────────────────────────────────────────────────
-function MatchCard({
-  match, players, topPx, editable, dragging, onDragStart, onDrop, resultEditable, onSetWinner, onMatchClick, onReverseMatch,
-}: {
+interface MatchCardProps {
   match: Match;
-  players: Player[];
+  players: PlayerIndex;
   topPx: number;
   editable?: boolean;
-  dragging: DragKey;
+  /** Which of this card's two slots is being dragged, if either. */
+  draggingSlot: 'p1' | 'p2' | null;
   onDragStart: (k: DragKey) => void;
   onDrop: (to: { matchId: string; slot: 'p1' | 'p2' }) => void;
   resultEditable?: boolean;
   onSetWinner?: (match: Match, winnerId: string) => void | Promise<void>;
   onMatchClick?: (matchId: string) => void;
   onReverseMatch?: (matchId: string) => void;
-}) {
-  const isP1Winner = match.winnerId === match.player1Id;
-  const isP2Winner = match.winnerId === match.player2Id;
+}
+
+function MatchCardInner({
+  match, players, topPx, editable, draggingSlot, onDragStart, onDrop, resultEditable, onSetWinner, onMatchClick, onReverseMatch,
+}: MatchCardProps) {
+  // A match with no winner has none — without the first test, an undecided
+  // later-round match marked both of its empty slots as the winner, because a
+  // null winner "matched" a null player.
+  const isP1Winner = !!match.winnerId && match.winnerId === match.player1Id;
+  const isP2Winner = !!match.winnerId && match.winnerId === match.player2Id;
   const isClickable = !!onMatchClick && !match.winnerId && match.status !== 'walkover'
     && match.player1Id && match.player1Id !== 'BYE'
     && match.player2Id && match.player2Id !== 'BYE';
@@ -225,7 +247,18 @@ function MatchCard({
   return (
     <div
       className={`absolute bracket-match ${statusClass} overflow-hidden ${isResultEditable ? 'ring-1 ring-blue-200' : ''} ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-blue-400 hover:ring-offset-1 transition-shadow' : ''}`}
-      style={{ top: topPx, left: 0, width: COL_W, height: CARD_H }}
+      // A full 256 draw stands 10,000px tall, nearly all of it offscreen. Every
+      // card is a fixed size, so the browser can be told to skip laying out and
+      // painting the ones out of view — which is most of the work of showing a
+      // large bracket at all.
+      style={{
+        top: topPx,
+        left: 0,
+        width: COL_W,
+        height: CARD_H,
+        contentVisibility: 'auto',
+        containIntrinsicSize: `${COL_W}px ${CARD_H}px`,
+      }}
       onClick={isClickable ? () => onMatchClick!(match.id) : undefined}
       title={isClickable ? 'Click to referee this match' : undefined}
     >
@@ -248,7 +281,7 @@ function MatchCard({
         id={match.player1Id} players={players} isWinner={isP1Winner}
         isBye={match.status === 'walkover' && match.player1Id == null}
         matchId={match.id} slot="p1"
-        editable={editable} dragging={dragging} onDragStart={onDragStart} onDrop={onDrop}
+        editable={editable} isSource={draggingSlot === 'p1'} onDragStart={onDragStart} onDrop={onDrop}
         onSetWinner={isResultEditable ? () => onSetWinner!(match, match.player1Id as string) : undefined}
         wonToss={!!tossWinnerId && tossWinnerId === match.player1Id}
         isServer={!!servedId && servedId === match.player1Id}
@@ -258,7 +291,7 @@ function MatchCard({
         id={match.player2Id} players={players} isWinner={isP2Winner}
         isBye={match.status === 'walkover' && match.player2Id == null}
         matchId={match.id} slot="p2"
-        editable={editable} dragging={dragging} onDragStart={onDragStart} onDrop={onDrop}
+        editable={editable} isSource={draggingSlot === 'p2'} onDragStart={onDragStart} onDrop={onDrop}
         onSetWinner={isResultEditable ? () => onSetWinner!(match, match.player2Id as string) : undefined}
         wonToss={!!tossWinnerId && tossWinnerId === match.player2Id}
         isServer={!!servedId && servedId === match.player2Id}
@@ -268,8 +301,44 @@ function MatchCard({
   );
 }
 
+/**
+ * Every card in the draw re-renders whenever anything about the bracket changes,
+ * and a full draw is 255 of them. Comparing the match's rendered fields rather
+ * than its object identity means a refetch after one swap redraws the two cards
+ * that changed instead of all of them — and starting a drag redraws only the
+ * card being dragged from.
+ */
+const MatchCard = memo(MatchCardInner, (a, b) =>
+  a.topPx === b.topPx &&
+  a.editable === b.editable &&
+  a.draggingSlot === b.draggingSlot &&
+  a.players === b.players &&
+  a.resultEditable === b.resultEditable &&
+  a.onDragStart === b.onDragStart &&
+  a.onDrop === b.onDrop &&
+  a.onSetWinner === b.onSetWinner &&
+  a.onMatchClick === b.onMatchClick &&
+  a.onReverseMatch === b.onReverseMatch &&
+  a.match.id === b.match.id &&
+  a.match.player1Id === b.match.player1Id &&
+  a.match.player2Id === b.match.player2Id &&
+  a.match.winnerId === b.match.winnerId &&
+  a.match.status === b.match.status &&
+  a.match.tossWinnerId === b.match.tossWinnerId &&
+  a.match.coinFlipWinnerId === b.match.coinFlipWinnerId &&
+  a.match.serverPlayerId === b.match.serverPlayerId &&
+  a.match.kickerPlayerId === b.match.kickerPlayerId &&
+  a.match.offensePlayerId === b.match.offensePlayerId,
+);
+
 // ── SVG connectors between two rounds ────────────────────────────────────────
-function Connectors({ r, nextCount, numFirstRound }: { r: number; nextCount: number; numFirstRound: number }) {
+function Connectors({ r, nextCount, numFirstRound, band }: {
+  r: number;
+  nextCount: number;
+  numFirstRound: number;
+  /** Vertical range worth drawing, when the draw is large enough to window. */
+  band?: { top: number; bottom: number };
+}) {
   const totalH   = numFirstRound * CARD_H;
   const srcCellH = CARD_H * Math.pow(2, r);
   const midX     = COL_GAP / 2;
@@ -286,6 +355,7 @@ function Connectors({ r, nextCount, numFirstRound }: { r: number; nextCount: num
         const src0Y = mi * 2       * srcCellH + srcCellH / 2;
         const src1Y = (mi * 2 + 1) * srcCellH + srcCellH / 2;
         const tgtY  = (src0Y + src1Y) / 2;
+        if (band && (src1Y < band.top || src0Y > band.bottom)) return null;
         return (
           <g key={mi} stroke="#cbd5e1" strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round">
             {/* source 0: right → midpoint then down */}
@@ -300,6 +370,21 @@ function Connectors({ r, nextCount, numFirstRound }: { r: number; nextCount: num
     </svg>
   );
 }
+
+/**
+ * How far beyond the visible area cards are still built, so scrolling and
+ * dragging reveal finished cards rather than blank space being filled in.
+ */
+const WINDOW_MARGIN = 800;
+/** Rebuild the window only once the view has moved this far, to avoid churn. */
+const WINDOW_STEP = 300;
+/** Small draws are cheap — build them whole so nothing depends on scrolling. */
+const WINDOW_ABOVE_SLOTS = 32;
+
+type Viewport = { top: number; bottom: number; left: number; right: number };
+
+/** First render, before any measuring — must match on server and client. */
+const INITIAL_VIEWPORT: Viewport = { top: 0, bottom: 1400, left: 0, right: 1800 };
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function BracketView({
@@ -317,6 +402,88 @@ export default function BracketView({
 }: BracketViewProps) {
   const [matches,  setMatches]  = useState<Match[]>(initialMatches);
   const [dragging, setDragging] = useState<DragKey>(null);
+
+  const playerIndex = useMemo(
+    () => new Map(players.map((p) => [p.id, p])) as PlayerIndex,
+    [players],
+  );
+
+  // Callers define these inline, so they are a different function on every one
+  // of the parent's renders. Held in refs and re-exposed as stable wrappers,
+  // because a changed handler identity invalidates all 255 memoized cards and
+  // costs a full redraw of the draw.
+  const latest = useRef({ onSwap, onSetWinner, onMatchClick, onReverseMatch });
+  useEffect(() => {
+    latest.current = { onSwap, onSetWinner, onMatchClick, onReverseMatch };
+  });
+
+  // The slot a drag started from, tracked outside React state as well as in it.
+  // The state drives the "being dragged" styling; the ref is what the drop reads,
+  // so a quick flick that starts and ends before React commits still swaps.
+  const dragSource = useRef<DragKey>(null);
+  const startDrag = useCallback((k: DragKey) => {
+    dragSource.current = k;
+    setDragging(k);
+  }, []);
+
+  // Which part of the draw is worth building. A 256-player bracket is 10,000px
+  // tall and 1,700px wide, of which a screen shows a few percent; building all
+  // 255 cards took seconds of frozen page on a tablet. Cards sit at fixed
+  // positions inside fixed-size columns, so leaving the far ones out costs
+  // nothing in layout — the bracket keeps its full size and shape.
+  const scrollBox = useRef<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = useState<Viewport>(INITIAL_VIEWPORT);
+
+  useEffect(() => {
+    let queued = false;
+    let measured = false;
+    const measure = () => {
+      queued = false;
+      const box = scrollBox.current;
+      if (!box) return;
+      const rect = box.getBoundingClientRect();
+      const next: Viewport = {
+        // Vertical scrolling belongs to the page; horizontal to this box.
+        top: -rect.top,
+        bottom: -rect.top + window.innerHeight,
+        left: box.scrollLeft,
+        right: box.scrollLeft + box.clientWidth,
+      };
+      const first = !measured;
+      measured = true;
+      setViewport((prev) =>
+        first ||
+        Math.abs(prev.top - next.top) > WINDOW_STEP ||
+        Math.abs(prev.left - next.left) > WINDOW_STEP
+          ? next
+          : prev,
+      );
+    };
+    const onScroll = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(measure);
+    };
+
+    // Measure once mounted, then follow the page and the bracket's own scroll.
+    measure();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    scrollBox.current?.addEventListener('scroll', onScroll, { passive: true });
+    const box = scrollBox.current;
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      box?.removeEventListener('scroll', onScroll);
+    };
+  }, []);
+
+  const setWinner = useCallback(
+    (match: Match, winnerId: string) => latest.current.onSetWinner?.(match, winnerId),
+    [],
+  );
+  const matchClick = useCallback((matchId: string) => latest.current.onMatchClick?.(matchId), []);
+  const reverseMatch = useCallback((matchId: string) => latest.current.onReverseMatch?.(matchId), []);
 
   // Sync when parent updates matches (swap / speed-through)
   useEffect(() => {
@@ -357,22 +524,39 @@ export default function BracketView({
     return () => { cleanup?.(); };
   }, [liveUpdates, tournamentId]);
 
-  function handleDrop(to: { matchId: string; slot: 'p1' | 'p2' }) {
-    if (!dragging || !onSwap) { setDragging(null); return; }
-    if (dragging.matchId === to.matchId && dragging.slot === to.slot) { setDragging(null); return; }
-    onSwap(dragging.matchId, dragging.slot, to.matchId, to.slot);
+  const handleDrop = useCallback((to: { matchId: string; slot: 'p1' | 'p2' }) => {
+    const from = dragSource.current;
+    dragSource.current = null;
     setDragging(null);
-  }
+    if (!from || !latest.current.onSwap) return;
+    if (from.matchId === to.matchId && from.slot === to.slot) return;
+    latest.current.onSwap(from.matchId, from.slot, to.matchId, to.slot);
+  }, []);
 
-  const totalRounds    = getRoundsCount(maxPlayers);
-  const rounds         = Array.from({ length: totalRounds }, (_, r) =>
-    matches.filter((m) => m.roundIndex === r).sort((a, b) => a.matchIndex - b.matchIndex),
-  );
+  const totalRounds = getRoundsCount(maxPlayers);
+  // One pass over the draw instead of one filter+sort per round, which was
+  // eight scans of 255 matches on every render of a full bracket.
+  const rounds = useMemo(() => {
+    const byRound: Match[][] = Array.from({ length: totalRounds }, () => []);
+    for (const m of matches) byRound[m.roundIndex]?.push(m);
+    for (const list of byRound) list.sort((a, b) => a.matchIndex - b.matchIndex);
+    return byRound;
+  }, [matches, totalRounds]);
   const numFirstRound  = Math.max(rounds[0]?.length ?? 1, 1);
   const totalH         = numFirstRound * CARD_H;
 
+  // Draws small enough to be cheap are built whole, so they never depend on
+  // scroll measurement at all.
+  const windowed = numFirstRound * 2 > WINDOW_ABOVE_SLOTS;
+  const inView = (colLeft: number, topPx: number) =>
+    !windowed ||
+    (colLeft + COL_W >= viewport.left - WINDOW_MARGIN &&
+      colLeft <= viewport.right + WINDOW_MARGIN &&
+      topPx + CARD_H >= viewport.top - WINDOW_MARGIN &&
+      topPx <= viewport.bottom + WINDOW_MARGIN);
+
   return (
-    <div className="overflow-x-auto pb-4" style={editable ? { touchAction: 'none' } : undefined}>
+    <div className="overflow-x-auto pb-4" ref={scrollBox}>
       {/* Heading row */}
       <div className="flex mb-4">
         {rounds.map((_, r) => (
@@ -392,26 +576,31 @@ export default function BracketView({
         {rounds.map((roundMatches, r) => {
           const cellH    = CARD_H * Math.pow(2, r);
           const topInset = (cellH - CARD_H) / 2; // centres card within slot
+          const colLeft  = r * (COL_W + COL_GAP);
           return (
             <div key={r} className="flex shrink-0 items-start">
               {/* Column of match cards */}
               <div className="relative shrink-0" style={{ width: COL_W, height: totalH }}>
-                {roundMatches.map((match, mi) => (
+                {roundMatches.map((match, mi) => {
+                  const topPx = mi * cellH + topInset;
+                  if (!inView(colLeft, topPx)) return null;
+                  return (
                   <MatchCard
                     key={match.id}
                     match={match}
-                    players={players}
-                    topPx={mi * cellH + topInset}
+                    players={playerIndex}
+                    topPx={topPx}
                     editable={editable}
-                    dragging={dragging}
-                    onDragStart={setDragging}
+                    draggingSlot={dragging?.matchId === match.id ? dragging.slot : null}
+                    onDragStart={startDrag}
                     onDrop={handleDrop}
                     resultEditable={resultEditable}
-                    onSetWinner={onSetWinner}
-                    onMatchClick={onMatchClick}
-                    onReverseMatch={onReverseMatch}
+                    onSetWinner={onSetWinner ? setWinner : undefined}
+                    onMatchClick={onMatchClick ? matchClick : undefined}
+                    onReverseMatch={onReverseMatch ? reverseMatch : undefined}
                   />
-                ))}
+                  );
+                })}
               </div>
 
               {/* Connectors to next round */}
@@ -420,6 +609,7 @@ export default function BracketView({
                   r={r}
                   nextCount={rounds[r + 1]?.length ?? 0}
                   numFirstRound={numFirstRound}
+                  band={windowed ? { top: viewport.top - WINDOW_MARGIN, bottom: viewport.bottom + WINDOW_MARGIN } : undefined}
                 />
               )}
             </div>
