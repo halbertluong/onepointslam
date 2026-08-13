@@ -91,12 +91,11 @@ export default async function DashboardPage() {
   let tournaments: TournamentRow[] = [];
 
   if (assignedTenantIds.length > 0) {
-    // Exclude soft-deleted; include archived (we'll separate them below)
+    // Includes archived tournaments; we separate them out below
     const { data: rows } = await supabase
       .from('tournaments')
       .select('id, name, status, settings, created_at, archived_at')
       .in('tenant_id', assignedTenantIds)
-      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     const raw = rows ?? [];

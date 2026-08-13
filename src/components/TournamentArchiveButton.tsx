@@ -8,9 +8,11 @@ interface Props {
   isArchived: boolean;
   /** Compact icon-only variant for table rows */
   compact?: boolean;
+  /** Called after a successful toggle, for callers that manage their own data (e.g. client-fetched tables) instead of relying on router.refresh() */
+  onToggled?: () => void;
 }
 
-export default function TournamentArchiveButton({ tournamentId, isArchived, compact = false }: Props) {
+export default function TournamentArchiveButton({ tournamentId, isArchived, compact = false, onToggled }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -18,7 +20,7 @@ export default function TournamentArchiveButton({ tournamentId, isArchived, comp
     setLoading(true);
     const endpoint = isArchived ? 'unarchive' : 'archive';
     await fetch(`/api/tournaments/${tournamentId}/${endpoint}`, { method: 'POST' });
-    router.refresh();
+    if (onToggled) onToggled(); else router.refresh();
     setLoading(false);
   }
 

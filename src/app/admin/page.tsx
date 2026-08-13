@@ -53,7 +53,7 @@ export default function AdminOverviewPage() {
     const supabase = createClient();
     const [{ data: t }, { data: tm }, { count }] = await Promise.all([
       supabase.from('tenants').select('*').order('display_name'),
-      supabase.from('tournaments').select('id, tenant_id, name, status, settings').is('deleted_at', null).order('created_at', { ascending: false }),
+      supabase.from('tournaments').select('id, tenant_id, name, status, settings').order('created_at', { ascending: false }),
       supabase.from('players').select('id', { count: 'exact', head: true }),
     ]);
 

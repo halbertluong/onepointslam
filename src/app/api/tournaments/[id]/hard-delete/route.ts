@@ -13,12 +13,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     .from('users').select('role').eq('id', user.id).single();
   if (appUser?.role !== 'super_admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  // Must be soft-deleted first (require intentional two-step)
+  // Must be archived first (require intentional two-step)
   const { data: tournament } = await supabase
-    .from('tournaments').select('deleted_at').eq('id', id).single();
+    .from('tournaments').select('archived_at').eq('id', id).single();
   if (!tournament) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  if (!tournament.deleted_at) {
-    return NextResponse.json({ error: 'Tournament must be in recycle bin before permanent deletion' }, { status: 400 });
+  if (!tournament.archived_at) {
+    return NextResponse.json({ error: 'Tournament must be archived before permanent deletion' }, { status: 400 });
   }
 
   // Delete children first (ON DELETE CASCADE handles this, but explicit for safety)

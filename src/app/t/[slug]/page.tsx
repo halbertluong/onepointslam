@@ -32,7 +32,6 @@ export default async function TenantPage({ params }: Props) {
     .select('*')
     .eq('tenant_id', tenant.id)
     .neq('status', 'completed')
-    .is('deleted_at', null)
     .is('archived_at', null)
     .order('created_at', { ascending: false });
 
@@ -41,7 +40,6 @@ export default async function TenantPage({ params }: Props) {
     .select('*')
     .eq('tenant_id', tenant.id)
     .eq('status', 'completed')
-    .is('deleted_at', null)
     .is('archived_at', null)
     .order('created_at', { ascending: false })
     .limit(5);

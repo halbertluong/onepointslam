@@ -275,7 +275,7 @@ export default function RegistrationFlow({
       // Only overrides a *closed* tournament — never a missing one, or a failed
       // load would look like an open registration desk.
       const directorOverride = directorEntry && !!t && t.status !== 'completed';
-      if ((t?.status !== 'registration_open' && !lateRegistrationAllowed && !directorOverride) || t?.deleted_at) {
+      if ((t?.status !== 'registration_open' && !lateRegistrationAllowed && !directorOverride) || t?.archived_at) {
         setStep('closed');
         return;
       }

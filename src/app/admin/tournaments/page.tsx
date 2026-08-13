@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/browser';
+import TournamentArchiveButton from '@/components/TournamentArchiveButton';
 
 interface TournamentRow {
   id: string;
@@ -46,7 +47,7 @@ export default function AdminTournamentsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [tenantFilter, setTenantFilter] = useState<string>('');
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -55,7 +56,6 @@ export default function AdminTournamentsPage() {
       supabase
         .from('tournaments')
         .select('id, tenant_id, name, status, settings, created_at, archived_at')
-        .is('deleted_at', null)
         .order('created_at', { ascending: false }),
     ]);
 
@@ -78,11 +78,11 @@ export default function AdminTournamentsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleDelete(id: string, name: string) {
-    if (!confirm(`Move "${name}" to the recycle bin? It can be restored later.`)) return;
-    setDeletingId(id);
-    await fetch(`/api/tournaments/${id}/soft-delete`, { method: 'POST' });
-    setDeletingId(null);
+  async function handleHardDelete(id: string, name: string) {
+    if (!confirm(`Permanently delete "${name}"?\n\nThis will remove all players and matches. This CANNOT be undone.`)) return;
+    setBusyId(id);
+    await fetch(`/api/tournaments/${id}/hard-delete`, { method: 'DELETE' });
+    setBusyId(null);
     load();
   }
 
@@ -101,17 +101,9 @@ export default function AdminTournamentsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900">All Tournaments</h1>
-          <p className="text-slate-500 mt-1 text-sm">{tournaments.length} total across {tenants.length} schools</p>
-        </div>
-        <Link
-          href="/admin/recycle-bin"
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
-        >
-          🗑 Recycle Bin
-        </Link>
+      <div>
+        <h1 className="text-2xl font-black text-slate-900">All Tournaments</h1>
+        <p className="text-slate-500 mt-1 text-sm">{tournaments.length} total across {tenants.length} schools</p>
       </div>
 
       {/* Filters */}
@@ -169,7 +161,7 @@ export default function AdminTournamentsPage() {
               )}
               {filtered.map((tm) => {
                 const tenant = tenantMap[tm.tenant_id];
-                const isDeleting = deletingId === tm.id;
+                const isBusy = busyId === tm.id;
                 return (
                   <tr key={tm.id} className={`hover:bg-slate-50 ${tm.archived_at ? 'opacity-50' : ''}`}>
                     <td className="px-5 py-3">
@@ -203,14 +195,17 @@ export default function AdminTournamentsPage() {
                         >
                           Manage →
                         </Link>
-                        <button
-                          onClick={() => handleDelete(tm.id, tm.name)}
-                          disabled={isDeleting}
-                          className="text-xs font-semibold text-red-400 hover:text-red-600 transition-colors disabled:opacity-40"
-                          title="Move to recycle bin"
-                        >
-                          {isDeleting ? '…' : '🗑'}
-                        </button>
+                        <TournamentArchiveButton tournamentId={tm.id} isArchived={!!tm.archived_at} onToggled={load} compact />
+                        {tm.archived_at && (
+                          <button
+                            onClick={() => handleHardDelete(tm.id, tm.name)}
+                            disabled={isBusy}
+                            className="text-xs font-semibold text-red-400 hover:text-red-600 transition-colors disabled:opacity-40"
+                            title="Delete forever"
+                          >
+                            {isBusy ? '…' : '🗑'}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
