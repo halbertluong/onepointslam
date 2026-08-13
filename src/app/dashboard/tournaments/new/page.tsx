@@ -36,9 +36,24 @@ export default function NewTournamentPage() {
     setSettings((s) => ({ ...s, [key]: value }));
   }
 
+  /**
+   * Enter in a text field submits the form it belongs to. That is fine for a
+   * login box, but this form is six sections of tournament configuration and
+   * submitting creates the tournament and leaves the page — so a director part
+   * way through filling it in lost the rest of their settings. Only the Create
+   * button submits now; Enter elsewhere does nothing.
+   */
+  function keepEnterFromSubmitting(e: React.KeyboardEvent<HTMLFormElement>) {
+    if (e.key !== 'Enter') return;
+    const el = e.target as HTMLElement | null;
+    // A focused button or link still activates on Enter, as it should.
+    if (!el || el.tagName === 'BUTTON' || el.tagName === 'A' || el.tagName === 'TEXTAREA') return;
+    e.preventDefault();
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || loading) return;
     setLoading(true);
     setError('');
 
@@ -78,7 +93,7 @@ export default function NewTournamentPage() {
         <p className="text-slate-500 mt-1 text-sm">Configure your tournament details and pricing</p>
       </div>
 
-      <form onSubmit={handleCreate} className="space-y-6">
+      <form onSubmit={handleCreate} onKeyDown={keepEnterFromSubmitting} className="space-y-6">
         {/* Basic info */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
           <h2 className="font-bold text-slate-800">Tournament Details</h2>

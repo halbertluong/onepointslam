@@ -30,9 +30,16 @@ export default function FundraisingCalculator({ onPriceSet }: FundraisingCalcula
         <p className="text-sm text-slate-500 mt-1">Set the entrance fee for your draw</p>
       </div>
 
+      {/*
+        Every button here is type="button" on purpose. This calculator is
+        embedded inside the new-tournament form, and a button with no type
+        submits the form it sits in — so switching modes or setting the price
+        created the half-filled tournament and navigated away from it.
+      */}
       {/* Mode toggle */}
       <div className="flex rounded-xl border border-slate-200 overflow-hidden">
         <button
+          type="button"
           onClick={() => setMode('goal')}
           className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${
             mode === 'goal' ? 'text-white' : 'text-slate-600 bg-white hover:bg-slate-50'
@@ -42,6 +49,7 @@ export default function FundraisingCalculator({ onPriceSet }: FundraisingCalcula
           Goal-Based
         </button>
         <button
+          type="button"
           onClick={() => setMode('player')}
           className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${
             mode === 'player' ? 'text-white' : 'text-slate-600 bg-white hover:bg-slate-50'
@@ -182,6 +190,7 @@ export default function FundraisingCalculator({ onPriceSet }: FundraisingCalcula
 
       {onPriceSet && (
         <button
+          type="button"
           onClick={() => onPriceSet(Math.round(activeEntranceFee * 100) / 100)}
           className="btn-primary w-full py-3 rounded-xl font-semibold text-sm"
         >
