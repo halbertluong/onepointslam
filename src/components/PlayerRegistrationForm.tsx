@@ -117,7 +117,7 @@ export default function PlayerRegistrationForm({
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-4">
           <h2 className="font-bold text-slate-800">{detailsTitle ?? 'Your Details'}</h2>
 
           <div>
@@ -294,7 +294,7 @@ export default function PlayerRegistrationForm({
 
         {/* Payment breakdown */}
         {!hidePaymentBreakdown && (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-slate-100">
             <h3 className="font-bold text-slate-800">Payment Breakdown</h3>
           </div>
@@ -329,7 +329,7 @@ export default function PlayerRegistrationForm({
         <button
           type="submit"
           disabled={submitting}
-          className="btn-primary w-full py-4 rounded-2xl font-black text-base disabled:opacity-60"
+          className="tenant-gradient brand-ring w-full py-4 rounded-2xl font-black text-base text-white transition-all hover:brightness-110 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] disabled:opacity-60 disabled:hover:translate-y-0"
         >
           {submitting
             ? 'Registering…'
