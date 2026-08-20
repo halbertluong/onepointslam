@@ -10,6 +10,7 @@ import DrawEditorPanel from '@/components/DrawEditorPanel';
 import LiveScoreboard from '@/components/LiveScoreboard';
 import RegistrationPanel from '@/components/RegistrationPanel';
 import NotesPanel from '@/components/NotesPanel';
+import AssetStudio from '@/components/AssetStudio';
 import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 import { persistReversal } from '@/lib/tournamentWrites';
@@ -54,7 +55,7 @@ function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; is
   );
 }
 
-type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'notes' | 'settings';
+type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'assets' | 'notes' | 'settings';
 
 const TAB_LABELS: Record<Tab, string> = {
   players: 'Players',
@@ -64,11 +65,12 @@ const TAB_LABELS: Record<Tab, string> = {
   bracket: 'Bracket',
   scoreboard: 'Scoreboard',
   registration: 'Registration',
+  assets: 'Assets',
   notes: 'Notes',
   settings: 'Settings',
 };
 
-const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'notes', 'settings'];
+const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'assets', 'notes', 'settings'];
 
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
   const active = matches
@@ -156,6 +158,7 @@ export default function TournamentAdminPage() {
   const [tab, setTab] = useState<Tab>('players');
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [tenantSlug, setTenantSlug] = useState('');
+  const [tenantBranding, setTenantBranding] = useState({ displayName: '', primaryColor: '#1d4ed8', secondaryColor: '#7c3aed', logoUrl: undefined as string | undefined });
   const [linkCopied, setLinkCopied] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [emailSubject, setEmailSubject] = useState('');
@@ -167,7 +170,7 @@ export default function TournamentAdminPage() {
   const load = useCallback(async () => {
     const supabase = createClient();
     const [{ data: t }, { data: p }, { data: m }, { data: me }, { data: donations }] = await Promise.all([
-      supabase.from('tournaments').select('*, tenants(slug)').eq('id', id).single(),
+      supabase.from('tournaments').select('*, tenants(slug, display_name, primary_color, secondary_color, logo_url)').eq('id', id).single(),
       supabase.from('players').select('*').eq('tournament_id', id).order('created_at'),
       supabase.from('matches').select('*').eq('tournament_id', id).order('round_index').order('match_index'),
       supabase.from('users').select('role').eq('id', (await supabase.auth.getUser()).data.user?.id ?? '').single(),
@@ -175,7 +178,14 @@ export default function TournamentAdminPage() {
     ]);
     if (t) {
       setTournament(t);
-      setTenantSlug((t.tenants as Record<string, string> | null)?.slug ?? '');
+      const tenantRow = t.tenants as Record<string, unknown> | null;
+      setTenantSlug((tenantRow?.slug as string) ?? '');
+      setTenantBranding({
+        displayName: (tenantRow?.display_name as string) ?? '',
+        primaryColor: (tenantRow?.primary_color as string) ?? '#1d4ed8',
+        secondaryColor: (tenantRow?.secondary_color as string) ?? '#7c3aed',
+        logoUrl: (tenantRow?.logo_url as string | undefined) ?? undefined,
+      });
     }
     setIsSuperAdmin((me as { role?: string } | null)?.role === 'super_admin');
     setPlayers((p ?? []).map((row) => mapPlayer(row as Record<string, unknown>)));
@@ -621,6 +631,18 @@ export default function TournamentAdminPage() {
           tenantSlug={tenantSlug}
           playerCount={players.length}
           onRegistered={load}
+        />
+      )}
+
+      {/* Assets tab — branded flyer / Instagram post / story generator */}
+      {tab === 'assets' && (
+        <AssetStudio
+          tournament={tournament}
+          tenantSlug={tenantSlug}
+          tenantName={tenantBranding.displayName}
+          primaryColor={tenantBranding.primaryColor}
+          secondaryColor={tenantBranding.secondaryColor}
+          logoUrl={tenantBranding.logoUrl}
         />
       )}
 
