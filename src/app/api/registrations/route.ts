@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { registrationIsOpen, verifyDirector } from '@/lib/registrationAccess';
+import { addPlayersToDraw } from '@/lib/tournamentWrites';
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -172,6 +173,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
+  // If a bracket already exists, this is effectively a late registration: try
+  // to seat them in an open slot immediately, and waitlist them if there's no
+  // room rather than leaving them silently unplaced. Before the bracket
+  // exists there's nothing to be full of yet, so everyone just stays
+  // 'registered' until the first bracket is generated.
+  let waitlisted = false;
+  const { count: bracketExists } = await admin
+    .from('matches')
+    .select('id', { count: 'exact', head: true })
+    .eq('tournament_id', tournamentId)
+    .eq('bracket', 'main')
+    .eq('round_index', 0);
+  if ((bracketExists ?? 0) > 0 && inserted) {
+    const { added, error: placeErr } = await addPlayersToDraw(admin, tournamentId, [inserted.id]);
+    if (!placeErr && added === 0) {
+      await admin.from('players').update({ status: 'waitlisted' }).eq('id', inserted.id);
+      waitlisted = true;
+    }
+  }
+
   // Fire-and-forget: send confirmation email
   fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/api/email/registration-confirm`, {
     method: 'POST',
@@ -197,5 +218,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ playerId: inserted?.id });
+  return NextResponse.json({ playerId: inserted?.id, waitlisted });
 }

@@ -60,6 +60,7 @@ function toPlayerType(p: Record<string, unknown>): Player {
     tournamentId: (p.tournament_id ?? '') as string,
     fullName: (p.full_name ?? '') as string,
     email: (p.email ?? '') as string,
+    createdAt: (p.created_at ?? '') as string,
     seedRating: p.seed_rating as number | undefined,
     skillTier: p.skill_tier as string | undefined,
     gender: p.gender as string | undefined,

@@ -31,6 +31,7 @@ export default async function PublicBracketPage({ params }: Props) {
     tournamentId: p.tournament_id,
     fullName: p.full_name,
     email: p.email,
+    createdAt: p.created_at,
     seedRating: p.seed_rating,
     skillTier: p.skill_tier,
     status: p.status,

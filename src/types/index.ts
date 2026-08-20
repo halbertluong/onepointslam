@@ -78,7 +78,7 @@ export interface Tournament {
   createdAt: string;
 }
 
-export type PlayerStatus = 'registered' | 'checked_in' | 'no_show_eliminated';
+export type PlayerStatus = 'registered' | 'waitlisted' | 'checked_in' | 'no_show_eliminated';
 
 export interface Player {
   id: string;
@@ -94,6 +94,9 @@ export interface Player {
   status: PlayerStatus;
   paymentStatus?: 'pending' | 'paid' | 'failed';
   stripePaymentIntentId?: string;
+  /** When they registered — the waitlist queue order, and shown alongside
+   *  waitlisted players so a director can see who's been waiting longest. */
+  createdAt: string;
 }
 
 export function mapPlayer(row: Record<string, unknown>): Player {
@@ -111,6 +114,7 @@ export function mapPlayer(row: Record<string, unknown>): Player {
     status: (row.status as PlayerStatus) ?? 'registered',
     paymentStatus: (row.payment_status ?? row.paymentStatus) as 'pending' | 'paid' | 'failed' | undefined,
     stripePaymentIntentId: (row.stripe_payment_intent_id ?? row.stripePaymentIntentId) as string | undefined,
+    createdAt: (row.created_at ?? row.createdAt) as string,
   };
 }
 

@@ -11,9 +11,11 @@ import LiveScoreboard from '@/components/LiveScoreboard';
 import RegistrationPanel from '@/components/RegistrationPanel';
 import NotesPanel from '@/components/NotesPanel';
 import AssetStudio from '@/components/AssetStudio';
-import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount } from '@/lib/bracket';
+import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount, nextPowerOf2 } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 import { persistReversal } from '@/lib/tournamentWrites';
+import { splitByCapacity } from '@/lib/waitlist';
+import WaitlistPanel from '@/components/WaitlistPanel';
 import type { Tournament, Player, Match } from '@/types';
 import { mapPlayer, mapMatch } from '@/types';
 import { calcRaised, formatCurrency } from '@/lib/pricing';
@@ -55,10 +57,11 @@ function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; is
   );
 }
 
-type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'assets' | 'notes' | 'settings';
+type Tab = 'players' | 'waitlist' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'assets' | 'notes' | 'settings';
 
 const TAB_LABELS: Record<Tab, string> = {
   players: 'Players',
+  waitlist: 'Waitlist',
   seeds: 'Seed Assignment',
   draw: 'Draw Editor',
   referee: 'Referee Queue',
@@ -70,7 +73,7 @@ const TAB_LABELS: Record<Tab, string> = {
   settings: 'Settings',
 };
 
-const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'assets', 'notes', 'settings'];
+const TAB_ORDER: Tab[] = ['players', 'waitlist', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'assets', 'notes', 'settings'];
 
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
   const active = matches
@@ -217,7 +220,12 @@ export default function TournamentAdminPage() {
     }
     setSaving(true);
     const supabase = createClient();
-    const generated = generateBracket(players, tournament.settings, id);
+    // The configured draw size is a ceiling now, not a floor: whoever doesn't
+    // fit — by registration order, latest first — goes to the waitlist rather
+    // than forcing the bracket bigger.
+    const capacity = nextPowerOf2(tournament.settings?.maxPlayers ?? players.length);
+    const { seated, overflow } = splitByCapacity(players, capacity);
+    const generated = generateBracket(seated, tournament.settings, id);
     const { error } = await supabase.from('matches').upsert(
       generated.map((m) => ({
         id: m.id,
@@ -236,7 +244,14 @@ export default function TournamentAdminPage() {
     );
     if (!error) {
       await supabase.from('tournaments').update({ status: 'bracket_generated' }).eq('id', id);
-      setMessage('Bracket generated!');
+      if (overflow.length > 0) {
+        await supabase.from('players').update({ status: 'waitlisted' }).in('id', overflow.map((p) => p.id));
+      }
+      setMessage(
+        overflow.length > 0
+          ? `Bracket generated at ${capacity} slots — ${overflow.length} player${overflow.length === 1 ? '' : 's'} waitlisted.`
+          : 'Bracket generated!',
+      );
       load();
     } else {
       setMessage(error.message);
@@ -377,8 +392,9 @@ export default function TournamentAdminPage() {
       .filter((pid): pid is string => !!pid && pid !== 'BYE'),
   );
   const unplacedCount = bracketGenerated
-    ? players.filter((p) => !placedPlayerIds.has(p.id)).length
+    ? players.filter((p) => !placedPlayerIds.has(p.id) && p.status !== 'waitlisted').length
     : 0;
+  const waitlistCount = players.filter((p) => p.status === 'waitlisted').length;
 
   return (
     <div className="space-y-6">
@@ -493,6 +509,11 @@ export default function TournamentAdminPage() {
           // Carry the roster size in the tab itself, the way the demo does — a
           // director glancing at the menu shouldn't have to open it to see it.
           const label = t === 'players' ? `${TAB_LABELS[t]} (${players.length})` : TAB_LABELS[t];
+          const badgeCount = t === 'players' ? unplacedCount : t === 'waitlist' ? waitlistCount : 0;
+          const badgeTitle =
+            t === 'players'
+              ? `${unplacedCount} registered player${unplacedCount === 1 ? '' : 's'} not in the bracket`
+              : `${waitlistCount} player${waitlistCount === 1 ? '' : 's'} waitlisted`;
           return (
             <button
               key={t}
@@ -505,12 +526,14 @@ export default function TournamentAdminPage() {
               style={tab === t ? { borderColor: 'var(--tenant-primary)', color: 'var(--tenant-primary)' } : {}}
             >
               {label}
-              {needsAttention && (
+              {(needsAttention || (t === 'waitlist' && waitlistCount > 0)) && (
                 <span
-                  className="px-1.5 py-0.5 rounded-full bg-amber-400 text-amber-950 text-[10px] font-black leading-none"
-                  title={`${unplacedCount} registered player${unplacedCount === 1 ? '' : 's'} not in the bracket`}
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-black leading-none ${
+                    t === 'waitlist' ? 'bg-blue-400 text-blue-950' : 'bg-amber-400 text-amber-950'
+                  }`}
+                  title={badgeTitle}
                 >
-                  {unplacedCount}
+                  {badgeCount}
                 </span>
               )}
             </button>
@@ -524,6 +547,16 @@ export default function TournamentAdminPage() {
           players={players}
           matches={matches}
           bracketGenerated={bracketGenerated}
+          onSaved={load}
+        />
+      )}
+
+      {/* Waitlist tab */}
+      {tab === 'waitlist' && (
+        <WaitlistPanel
+          players={players}
+          matches={matches}
+          tournamentId={id}
           onSaved={load}
         />
       )}

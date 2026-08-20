@@ -70,6 +70,7 @@ export function generatePlayers(count: number, entryFee: number): DemoPlayer[] {
       utrRating: parseFloat((ntrp * 3.2 - 4.5 + Math.random()).toFixed(1)),
       age: Math.floor(Math.random() * 30 + 18),
       status: 'registered' as const,
+      createdAt: ts.toISOString(),
       paidAmount: entryFee,
       registeredAt: ts.toISOString(),
     };

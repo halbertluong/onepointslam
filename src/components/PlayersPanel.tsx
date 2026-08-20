@@ -2,13 +2,15 @@
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
-import { saveSeedRatings } from '@/lib/tournamentWrites';
+import { saveSeedRatings, moveToWaitlist } from '@/lib/tournamentWrites';
+import { formatRegisteredAt } from '@/lib/waitlist';
 import type { Match, Player } from '@/types';
 
 const PLAYER_STATUS_STYLE: Record<string, string> = {
   checked_in: 'bg-emerald-100 text-emerald-700',
   no_show_eliminated: 'bg-red-100 text-red-700',
   registered: 'bg-slate-100 text-slate-600',
+  waitlisted: 'bg-blue-100 text-blue-700',
 };
 
 export default function PlayersPanel({
@@ -28,6 +30,7 @@ export default function PlayersPanel({
     return m;
   });
   const [saving, setSaving] = useState(false);
+  const [waitlistingId, setWaitlistingId] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
@@ -44,11 +47,22 @@ export default function PlayersPanel({
     setTimeout(() => setMsg(''), 2000);
   }
 
+  async function handleMoveToWaitlist(playerId: string) {
+    setWaitlistingId(playerId);
+    const { error } = await moveToWaitlist(createClient(), matches, playerId);
+    setWaitlistingId(null);
+    if (error) { setErr(`Could not waitlist that player: ${error}`); return; }
+    setErr('');
+    setMsg('Player moved to the waitlist.');
+    onSaved();
+    setTimeout(() => setMsg(''), 2000);
+  }
+
   // "In the bracket" means holding a first-round slot — that's the source of
   // truth for the draw; later rounds only ever fill by advancing.
   const placedIds = new Set(
     matches
-      .filter((m) => m.roundIndex === 0)
+      .filter((m) => m.bracket === 'main' && m.roundIndex === 0)
       .flatMap((m) => [m.player1Id, m.player2Id])
       .filter((id): id is string => !!id && id !== 'BYE'),
   );
@@ -66,14 +80,20 @@ export default function PlayersPanel({
       }),
   );
 
-  const unplaced = bracketGenerated ? players.filter((p) => !placedIds.has(p.id)) : [];
+  // Waitlisted players are expected to be unplaced — that's not an oversight,
+  // so they don't count toward the "forgot to place someone" warning.
+  const unplaced = bracketGenerated ? players.filter((p) => !placedIds.has(p.id) && p.status !== 'waitlisted') : [];
 
   // Players missing from a generated draw sort to the very top — that's an
-  // action the director needs to see immediately, not hunt for.
+  // action the director needs to see immediately, not hunt for. Waitlisted
+  // players sort just after them (still worth a glance, but not urgent).
   const sorted = [...players].sort((a, b) => {
-    const aMissing = bracketGenerated && !placedIds.has(a.id);
-    const bMissing = bracketGenerated && !placedIds.has(b.id);
+    const aMissing = bracketGenerated && !placedIds.has(a.id) && a.status !== 'waitlisted';
+    const bMissing = bracketGenerated && !placedIds.has(b.id) && b.status !== 'waitlisted';
     if (aMissing !== bMissing) return aMissing ? -1 : 1;
+    const aWaitlisted = a.status === 'waitlisted';
+    const bWaitlisted = b.status === 'waitlisted';
+    if (aWaitlisted !== bWaitlisted) return aWaitlisted ? -1 : 1;
     if (a.seedRating && b.seedRating) return a.seedRating - b.seedRating;
     if (a.seedRating) return -1;
     if (b.seedRating) return 1;
@@ -81,6 +101,7 @@ export default function PlayersPanel({
   });
 
   function statusFor(p: Player): { label: string; cls: string } {
+    if (p.status === 'waitlisted') return { label: '⏳ Waitlisted', cls: PLAYER_STATUS_STYLE.waitlisted };
     if (bracketGenerated && !placedIds.has(p.id)) {
       return { label: '⚠ Not in bracket', cls: 'bg-amber-400 text-amber-950' };
     }
@@ -136,18 +157,21 @@ export default function PlayersPanel({
                 <th className="px-4 py-3 text-left">UTR</th>
                 <th className="px-4 py-3 text-left">Seed</th>
                 <th className="px-4 py-3 text-left">Tier</th>
+                <th className="px-4 py-3 text-left">Registered</th>
                 <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-left">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {players.length === 0 && (
-                <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
+                <tr><td colSpan={10} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
               )}
               {sorted.map((p, i) => {
-                const missing = bracketGenerated && !placedIds.has(p.id);
+                const missing = bracketGenerated && !placedIds.has(p.id) && p.status !== 'waitlisted';
                 const status = statusFor(p);
+                const canWaitlist = p.status === 'registered' || p.status === 'checked_in';
                 return (
-                  <tr key={p.id} className={missing ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-slate-50'}>
+                  <tr key={p.id} className={missing ? 'bg-amber-50 hover:bg-amber-100' : p.status === 'waitlisted' ? 'bg-blue-50/50 hover:bg-blue-50' : 'hover:bg-slate-50'}>
                     <td className="px-4 py-3 text-slate-400">{i + 1}</td>
                     <td className={`px-4 py-3 ${missing ? 'font-black text-amber-900' : 'font-medium text-slate-800'}`}>
                       {p.fullName}
@@ -179,10 +203,23 @@ export default function PlayersPanel({
                       />
                     </td>
                     <td className="px-4 py-3 text-slate-500">{p.skillTier ?? '—'}</td>
+                    <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatRegisteredAt(p.createdAt)}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${status.cls}`}>
                         {status.label}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {canWaitlist && (
+                        <button
+                          onClick={() => handleMoveToWaitlist(p.id)}
+                          disabled={waitlistingId === p.id}
+                          title="Pull this player off the active roster and onto the waitlist"
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 whitespace-nowrap"
+                        >
+                          {waitlistingId === p.id ? '…' : 'Waitlist'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

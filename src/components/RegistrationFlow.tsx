@@ -222,6 +222,7 @@ export default function RegistrationFlow({
   const [registeredName, setRegisteredName] = useState('');
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [wasGuest, setWasGuest] = useState(false);
+  const [registeredWaitlisted, setRegisteredWaitlisted] = useState(false);
 
   // Inline "Welcome back" prompt state
   const [welcomeBackEmail, setWelcomeBackEmail] = useState('');
@@ -353,7 +354,7 @@ export default function RegistrationFlow({
         ...(directorEntry ? { directorEntry: true } : {}),
       }),
     });
-    const json = await res.json() as { playerId?: string; error?: string };
+    const json = await res.json() as { playerId?: string; waitlisted?: boolean; error?: string };
     if (!res.ok) {
       if (res.status === 409) return { error: 'This email is already registered for this tournament.' };
       return { error: json.error ?? 'Registration failed. Please try again.' };
@@ -361,6 +362,7 @@ export default function RegistrationFlow({
     setRegisteredName(data.fullName);
     setRegisteredEmail(data.email);
     setWasGuest(!currentUser);
+    setRegisteredWaitlisted(!!json.waitlisted);
     setStep('success');
     onRegistered?.();
     return {};
@@ -503,13 +505,25 @@ export default function RegistrationFlow({
   if (step === 'success') {
     return (
       <div className={`${SHELL} bg-slate-50`}>
-        <RegistrationHero eyebrow={tenantName} title="You're In! 🎾" logoUrl={tenantLogoUrl} compact />
+        <RegistrationHero
+          eyebrow={tenantName}
+          title={registeredWaitlisted ? "You're on the Waitlist ⏳" : "You're In! 🎾"}
+          logoUrl={tenantLogoUrl}
+          compact
+        />
         <div className="max-w-sm mx-auto px-4 -mt-2 pb-14 space-y-5">
           <div className="text-center space-y-2">
-            <p className="text-slate-600">
-              Welcome to <strong>{tournamentName}</strong>, {registeredName}!
-              We&apos;ll be in touch with match details.
-            </p>
+            {registeredWaitlisted ? (
+              <p className="text-slate-600">
+                Thanks for signing up for <strong>{tournamentName}</strong>, {registeredName} — the bracket is full
+                right now, so you&apos;re on the waitlist. We&apos;ll email you if a spot opens up.
+              </p>
+            ) : (
+              <p className="text-slate-600">
+                Welcome to <strong>{tournamentName}</strong>, {registeredName}!
+                We&apos;ll be in touch with match details.
+              </p>
+            )}
           </div>
 
           {wasGuest && !savePasswordSkipped && (

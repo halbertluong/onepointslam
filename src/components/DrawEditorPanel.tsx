@@ -6,6 +6,7 @@ import BracketView from '@/components/BracketView';
 import GenderDot from '@/components/GenderDot';
 import { addPlayersToDraw, persistSeededRedistribution } from '@/lib/tournamentWrites';
 import { generateBracket, rankPlayersForSeeding, nextPowerOf2 } from '@/lib/bracket';
+import { splitByCapacity } from '@/lib/waitlist';
 import type { Match, Player, Tournament, MaxPlayers } from '@/types';
 
 /** The draw sizes offered on the Settings tab — same list here so the rebuild
@@ -56,13 +57,15 @@ export default function DrawEditorPanel({
     setSyncedDrawSize(configuredDrawSize);
     setRebuildSize(configuredDrawSize);
   }
-  const projectedSlots = Math.max(nextPowerOf2(players.length), nextPowerOf2(rebuildSize));
-  // True whenever rebuilding right now, with today's settings and roster,
-  // would produce a different bracket than what's actually on the board —
-  // i.e. a director changed Draw Size (or enough players registered) since
-  // the bracket was last generated.
-  const outOfSyncWithSettings =
-    Math.max(nextPowerOf2(players.length), nextPowerOf2(configuredDrawSize)) !== bracketSize;
+  // The draw size is a ceiling now, not a floor — whoever doesn't fit (by
+  // registration order, latest first) waitlists rather than growing the
+  // bracket, so the projected size is just the picker's own value.
+  const projectedSlots = nextPowerOf2(rebuildSize);
+  const { overflow: previewOverflow } = splitByCapacity(players, projectedSlots);
+  // True whenever rebuilding right now, with today's settings, would produce
+  // a different bracket than what's actually on the board — i.e. a director
+  // changed Draw Size since the bracket was last generated.
+  const outOfSyncWithSettings = nextPowerOf2(configuredDrawSize) !== bracketSize;
 
   // A recorded result is the line we won't cross automatically: reshuffling the
   // draw underneath played matches would invalidate them.
@@ -72,7 +75,8 @@ export default function DrawEditorPanel({
   const placedIds = new Set(
     round0.flatMap((m) => [m.player1Id, m.player2Id]).filter((id): id is string => !!id && id !== 'BYE'),
   );
-  const unplaced = players.filter((p) => !placedIds.has(p.id));
+  const unplaced = players.filter((p) => !placedIds.has(p.id) && p.status !== 'waitlisted');
+  const waitlistedCount = players.filter((p) => p.status === 'waitlisted').length;
   const openSlots = round0.reduce(
     (n, m) => n + (m.player1Id ? 0 : 1) + (m.player2Id ? 0 : 1),
     0,
@@ -119,13 +123,15 @@ export default function DrawEditorPanel({
   async function handleRedistribute() {
     if (hasResults) return;
     setSaving(true);
-    // Everyone registered goes into the draw, seeded — including anyone who was
+    // Everyone active goes into the draw, seeded — including anyone who was
     // sitting outside it, so a director doesn't have to add them first.
-    const seatable = rankPlayersForSeeding(players).slice(0, bracketSize);
+    // Waitlisted players sit out until explicitly promoted.
+    const active = players.filter((p) => p.status !== 'waitlisted');
+    const seatable = rankPlayersForSeeding(active).slice(0, bracketSize);
     const { error } = await persistSeededRedistribution(createClient(), matches, seatable);
     setSaving(false);
     if (error) { setErr(`Could not redistribute the draw: ${error}`); return; }
-    const left = players.length - seatable.length;
+    const left = active.length - seatable.length;
     flash(
       left > 0
         ? `Draw redistributed by seeding. ${left} player${left === 1 ? '' : 's'} did not fit in ${bracketSize} slots — expand the bracket to include them.`
@@ -165,8 +171,12 @@ export default function DrawEditorPanel({
     const supabase = createClient();
     const prefix = idPrefix(matches, tournamentId);
     const newSettings = { ...tournament.settings, maxPlayers: size as MaxPlayers };
+    const capacity = nextPowerOf2(size);
+    // Draw size is a ceiling: only the earliest `capacity` registrants get a
+    // seat in this rebuild, and whoever's left over waitlists.
+    const { seated, overflow } = splitByCapacity(players, capacity);
 
-    const generated = generateBracket(players, newSettings, prefix);
+    const generated = generateBracket(seated, newSettings, prefix);
 
     await supabase.from('matches').delete().eq('tournament_id', tournamentId);
     const { error } = await supabase.from('matches').insert(
@@ -189,6 +199,12 @@ export default function DrawEditorPanel({
       setErr(`Could not rebuild the bracket: ${error.message}`);
       return;
     }
+
+    const toWaitlist = overflow.filter((p) => p.status !== 'waitlisted').map((p) => p.id);
+    const toActivate = seated.filter((p) => p.status === 'waitlisted').map((p) => p.id);
+    if (toWaitlist.length > 0) await supabase.from('players').update({ status: 'waitlisted' }).in('id', toWaitlist);
+    if (toActivate.length > 0) await supabase.from('players').update({ status: 'registered' }).in('id', toActivate);
+
     const { error: settingsError } = await supabase
       .from('tournaments')
       .update({ settings: newSettings })
@@ -200,8 +216,10 @@ export default function DrawEditorPanel({
     }
 
     setSaving(false);
-    const slots = Math.max(nextPowerOf2(players.length), nextPowerOf2(size));
-    flash(`Bracket rebuilt at ${slots} slots (${size}-player draw) from current seeds.`);
+    flash(
+      `Bracket rebuilt at ${capacity} slots (${size}-player draw) from current seeds.` +
+        (overflow.length > 0 ? ` ${overflow.length} player${overflow.length === 1 ? '' : 's'} waitlisted.` : ''),
+    );
   }
 
   /** Skip the confirmation step when there's nothing on the board to lose yet. */
@@ -278,8 +296,7 @@ export default function DrawEditorPanel({
             <h3 className="font-black text-blue-900">Bracket doesn&apos;t match current settings</h3>
             <p className="text-xs text-blue-700 mt-0.5">
               Draw Size is set to {configuredDrawSize} in Settings — rebuilding now would produce a{' '}
-              {Math.max(nextPowerOf2(players.length), nextPowerOf2(configuredDrawSize))}-slot bracket, but the
-              current one has {bracketSize} slots.
+              {nextPowerOf2(configuredDrawSize)}-slot bracket, but the current one has {bracketSize} slots.
             </p>
           </div>
           <button
@@ -340,9 +357,13 @@ export default function DrawEditorPanel({
           <div className="px-6 py-4 bg-red-50 border-b-2 border-red-200 space-y-3">
             <p className="text-sm font-bold text-red-800">⚠️ This will overwrite the current bracket</p>
             <p className="text-xs text-red-700">
-              Rebuilding regenerates every match from the {players.length} registered player{players.length === 1 ? '' : 's'} and
-              their current seeds, sized to a {projectedSlots}-slot bracket ({rebuildSize}-player draw). The existing
-              bracket ({matches.length} match{matches.length === 1 ? '' : 'es'}) will be permanently replaced — there is no undo.
+              Rebuilding regenerates every match from current seeds, sized to a {projectedSlots}-slot bracket
+              ({rebuildSize}-player draw). The existing bracket ({matches.length} match{matches.length === 1 ? '' : 'es'}) will be
+              permanently replaced — there is no undo.
+              {previewOverflow.length > 0 && (
+                <> <strong>{previewOverflow.length} player{previewOverflow.length === 1 ? '' : 's'}</strong> won&apos;t fit
+                  and will be waitlisted (latest registrants first).</>
+              )}
             </p>
             <div className="flex gap-2">
               <button
@@ -367,6 +388,7 @@ export default function DrawEditorPanel({
           <span><strong className="text-slate-700">{bracketSize}</strong> bracket slots</span>
           <span><strong className="text-slate-700">{placedIds.size}</strong> players placed</span>
           <span><strong className="text-slate-700">{openSlots}</strong> open (byes)</span>
+          {waitlistedCount > 0 && <span className="text-blue-700 font-semibold">{waitlistedCount} waitlisted</span>}
           {hasResults && <span className="text-amber-700 font-semibold">{playedMatches} played</span>}
         </div>
 

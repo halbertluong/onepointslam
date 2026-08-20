@@ -172,6 +172,51 @@ export async function persistSeededRedistribution(
 }
 
 /**
+ * Moves a currently-active player onto the waitlist. If they hold a bracket
+ * seat, it's vacated first (freeing it for someone else) — unless they've
+ * already played from it, in which case pulling them now would corrupt the
+ * bracket downstream, so the move is refused.
+ */
+export async function moveToWaitlist(
+  supabase: SupabaseClient,
+  matches: Match[],
+  playerId: string,
+): Promise<WriteResult> {
+  const seat = matches.find(
+    (m) => m.bracket === 'main' && m.roundIndex === 0 && (m.player1Id === playerId || m.player2Id === playerId),
+  );
+  if (seat && seat.status === 'finalized') {
+    return { error: 'This player has already played their first-round match and cannot be waitlisted.' };
+  }
+  if (seat) {
+    const field = seat.player1Id === playerId ? 'player1_id' : 'player2_id';
+    const { error } = await supabase
+      .from('matches')
+      .update({ [field]: null, winner_id: null, status: seat.courtNumber ? 'court_assigned' : 'scheduled' })
+      .eq('id', seat.id);
+    if (error) return { error: error.message };
+  }
+  const { error } = await supabase.from('players').update({ status: 'waitlisted' }).eq('id', playerId);
+  return error ? { error: error.message } : {};
+}
+
+/**
+ * Promotes a waitlisted player back onto the active roster, seating them in
+ * the first open bracket slot if one exists (otherwise they land back among
+ * the registered-but-unplaced, same as anyone else waiting for room).
+ */
+export async function promoteFromWaitlist(
+  supabase: SupabaseClient,
+  tournamentId: string,
+  playerId: string,
+): Promise<WriteResult> {
+  const { error: statusErr } = await supabase.from('players').update({ status: 'registered' }).eq('id', playerId);
+  if (statusErr) return { error: statusErr.message };
+  const { error } = await addPlayersToDraw(supabase, tournamentId, [playerId]);
+  return error ? { error } : {};
+}
+
+/**
  * Puts registered players into open first-round slots.
  *
  * Reads the draw fresh from the database rather than trusting the caller's

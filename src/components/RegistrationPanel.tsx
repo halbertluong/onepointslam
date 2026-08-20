@@ -33,7 +33,7 @@ export default function RegistrationPanel({
   const [mode, setMode] = useState<Mode>('flow');
   const [copied, setCopied] = useState(false);
   const [markPaid, setMarkPaid] = useState(true);
-  const [added, setAdded] = useState<string[]>([]);
+  const [added, setAdded] = useState<{ name: string; waitlisted: boolean }[]>([]);
   const [formKey, setFormKey] = useState(0);
 
   const settings = tournament.settings;
@@ -73,11 +73,11 @@ export default function RegistrationPanel({
         markPaid,
       }),
     });
-    const json = (await res.json()) as { playerId?: string; error?: string };
+    const json = (await res.json()) as { playerId?: string; waitlisted?: boolean; error?: string };
     if (!res.ok) {
       return { error: json.error ?? 'Could not register this player. Please try again.' };
     }
-    setAdded((prev) => [data.fullName, ...prev]);
+    setAdded((prev) => [{ name: data.fullName, waitlisted: !!json.waitlisted }, ...prev]);
     setFormKey((k) => k + 1); // remount to clear the form for the next walk-up
     onRegistered();
   }
@@ -162,8 +162,9 @@ export default function RegistrationPanel({
             ✓ Registered {added.length} player{added.length === 1 ? '' : 's'}
           </p>
           <p className="text-sm text-emerald-800 mt-0.5">
-            {added.join(', ')} — now in the Players tab.
+            {added.map((a) => (a.waitlisted ? `${a.name} (waitlisted)` : a.name)).join(', ')} — now in the Players tab.
             {tournament.status !== 'registration_open' && ' Add them to the draw from the Draw Editor tab.'}
+            {added.some((a) => a.waitlisted) && ' The bracket was full for at least one — check the Waitlist tab.'}
           </p>
         </div>
       )}
