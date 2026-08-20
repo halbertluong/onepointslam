@@ -104,7 +104,7 @@ export default function TournamentInfoCard({
     : null;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
       {/* Fundraising progress */}
       {goal != null && (
         <div className="px-5 pt-5 pb-4 border-b border-slate-100">

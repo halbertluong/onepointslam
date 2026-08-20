@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
 import PlayerRegistrationForm, { type PlayerFormData } from '@/components/PlayerRegistrationForm';
 import TournamentInfoCard from '@/components/TournamentInfoCard';
+import RegistrationHero from '@/components/RegistrationHero';
 import type { Player } from '@/types';
 import { mapPlayer } from '@/types';
 import { loadStripe } from '@stripe/stripe-js';
@@ -255,7 +256,7 @@ export default function RegistrationFlow({
         { data: tenant },
       ] = await Promise.all([
         supabase.auth.getUser(),
-        supabase.from('tournaments').select('*, tenants(display_name, primary_color)').eq('id', tournamentId).single(),
+        supabase.from('tournaments').select('*, tenants(display_name, primary_color, secondary_color, logo_url)').eq('id', tournamentId).single(),
         supabase.from('players').select('*').eq('tournament_id', tournamentId),
         supabase.from('tenants').select('platform_fee').eq('slug', slug).single(),
       ]);
@@ -433,7 +434,9 @@ export default function RegistrationFlow({
 
   const settings = tournament?.settings as Record<string, unknown> | null;
   const entranceFee = (settings?.ticketPriceForFundraiser as number) ?? 0;
-  const tenantName = (tournament?.tenants as Record<string, unknown> | null)?.display_name as string ?? '';
+  const tenantRecord = tournament?.tenants as Record<string, unknown> | null;
+  const tenantName = tenantRecord?.display_name as string ?? '';
+  const tenantLogoUrl = tenantRecord?.logo_url as string | undefined;
   const tournamentName = tournament?.name as string ?? '';
 
   // ── Closed ──────────────────────────────────────────────────────────────────
@@ -444,26 +447,29 @@ export default function RegistrationFlow({
   if (step === 'closed') {
     const reason = tournament?.registration_close_reason as string | undefined;
     return (
-      <div className={`${SHELL} flex items-center justify-center bg-slate-50 px-4`}>
-        <div className="max-w-sm w-full text-center space-y-4">
-          <div className="text-5xl">🔒</div>
-          <h1 className="text-2xl font-black text-slate-900">Registration Closed</h1>
-          <p className="text-slate-600">
-            {reason ? CLOSE_REASON_TEXT[reason] : 'Registration is not currently open for this tournament.'}
-          </p>
-          <div className="flex flex-col gap-2">
-            <button
-              onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
-              className="btn-secondary px-6 py-3 rounded-xl font-bold text-sm"
-            >
-              View Bracket
-            </button>
-            <button
-              onClick={() => setStep('donate')}
-              className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2"
-            >
-              Donate to support the team
-            </button>
+      <div className={`${SHELL} bg-slate-50`}>
+        <RegistrationHero eyebrow={tenantName} title={tournamentName || 'Registration'} logoUrl={tenantLogoUrl} compact />
+        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-7 text-center space-y-4">
+            <div className="text-5xl">🔒</div>
+            <h2 className="text-xl font-black text-slate-900">Registration Closed</h2>
+            <p className="text-slate-600 text-sm">
+              {reason ? CLOSE_REASON_TEXT[reason] : 'Registration is not currently open for this tournament.'}
+            </p>
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
+                className="btn-secondary px-6 py-3 rounded-xl font-bold text-sm"
+              >
+                View Bracket
+              </button>
+              <button
+                onClick={() => setStep('donate')}
+                className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2"
+              >
+                Donate to support the team
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -472,19 +478,22 @@ export default function RegistrationFlow({
 
   if (step === 'already_registered') {
     return (
-      <div className={`${SHELL} flex items-center justify-center bg-slate-50 px-4`}>
-        <div className="max-w-sm w-full text-center space-y-4">
-          <div className="text-5xl">✅</div>
-          <h1 className="text-2xl font-black text-slate-900">Already Registered</h1>
-          <p className="text-slate-600">
-            You&apos;re already signed up for <strong>{tournamentName}</strong>.
-          </p>
-          <button
-            onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
-            className="btn-primary px-6 py-3 rounded-xl font-bold text-sm"
-          >
-            View Bracket
-          </button>
+      <div className={`${SHELL} bg-slate-50`}>
+        <RegistrationHero eyebrow={tenantName} title={tournamentName || 'Registration'} logoUrl={tenantLogoUrl} compact />
+        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-7 text-center space-y-4">
+            <div className="text-5xl">✅</div>
+            <h2 className="text-xl font-black text-slate-900">Already Registered</h2>
+            <p className="text-slate-600 text-sm">
+              You&apos;re already signed up for <strong>{tournamentName}</strong>.
+            </p>
+            <button
+              onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
+              className="btn-primary px-6 py-3 rounded-xl font-bold text-sm"
+            >
+              View Bracket
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -493,11 +502,10 @@ export default function RegistrationFlow({
   // ── Post-registration success ────────────────────────────────────────────────
   if (step === 'success') {
     return (
-      <div className={`${SHELL} flex items-center justify-center bg-slate-50 px-4`}>
-        <div className="max-w-sm w-full space-y-5">
-          <div className="text-center space-y-3">
-            <div className="text-6xl">🎾</div>
-            <h1 className="text-2xl font-black text-slate-900">You&apos;re In!</h1>
+      <div className={`${SHELL} bg-slate-50`}>
+        <RegistrationHero eyebrow={tenantName} title="You're In! 🎾" logoUrl={tenantLogoUrl} compact />
+        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14 space-y-5">
+          <div className="text-center space-y-2">
             <p className="text-slate-600">
               Welcome to <strong>{tournamentName}</strong>, {registeredName}!
               We&apos;ll be in touch with match details.
@@ -505,7 +513,7 @@ export default function RegistrationFlow({
           </div>
 
           {wasGuest && !savePasswordSkipped && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 space-y-3">
               {savePasswordDone ? (
                 <div className="text-center space-y-1">
                   <p className="text-2xl">🔐</p>
@@ -567,14 +575,11 @@ export default function RegistrationFlow({
   if (step === 'payment' && clientSecret && pendingPlayerData && stripePromise) {
     const totalDollars = entranceFee + platformFee;
     return (
-      <div className={`${SHELL} bg-slate-50 py-10 px-4`}>
-        <div className="max-w-md mx-auto space-y-6">
-          <div>
-            {tenantName && <p className="text-sm text-slate-400 mb-1">{tenantName}</p>}
-            <h1 className="text-2xl font-black text-slate-900">{tournamentName}</h1>
-            <p className="text-sm text-slate-500 mt-1">Complete your registration</p>
-          </div>
-          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+      <div className={`${SHELL} bg-slate-50`}>
+        <RegistrationHero eyebrow={tenantName} title={tournamentName} logoUrl={tenantLogoUrl} compact />
+        <div className="max-w-md mx-auto px-4 -mt-2 pb-14 space-y-6">
+          <p className="text-sm text-slate-500 text-center">Complete your registration</p>
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
             <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
               <StripeCheckoutForm
                 playerName={pendingPlayerData.fullName}
@@ -599,8 +604,9 @@ export default function RegistrationFlow({
   if (step === 'donate') {
     const effectiveAmount = donateCustom ? parseFloat(donateCustom) || 0 : donateAmount;
     return (
-      <div className={`${SHELL} bg-slate-50 py-10 px-4`}>
-        <div className="max-w-md mx-auto space-y-6">
+      <div className={`${SHELL} bg-slate-50`}>
+        <RegistrationHero eyebrow={tenantName} title={tournamentName} logoUrl={tenantLogoUrl} compact />
+        <div className="max-w-md mx-auto px-4 -mt-2 pb-14 space-y-6">
           <div>
             <button
               type="button"
@@ -609,12 +615,10 @@ export default function RegistrationFlow({
             >
               ← Back to registration
             </button>
-            {tenantName && <p className="text-sm text-slate-400 mb-1">{tenantName}</p>}
-            <h1 className="text-2xl font-black text-slate-900">{tournamentName}</h1>
-            <p className="text-slate-500 mt-1 text-sm">Support the team without signing up to play.</p>
+            <p className="text-slate-500 text-sm">Support the team without signing up to play.</p>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-5">
             <h2 className="font-bold text-slate-800">Choose an amount</h2>
 
             <div className="grid grid-cols-4 gap-2">
@@ -693,10 +697,9 @@ export default function RegistrationFlow({
   if (step === 'donate_success') {
     const effectiveAmount = donateCustom ? parseFloat(donateCustom) || 0 : donateAmount;
     return (
-      <div className={`${SHELL} flex items-center justify-center bg-slate-50 px-4`}>
-        <div className="max-w-sm w-full text-center space-y-4">
-          <div className="text-6xl">💚</div>
-          <h1 className="text-2xl font-black text-slate-900">Thank You!</h1>
+      <div className={`${SHELL} bg-slate-50`}>
+        <RegistrationHero eyebrow={tenantName} title="Thank You! 💚" logoUrl={tenantLogoUrl} compact />
+        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14 text-center space-y-4">
           <p className="text-slate-600">
             Your donation of <strong>{formatCurrency(effectiveAmount)}</strong> to{' '}
             <strong>{tenantName || tournamentName}</strong> is appreciated.
@@ -713,29 +716,33 @@ export default function RegistrationFlow({
   }
 
   const bracketReady = tournament?.status !== 'registration_open' && tournament?.status !== 'registration_closed';
+  const maxPlayers = settings?.maxPlayers as number | undefined;
+  const heroPills = [
+    ...(maxPlayers != null ? [{ label: 'Spots', value: `${playerCount}/${maxPlayers}` }] : []),
+    { label: 'Entry', value: entranceFee > 0 ? formatCurrency(entranceFee) : 'Free' },
+    ...(bracketReady ? [{ label: '', value: 'Bracket live', live: true }] : []),
+  ];
 
   // ── Main registration form ───────────────────────────────────────────────────
   return (
-    <div className={`${SHELL} bg-slate-50 py-10 px-4`}>
-      <div className="max-w-4xl mx-auto space-y-5">
+    <div className={`${SHELL} bg-slate-50`}>
+      <RegistrationHero eyebrow={tenantName || 'Tournament Registration'} title={tournamentName} logoUrl={tenantLogoUrl} pills={heroPills} />
+
+      <div className="max-w-4xl mx-auto px-4 -mt-4 sm:-mt-6 pb-14 space-y-5">
         {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            {tenantName && <p className="text-sm text-slate-400 mb-1">{tenantName}</p>}
-            <h1 className="text-2xl font-black text-slate-900">{tournamentName}</h1>
-          </div>
-          {bracketReady && (
+        {bracketReady && (
+          <div className="flex justify-end">
             <a
               href={`/t/${slug}/${tournamentId}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+              className="shrink-0 px-4 py-2 rounded-xl border border-slate-200 bg-white shadow-sm text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:shadow transition-all flex items-center gap-1.5"
             >
               View Draw ↗
               <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wide">Live</span>
             </a>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Register tab */}
         {(<>
