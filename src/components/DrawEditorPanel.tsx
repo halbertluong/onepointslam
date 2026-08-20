@@ -5,11 +5,14 @@ import { createClient } from '@/lib/supabase/browser';
 import BracketView from '@/components/BracketView';
 import GenderDot from '@/components/GenderDot';
 import { addPlayersToDraw, persistSeededRedistribution } from '@/lib/tournamentWrites';
-import { generateBracket, rankPlayersForSeeding } from '@/lib/bracket';
+import { generateBracket, rankPlayersForSeeding, nextPowerOf2 } from '@/lib/bracket';
 import type { Match, Player, Tournament, MaxPlayers } from '@/types';
 
-/** Only powers of two: a bracket has 2^n slots, so these are the real sizes. */
-const EXPANDABLE_SIZES: MaxPlayers[] = [8, 16, 32, 64, 128, 256];
+/** The draw sizes offered on the Settings tab — same list here so the rebuild
+ *  control can target any of them, not just powers of two. `generateBracket`
+ *  rounds whichever one is picked up to the nearest power of two of actual
+ *  bracket slots, filling the gap with byes (standard tournament convention). */
+const STANDARD_DRAW_SIZES: MaxPlayers[] = [8, 16, 32, 48, 64, 96, 128, 192, 256];
 const MAX_DRAW = 256;
 
 /** Match id prefix used by whichever generator built this draw, so new rows match. */
@@ -35,9 +38,31 @@ export default function DrawEditorPanel({
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+  const [pendingRebuild, setPendingRebuild] = useState(false);
 
-  const round0 = matches.filter((m) => m.roundIndex === 0).sort((a, b) => a.matchIndex - b.matchIndex);
+  const round0 = matches.filter((m) => m.bracket === 'main' && m.roundIndex === 0).sort((a, b) => a.matchIndex - b.matchIndex);
   const bracketSize = round0.length * 2;
+
+  // What Settings currently says the draw size should be, and what that
+  // actually resolves to in bracket slots once the registered field is
+  // accounted for (generateBracket never builds smaller than the field needs).
+  const configuredDrawSize = tournament.settings?.maxPlayers ?? bracketSize;
+  const [rebuildSize, setRebuildSize] = useState<number>(configuredDrawSize);
+  // Re-sync the picker whenever Settings changes the draw size out from under
+  // us — the recommended "adjust state during render" pattern, not an effect,
+  // so there's no extra render in between.
+  const [syncedDrawSize, setSyncedDrawSize] = useState(configuredDrawSize);
+  if (configuredDrawSize !== syncedDrawSize) {
+    setSyncedDrawSize(configuredDrawSize);
+    setRebuildSize(configuredDrawSize);
+  }
+  const projectedSlots = Math.max(nextPowerOf2(players.length), nextPowerOf2(rebuildSize));
+  // True whenever rebuilding right now, with today's settings and roster,
+  // would produce a different bracket than what's actually on the board —
+  // i.e. a director changed Draw Size (or enough players registered) since
+  // the bracket was last generated.
+  const outOfSyncWithSettings =
+    Math.max(nextPowerOf2(players.length), nextPowerOf2(configuredDrawSize)) !== bracketSize;
 
   // A recorded result is the line we won't cross automatically: reshuffling the
   // draw underneath played matches would invalidate them.
@@ -127,16 +152,21 @@ export default function DrawEditorPanel({
   }
 
   /**
-   * Rebuilds the draw at a larger size so more players fit. This replaces every
-   * match row, so it is only offered while no results have been recorded.
+   * Regenerates the entire bracket from the current roster, current seeds, and
+   * `rebuildSize` (whatever draw size is selected — independent of what the
+   * bracket was last built at). This replaces every match row, so it's only
+   * offered while no results have been recorded, and callers are expected to
+   * have the director confirm first — see `pendingRebuild` below.
    */
-  async function handleExpand(newSize: MaxPlayers) {
+  async function handleRebuild(size: number = rebuildSize) {
     if (hasResults) return;
     setSaving(true);
+    setPendingRebuild(false);
     const supabase = createClient();
     const prefix = idPrefix(matches, tournamentId);
+    const newSettings = { ...tournament.settings, maxPlayers: size as MaxPlayers };
 
-    const generated = generateBracket(players, { ...tournament.settings, maxPlayers: newSize }, prefix);
+    const generated = generateBracket(players, newSettings, prefix);
 
     await supabase.from('matches').delete().eq('tournament_id', tournamentId);
     const { error } = await supabase.from('matches').insert(
@@ -148,25 +178,39 @@ export default function DrawEditorPanel({
         player1_id: m.player1Id,
         player2_id: m.player2Id,
         winner_id: m.winnerId,
+        loser_id: m.loserId ?? null,
         status: m.status,
+        bracket: m.bracket,
         court_number: m.courtNumber ?? null,
       })),
     );
     if (error) {
       setSaving(false);
-      setErr(`Could not expand the bracket: ${error.message}`);
+      setErr(`Could not rebuild the bracket: ${error.message}`);
       return;
     }
-    await supabase
+    const { error: settingsError } = await supabase
       .from('tournaments')
-      .update({ settings: { ...tournament.settings, maxPlayers: newSize } })
+      .update({ settings: newSettings })
       .eq('id', tournamentId);
+    if (settingsError) {
+      setSaving(false);
+      setErr(`Bracket rebuilt, but couldn't save the draw size: ${settingsError.message}`);
+      return;
+    }
 
     setSaving(false);
-    flash(`Bracket expanded to ${newSize} slots and redrawn.`);
+    const slots = Math.max(nextPowerOf2(players.length), nextPowerOf2(size));
+    flash(`Bracket rebuilt at ${slots} slots (${size}-player draw) from current seeds.`);
   }
 
-  const nextSizeUp = EXPANDABLE_SIZES.find((s) => s > bracketSize);
+  /** Skip the confirmation step when there's nothing on the board to lose yet. */
+  function startRebuild(size: number = rebuildSize) {
+    setRebuildSize(size);
+    if (matches.length === 0) { handleRebuild(size); return; }
+    setPendingRebuild(true);
+  }
+
   const atMaxDraw = bracketSize >= MAX_DRAW;
 
   return (
@@ -187,7 +231,7 @@ export default function DrawEditorPanel({
                   ? `${openSlots} open slot${openSlots === 1 ? '' : 's'} available in the first round.`
                   : atMaxDraw
                   ? `The draw is full at ${MAX_DRAW} slots, the largest supported — remove a player to make room.`
-                  : 'The draw is full — expand the bracket to make room.'}
+                  : 'The draw is full — rebuild the bracket at a larger draw size to make room.'}
               </p>
             </div>
             <button
@@ -227,6 +271,27 @@ export default function DrawEditorPanel({
         </div>
       )}
 
+      {/* Settings changed since the bracket was last built */}
+      {outOfSyncWithSettings && !hasResults && (
+        <div className="bg-blue-50 border-2 border-blue-200 rounded-2xl px-6 py-4 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="font-black text-blue-900">Bracket doesn&apos;t match current settings</h3>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Draw Size is set to {configuredDrawSize} in Settings — rebuilding now would produce a{' '}
+              {Math.max(nextPowerOf2(players.length), nextPowerOf2(configuredDrawSize))}-slot bracket, but the
+              current one has {bracketSize} slots.
+            </p>
+          </div>
+          <button
+            onClick={() => startRebuild(configuredDrawSize)}
+            disabled={saving}
+            className="btn-primary px-4 py-2 rounded-xl text-xs font-bold disabled:opacity-50 shrink-0"
+          >
+            🔄 Rebuild to {configuredDrawSize}
+          </button>
+        </div>
+      )}
+
       {/* Draw actions */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-3 flex-wrap">
@@ -247,18 +312,56 @@ export default function DrawEditorPanel({
             >
               🎯 Redistribute by Seeding
             </button>
-            {nextSizeUp && (
-              <button
-                onClick={() => handleExpand(nextSizeUp)}
+            <div className="flex items-center gap-1.5">
+              <select
+                value={rebuildSize}
+                onChange={(e) => setRebuildSize(Number(e.target.value))}
                 disabled={saving || hasResults}
-                title={hasResults ? 'Cannot resize the bracket once matches have been played' : `Rebuild at ${nextSizeUp} slots`}
+                title="Draw size to rebuild the bracket at"
+                className="border border-slate-200 rounded-xl px-2 py-2 text-xs font-semibold text-slate-600 disabled:opacity-40"
+              >
+                {STANDARD_DRAW_SIZES.map((n) => (
+                  <option key={n} value={n}>{n}-player draw</option>
+                ))}
+              </select>
+              <button
+                onClick={() => startRebuild()}
+                disabled={saving || hasResults}
+                title={hasResults ? 'Cannot rebuild the bracket once matches have been played' : 'Regenerate the bracket at this draw size, from current seeds'}
                 className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
               >
-                ⤢ Expand to {nextSizeUp}
+                🔄 Rebuild Bracket
               </button>
-            )}
+            </div>
           </div>
         </div>
+
+        {pendingRebuild && (
+          <div className="px-6 py-4 bg-red-50 border-b-2 border-red-200 space-y-3">
+            <p className="text-sm font-bold text-red-800">⚠️ This will overwrite the current bracket</p>
+            <p className="text-xs text-red-700">
+              Rebuilding regenerates every match from the {players.length} registered player{players.length === 1 ? '' : 's'} and
+              their current seeds, sized to a {projectedSlots}-slot bracket ({rebuildSize}-player draw). The existing
+              bracket ({matches.length} match{matches.length === 1 ? '' : 'es'}) will be permanently replaced — there is no undo.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleRebuild()}
+                disabled={saving}
+                className="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 disabled:opacity-50"
+              >
+                {saving ? 'Rebuilding…' : 'Yes, overwrite and rebuild'}
+              </button>
+              <button
+                onClick={() => setPendingRebuild(false)}
+                disabled={saving}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 text-xs text-slate-500 flex flex-wrap gap-x-4 gap-y-1">
           <span><strong className="text-slate-700">{bracketSize}</strong> bracket slots</span>
