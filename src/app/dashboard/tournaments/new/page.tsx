@@ -169,7 +169,7 @@ export default function NewTournamentPage() {
                 Tournament Date (optional)
               </label>
               <input
-                type="date"
+                type="datetime-local"
                 value={settings.tournamentDate ?? ''}
                 onChange={(e) => updateSettings('tournamentDate', e.target.value || undefined)}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
