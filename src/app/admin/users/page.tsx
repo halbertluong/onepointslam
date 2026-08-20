@@ -49,6 +49,7 @@ export default function AdminUsersPage() {
   const [editing, setEditing] = useState<EditState | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+  const [msgIsError, setMsgIsError] = useState(false);
   const [resending, setResending] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('tenant');
@@ -70,6 +71,7 @@ export default function AdminUsersPage() {
   async function handleImpersonate(email: string, landingPath: string) {
     setImpersonating(email);
     setMsg('');
+    setMsgIsError(false);
     // Open window immediately (in the click handler) so browsers don't block it as a popup
     const newTab = window.open('', '_blank');
     if (newTab) newTab.document.write('<p style="font-family:sans-serif;padding:2rem;color:#64748b">Signing in…</p>');
@@ -85,10 +87,12 @@ export default function AdminUsersPage() {
       } else {
         newTab?.close();
         setMsg(`Error: ${data.error ?? JSON.stringify(data)}`);
+        setMsgIsError(true);
       }
     } catch (e) {
       newTab?.close();
       setMsg(`Failed: ${e}`);
+      setMsgIsError(true);
     }
     setImpersonating(null);
   }
@@ -96,6 +100,7 @@ export default function AdminUsersPage() {
   async function handleResendConfirmation(email: string) {
     setResending(email);
     setMsg('');
+    setMsgIsError(false);
     try {
       const res = await fetch('/api/admin/resend-confirmation', {
         method: 'POST',
@@ -104,8 +109,10 @@ export default function AdminUsersPage() {
       });
       const data = await res.json();
       setMsg(res.ok ? `Confirmation sent to ${email}.` : `Error: ${data.error ?? 'Failed'}`);
+      setMsgIsError(!res.ok);
     } catch (e) {
       setMsg(`Failed: ${e}`);
+      setMsgIsError(true);
     }
     setResending(null);
     setTimeout(() => setMsg(''), 5000);
@@ -122,6 +129,7 @@ export default function AdminUsersPage() {
     setSaving(false);
     setEditing(null);
     setMsg('User updated.');
+    setMsgIsError(false);
     load();
     setTimeout(() => setMsg(''), 3000);
   }
@@ -211,7 +219,7 @@ export default function AdminUsersPage() {
       </div>
 
       {msg && (
-        <p className="text-sm bg-emerald-50 text-emerald-700 rounded-xl p-3">{msg}</p>
+        <p className={`text-sm rounded-xl p-3 ${msgIsError ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{msg}</p>
       )}
 
       {/* Search + sort */}

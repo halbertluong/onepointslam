@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Outfit, Inter } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/next';
+import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import './globals.css';
 
 const outfit = Outfit({
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`h-full ${outfit.variable} ${inter.variable}`}>
       <body className="min-h-full flex flex-col antialiased">
+        <ImpersonationBanner />
         {children}
         <Analytics />
       </body>
