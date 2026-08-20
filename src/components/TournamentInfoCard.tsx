@@ -100,7 +100,7 @@ export default function TournamentInfoCard({
     : null;
 
   const tournamentDateFmt = tournamentDate
-    ? new Date(tournamentDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+    ? new Date(tournamentDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
     : null;
 
   return (

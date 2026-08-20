@@ -196,7 +196,7 @@ export default async function DashboardPage() {
             const fillPct = cap > 0 ? Math.round((t.player_count / cap) * 100) : 0;
             const isLive = t.status === 'live_play';
             const date = s.tournamentDate
-              ? new Date(s.tournamentDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              ? new Date(s.tournamentDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
               : s.registrationDeadline
                 ? `Deadline ${new Date(s.registrationDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
                 : null;
@@ -295,7 +295,7 @@ export default async function DashboardPage() {
               const price = s.ticketPriceForFundraiser ?? 0;
               const revenue = calcRaised(t.player_count, price, t.donation_total);
               const date = s.tournamentDate
-                ? new Date(s.tournamentDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                ? new Date(s.tournamentDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                 : new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
               return (
                 <div key={t.id} className="flex items-center gap-4 px-6 py-3">
