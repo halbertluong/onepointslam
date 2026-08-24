@@ -719,15 +719,15 @@ function DirectorView({
   onReverseMatch: (matchId: string) => void;
   onUpdateConfig: (patch: Partial<TournamentConfig>) => void;
 }) {
-  const [tab, setTab] = useState<DirectorSubView>('bracket');
+  const [tab, setTab] = useState<DirectorSubView>('players');
 
   const totalRaised = players.length * config.entryFee;
   const completedMatches = matches.filter((m) => m.status === 'finalized' || m.status === 'walkover').length;
 
   const TABS: { id: DirectorSubView; label: string }[] = [
-    { id: 'bracket', label: 'Bracket' },
-    { id: 'draw', label: 'Draw Editor' },
     { id: 'players', label: `Players (${players.length})` },
+    { id: 'draw', label: 'Draw Editor' },
+    { id: 'bracket', label: 'Bracket' },
     { id: 'referee', label: 'Referee Queue' },
     { id: 'settings', label: 'Settings' },
   ];
