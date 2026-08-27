@@ -7,6 +7,22 @@ export interface PaymentIntentResult {
 }
 
 /**
+ * Stripe's Node SDK defaults to a `https.Agent`-based HTTP client, which
+ * fails intermittently on Vercel's serverless runtime with
+ * "An error occurred with our connection to Stripe" after exhausting its
+ * retries. The fetch-based client avoids that failure mode, so every place
+ * that talks to Stripe should construct its client through here.
+ */
+export async function createStripeClient(key: string, apiVersion?: string) {
+  const { default: Stripe } = await import('stripe');
+  return new Stripe(key, {
+    httpClient: Stripe.createFetchHttpClient(),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ...(apiVersion ? { apiVersion: apiVersion as any } : {}),
+  });
+}
+
+/**
  * Every tenant shares this one platform Stripe account — there is no per-tenant
  * Stripe Connect account to onboard. Money for every tenant lands in the same
  * place; `metadata` is what ties a charge back to its tenant, tournament, and
@@ -27,7 +43,7 @@ export async function createPaymentIntent(
     };
   }
 
-  const stripe = await import('stripe').then((m) => new m.default(STRIPE_SECRET_KEY!));
+  const stripe = await createStripeClient(STRIPE_SECRET_KEY);
 
   const intent = await stripe.paymentIntents.create({
     amount: amountCents,

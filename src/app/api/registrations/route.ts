@@ -82,9 +82,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify the PaymentIntent server-side via Stripe API
-    const { default: Stripe } = await import('stripe');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const stripe = new Stripe(stripeKey, { apiVersion: '2025-04-30' as any });
+    const { createStripeClient } = await import('@/lib/stripe');
+    const stripe = await createStripeClient(stripeKey, '2025-04-30');
 
     let pi;
     try {
