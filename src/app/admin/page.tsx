@@ -11,7 +11,6 @@ interface TenantRow {
   slug: string;
   primary_color: string;
   platform_fee: number | null;
-  stripe_connect_account_id: string | null;
   created_at: string;
 }
 
@@ -44,6 +43,7 @@ export default function AdminOverviewPage() {
   const [tenants, setTenants] = useState<TenantRow[]>([]);
   const [tournaments, setTournaments] = useState<TournamentRow[]>([]);
   const [totalPlayers, setTotalPlayers] = useState(0);
+  const [unpaidByTenant, setUnpaidByTenant] = useState<Record<string, number>>({});
   const [tenantFees, setTenantFees] = useState<Record<string, string>>({});
   const [savingTenant, setSavingTenant] = useState<string | null>(null);
   const [savedTenant, setSavedTenant] = useState<string | null>(null);
@@ -57,20 +57,39 @@ export default function AdminOverviewPage() {
       supabase.from('players').select('id', { count: 'exact', head: true }),
     ]);
 
-    // Fetch player counts per tournament
+    // Fetch player counts per tournament, plus payment_status so we can flag
+    // registrants who got through without paying — one shared Stripe account
+    // means the only way to catch that is by watching this table, not Stripe.
     const tournamentRows = tm ?? [];
     if (tournamentRows.length > 0) {
-      const { data: counts } = await supabase
+      const { data: playerRows } = await supabase
         .from('players')
-        .select('tournament_id')
+        .select('tournament_id, payment_status')
         .in('tournament_id', tournamentRows.map((r) => r.id));
       const countMap: Record<string, number> = {};
-      (counts ?? []).forEach((r: { tournament_id: string }) => {
+      const unpaidMap: Record<string, number> = {};
+      const feeByTournament: Record<string, number> = {};
+      tournamentRows.forEach((r) => {
+        feeByTournament[r.id] = (r.settings?.ticketPriceForFundraiser as number | undefined) ?? 0;
+      });
+      (playerRows ?? []).forEach((r: { tournament_id: string; payment_status: string | null }) => {
         countMap[r.tournament_id] = (countMap[r.tournament_id] ?? 0) + 1;
+        if (feeByTournament[r.tournament_id] > 0 && r.payment_status !== 'paid') {
+          unpaidMap[r.tournament_id] = (unpaidMap[r.tournament_id] ?? 0) + 1;
+        }
       });
       setTournaments(tournamentRows.map((r) => ({ ...r, player_count: countMap[r.id] ?? 0 })));
+
+      const unpaidByTenantMap: Record<string, number> = {};
+      tournamentRows.forEach((r) => {
+        if (unpaidMap[r.id]) {
+          unpaidByTenantMap[r.tenant_id] = (unpaidByTenantMap[r.tenant_id] ?? 0) + unpaidMap[r.id];
+        }
+      });
+      setUnpaidByTenant(unpaidByTenantMap);
     } else {
       setTournaments([]);
+      setUnpaidByTenant({});
     }
 
     setTenants(t ?? []);
@@ -110,12 +129,15 @@ export default function AdminOverviewPage() {
     return acc + fee * (tm.player_count ?? 0);
   }, 0);
 
+  const totalUnpaid = Object.values(unpaidByTenant).reduce((a, b) => a + b, 0);
+
   const stats = [
     { label: 'Tenants', value: tenants.length, sub: 'schools on platform' },
     { label: 'Live Now', value: live.length, sub: 'tournaments in play', accent: live.length > 0 },
     { label: 'Active Draws', value: active.length, sub: 'not yet completed' },
     { label: 'Registered Players', value: totalPlayers, sub: 'across all tournaments' },
     { label: 'Platform Revenue', value: formatCurrency(platformRevenue), sub: 'est. from registrations' },
+    { label: 'Unpaid Entries', value: totalUnpaid, sub: 'paid tournaments, no payment on file', accent: totalUnpaid > 0 },
   ];
 
   return (
@@ -126,7 +148,7 @@ export default function AdminOverviewPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {stats.map((s) => (
           <div key={s.label} className={`bg-white rounded-2xl border p-4 ${s.accent ? 'border-red-300 bg-red-50' : 'border-slate-200'}`}>
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">{s.label}</p>
@@ -251,10 +273,13 @@ export default function AdminOverviewPage() {
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0">
-                    {t.stripe_connect_account_id ? (
-                      <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold">Stripe ✓</span>
-                    ) : (
-                      <span className="px-2.5 py-1 bg-slate-100 text-slate-400 rounded-full text-xs">No Stripe</span>
+                    {unpaidByTenant[t.id] > 0 && (
+                      <span
+                        className="px-2.5 py-1 bg-red-100 text-red-700 rounded-full text-xs font-bold"
+                        title="Registrants on a paid tournament whose payment never came through — check for a Stripe misconfiguration or a director entry that was never collected."
+                      >
+                        ⚠ {unpaidByTenant[t.id]} unpaid
+                      </span>
                     )}
                     {tenantTournaments.length > 0 && (
                       <button

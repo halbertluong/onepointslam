@@ -524,6 +524,7 @@ export default function TournamentAdminPage() {
           players={players}
           matches={matches}
           bracketGenerated={bracketGenerated}
+          entranceFee={tournament.settings?.ticketPriceForFundraiser ?? 0}
           onSaved={load}
         />
       )}
