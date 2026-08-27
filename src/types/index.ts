@@ -92,7 +92,7 @@ export interface Player {
   utrRating?: number;
   age?: number;
   status: PlayerStatus;
-  paymentStatus?: 'pending' | 'paid' | 'failed';
+  paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded';
   stripePaymentIntentId?: string;
 }
 
@@ -109,7 +109,7 @@ export function mapPlayer(row: Record<string, unknown>): Player {
     utrRating: (row.utr_rating ?? row.utrRating) as number | undefined,
     age: row.age as number | undefined,
     status: (row.status as PlayerStatus) ?? 'registered',
-    paymentStatus: (row.payment_status ?? row.paymentStatus) as 'pending' | 'paid' | 'failed' | undefined,
+    paymentStatus: (row.payment_status ?? row.paymentStatus) as 'pending' | 'paid' | 'failed' | 'refunded' | undefined,
     stripePaymentIntentId: (row.stripe_payment_intent_id ?? row.stripePaymentIntentId) as string | undefined,
   };
 }

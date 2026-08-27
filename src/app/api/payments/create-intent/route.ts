@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  let body: { tournamentId?: string; directorEntry?: boolean };
+  let body: { tournamentId?: string; directorEntry?: boolean; fullName?: string; email?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
   const { tournamentId } = body;
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   // Look up the fee server-side — never trust caller-supplied amounts
   const { data: tournament } = await supabase
     .from('tournaments')
-    .select('settings, status, tenant_id, tenants(platform_fee, stripe_connect_account_id)')
+    .select('settings, status, tenant_id, tenants(display_name, platform_fee)')
     .eq('id', tournamentId)
     .single();
 
@@ -45,17 +45,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'This tournament has no entry fee' }, { status: 400 });
   }
 
-  const tenantRaw = tournament.tenants as { platform_fee?: number; stripe_connect_account_id?: string } | null;
+  const tenantRaw = tournament.tenants as { display_name?: string; platform_fee?: number } | null;
   const platformFee = (settings?.systemTechFee as number) ?? tenantRaw?.platform_fee ?? 0;
   const totalCents = Math.round((entranceFee + platformFee) * 100);
-  const tenantConnectAccountId = tenantRaw?.stripe_connect_account_id ?? undefined;
-  const applicationFeeCents = tenantConnectAccountId ? Math.round(platformFee * 100) : 0;
+  const tenantId = (tournament as Record<string, unknown>).tenant_id as string;
 
   try {
     const { createPaymentIntent } = await import('@/lib/stripe');
-    const result = await createPaymentIntent(totalCents, tenantConnectAccountId, applicationFeeCents, {
+    // Metadata is what makes one shared Stripe account reconcilable across every
+    // tenant — it's how a charge in the Stripe dashboard gets tied back to the
+    // school, tournament, and registrant it belongs to.
+    const result = await createPaymentIntent(totalCents, {
+      tenant_id: tenantId,
+      tenant_name: tenantRaw?.display_name ?? '',
       tournament_id: tournamentId,
+      ...(body.fullName ? { registrant_name: body.fullName } : {}),
+      ...(body.email ? { registrant_email: body.email } : {}),
       ...(user ? { user_id: user.id } : {}),
+      ...(isDirector ? { director_entry: 'true' } : {}),
     });
     return NextResponse.json(result);
   } catch (err) {

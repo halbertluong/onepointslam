@@ -11,17 +11,37 @@ const PLAYER_STATUS_STYLE: Record<string, string> = {
   registered: 'bg-slate-100 text-slate-600',
 };
 
+const PAYMENT_STATUS_STYLE: Record<string, string> = {
+  paid: 'bg-emerald-100 text-emerald-700',
+  pending: 'bg-amber-100 text-amber-800',
+  failed: 'bg-red-100 text-red-700',
+  refunded: 'bg-slate-200 text-slate-600',
+};
+
+const PAYMENT_STATUS_LABEL: Record<string, string> = {
+  paid: 'Paid',
+  pending: 'Unpaid',
+  failed: 'Failed',
+  refunded: 'Refunded',
+};
+
 export default function PlayersPanel({
   players,
   matches,
   bracketGenerated,
+  /** The tournament's entry fee — when 0, this is a free event and there's
+   *  nothing to reconcile, so the Payment column is hidden entirely. */
+  entranceFee = 0,
   onSaved,
 }: {
   players: Player[];
   matches: Match[];
   bracketGenerated: boolean;
+  entranceFee?: number;
   onSaved: () => void;
 }) {
+  const showPayments = entranceFee > 0;
+  const unpaidPlayers = showPayments ? players.filter((p) => p.paymentStatus !== 'paid') : [];
   const [seedEdits, setSeedEdits] = useState<Record<string, string>>(() => {
     const m: Record<string, string> = {};
     players.forEach((p) => { m[p.id] = p.seedRating != null ? String(p.seedRating) : ''; });
@@ -98,6 +118,23 @@ export default function PlayersPanel({
       {msg && <p className="text-sm bg-emerald-50 text-emerald-700 rounded-xl p-3">{msg}</p>}
       {err && <p className="text-sm bg-red-50 text-red-700 rounded-xl p-3">{err}</p>}
 
+      {unpaidPlayers.length > 0 && (
+        <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 flex items-start gap-3">
+          <span className="text-2xl shrink-0" aria-hidden>💳</span>
+          <div className="min-w-0">
+            <p className="font-black text-amber-900">
+              {unpaidPlayers.length} registrant{unpaidPlayers.length === 1 ? '' : 's'} without a payment on file
+            </p>
+            <p className="text-sm text-amber-800 mt-0.5">
+              <strong>{unpaidPlayers.map((p) => p.fullName).join(', ')}</strong>{' '}
+              {unpaidPlayers.length === 1 ? 'is' : 'are'} registered for a paid tournament but haven&apos;t
+              paid. This is expected for offline entries recorded as unpaid — otherwise, verify the
+              Stripe payment.
+            </p>
+          </div>
+        </div>
+      )}
+
       {unplaced.length > 0 && (
         <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 flex items-start gap-3">
           <span className="text-2xl shrink-0" aria-hidden>⚠️</span>
@@ -137,11 +174,12 @@ export default function PlayersPanel({
                 <th className="px-4 py-3 text-left">Seed</th>
                 <th className="px-4 py-3 text-left">Tier</th>
                 <th className="px-4 py-3 text-left">Status</th>
+                {showPayments && <th className="px-4 py-3 text-left">Payment</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {players.length === 0 && (
-                <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
+                <tr><td colSpan={showPayments ? 9 : 8} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
               )}
               {sorted.map((p, i) => {
                 const missing = bracketGenerated && !placedIds.has(p.id);
@@ -184,6 +222,13 @@ export default function PlayersPanel({
                         {status.label}
                       </span>
                     </td>
+                    {showPayments && (
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${PAYMENT_STATUS_STYLE[p.paymentStatus ?? 'pending']}`}>
+                          {PAYMENT_STATUS_LABEL[p.paymentStatus ?? 'pending']}
+                        </span>
+                      </td>
+                    )}
                   </tr>
                 );
               })}

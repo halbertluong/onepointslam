@@ -367,18 +367,32 @@ export default function RegistrationFlow({
   }
 
   async function handleRegister(data: PlayerFormData): Promise<{ error?: string }> {
-    // When there is an entry fee and Stripe is configured, collect payment first
-    if (entranceFee > 0 && stripePromise) {
+    if (entranceFee > 0) {
+      // Stripe.js failed to load (almost always a missing/misconfigured
+      // NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) — fail loudly here rather than
+      // silently falling through to an unpaid registration. That silent
+      // fallback is exactly the kind of defect that lets someone register
+      // without paying and nobody notices.
+      if (!stripePromise) {
+        return { error: 'Card payments are not available right now — the site is missing its Stripe configuration. Please contact the tournament director.' };
+      }
+
       const res = await fetch('/api/payments/create-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tournamentId, ...(directorEntry ? { directorEntry: true } : {}) }),
+        body: JSON.stringify({
+          tournamentId,
+          fullName: data.fullName,
+          email: data.email,
+          ...(directorEntry ? { directorEntry: true } : {}),
+        }),
       });
       const json = await res.json() as { clientSecret?: string; mock?: boolean; error?: string };
       if (!res.ok) return { error: json.error ?? 'Failed to set up payment. Please try again.' };
 
       if (json.mock) {
-        // Dev mode: Stripe not configured — skip payment
+        // Local dev only: no STRIPE_SECRET_KEY set, so the server mocked the
+        // intent — never happens in production (createPaymentIntent throws there).
         return insertPlayer(data, null);
       }
 
@@ -390,7 +404,7 @@ export default function RegistrationFlow({
       return {};
     }
 
-    // No fee or Stripe not configured
+    // No entry fee for this tournament
     return insertPlayer(data, null);
   }
 
