@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createStripeClient } from '@/lib/stripe';
 
-// Must be imported dynamically to avoid issues with Edge / Node runtime differences
 async function getStripe() {
-  const { default: Stripe } = await import('stripe');
-  return new Stripe(process.env.STRIPE_SECRET_KEY ?? '', {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    apiVersion: '2025-04-30' as any,
-  });
+  return createStripeClient(process.env.STRIPE_SECRET_KEY ?? '', '2025-04-30');
 }
 
 // Tell Next.js not to parse the body — Stripe signature verification requires the raw bytes

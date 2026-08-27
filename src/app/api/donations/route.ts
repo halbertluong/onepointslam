@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { createStripeClient } from '@/lib/stripe';
 
 // No auth required — anonymous donations are intentional. The Stripe PI must be succeeded
 // and bound to the correct tournament_id via metadata, which is the only gate we need.
@@ -15,9 +16,7 @@ export async function POST(req: NextRequest) {
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeKey) return NextResponse.json({ error: 'Payment processing not configured' }, { status: 500 });
 
-  const { default: Stripe } = await import('stripe');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const stripe = new Stripe(stripeKey, { apiVersion: '2025-04-30' as any });
+  const stripe = await createStripeClient(stripeKey, '2025-04-30');
 
   let pi;
   try {
