@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS: TournamentSettings = {
   maxPlayers: 32,
   bracketFormat: 'single_elimination',
   ticketPriceForFundraiser: 20,
+  allowDonations: true,
   systemTechFee: DEFAULT_PLATFORM_FEE,
   serveRuleProfile: 'one_serve_sudden_death',
   serverDetermination: 'random_coin_toss',
@@ -333,6 +334,22 @@ export default function NewTournamentPage() {
               </button>
             )}
           </div>
+
+          <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3.5 cursor-pointer hover:bg-slate-50 transition-colors">
+            <input
+              type="checkbox"
+              checked={settings.allowDonations !== false}
+              onChange={(e) => updateSettings('allowDonations', e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-slate-700">Offer a Donate Link on the Registration Page</span>
+              <span className="block text-xs text-slate-400 mt-0.5">
+                Lets visitors who aren&apos;t playing chip in instead. Leave it unchecked to ask for
+                sign-ups only — you can change this later from the Registration tab.
+              </span>
+            </span>
+          </label>
         </div>
 
         {error && (

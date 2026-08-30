@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { useRouter } from 'next/navigation';
 import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
+import { donationsAllowed } from '@/lib/donations';
 import PlayerRegistrationForm, { type PlayerFormData } from '@/components/PlayerRegistrationForm';
 import TournamentInfoCard from '@/components/TournamentInfoCard';
 import RegistrationHero from '@/components/RegistrationHero';
@@ -448,6 +449,9 @@ export default function RegistrationFlow({
 
   const settings = tournament?.settings as Record<string, unknown> | null;
   const entranceFee = (settings?.ticketPriceForFundraiser as number) ?? 0;
+  // Directors who don't want a donation ask alongside sign-up switch this off;
+  // every route into the donate step is gated on it, and so is the server.
+  const donateEnabled = donationsAllowed(settings);
   const tenantRecord = tournament?.tenants as Record<string, unknown> | null;
   const tenantName = tenantRecord?.display_name as string ?? '';
   const tenantLogoUrl = tenantRecord?.logo_url as string | undefined;
@@ -477,12 +481,14 @@ export default function RegistrationFlow({
               >
                 View Bracket
               </button>
-              <button
-                onClick={() => setStep('donate')}
-                className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2"
-              >
-                Donate to support the team
-              </button>
+              {donateEnabled && (
+                <button
+                  onClick={() => setStep('donate')}
+                  className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2"
+                >
+                  Donate to support the team
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -615,7 +621,10 @@ export default function RegistrationFlow({
   }
 
   // ── Donation flow ────────────────────────────────────────────────────────────
-  if (step === 'donate') {
+  // Gated on the setting as well as on the entry points: a director can switch
+  // donations off while someone is sat on the page, and this render is what
+  // that visitor would otherwise still be looking at.
+  if (step === 'donate' && donateEnabled) {
     const effectiveAmount = donateCustom ? parseFloat(donateCustom) || 0 : donateAmount;
     return (
       <div className={`${SHELL} bg-slate-50`}>
@@ -783,7 +792,7 @@ export default function RegistrationFlow({
             serverDetermination: settings?.serverDetermination as string | undefined,
             receivingSideSelection: settings?.receivingSideSelection as string | undefined,
           }}
-          onDonate={() => setStep('donate')}
+          onDonate={donateEnabled ? () => setStep('donate') : undefined}
         />
 
         {currentUser && (
@@ -818,7 +827,7 @@ export default function RegistrationFlow({
             onSignIn: handleWelcomeBackSignIn,
             onDismiss: () => { setWelcomeBackVisible(false); setWelcomeBackError(''); },
           } : undefined}
-          onDonate={() => setStep('donate')}
+          onDonate={donateEnabled ? () => setStep('donate') : undefined}
           onSubmit={handleRegister}
         />
         </>)}
