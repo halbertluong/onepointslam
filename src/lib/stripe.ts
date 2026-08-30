@@ -7,13 +7,31 @@ export interface PaymentIntentResult {
 }
 
 /**
- * Stripe's Node SDK defaults to a `https.Agent`-based HTTP client, which
- * fails intermittently on Vercel's serverless runtime with
- * "An error occurred with our connection to Stripe" after exhausting its
- * retries. The fetch-based client avoids that failure mode, so every place
- * that talks to Stripe should construct its client through here.
+ * A secret key that isn't sendable as an HTTP header fails in a badly
+ * misleading way: the header can't be encoded, so `fetch` throws before any
+ * request goes out, and the SDK reports that as
+ * "An error occurred with our connection to Stripe. Request was retried 2
+ * times." — which reads like a network outage rather than a bad key.
+ *
+ * The usual cause is copying the key out of the Stripe dashboard while it is
+ * still masked, capturing the bullet characters (•, U+2022) instead of the
+ * key. Checking for non-ASCII up front turns a day of chasing phantom network
+ * problems into one obvious error message.
  */
+function assertKeyIsSendable(key: string): void {
+  const bad = [...key].find((ch) => ch.charCodeAt(0) > 255);
+  if (bad) {
+    throw new Error(
+      `STRIPE_SECRET_KEY contains a non-ASCII character (${JSON.stringify(bad)}), so it cannot be ` +
+        'sent as an HTTP header. It is most likely a masked value copied from the Stripe ' +
+        'dashboard rather than the real key — re-copy it with "Reveal key" first.',
+    );
+  }
+}
+
+/** Every Stripe client is built here so key validation can't be skipped. */
 export async function createStripeClient(key: string, apiVersion?: string) {
+  assertKeyIsSendable(key);
   const { default: Stripe } = await import('stripe');
   return new Stripe(key, {
     httpClient: Stripe.createFetchHttpClient(),
