@@ -50,6 +50,11 @@ export interface TournamentSettings {
    * generated / live play already started), without reopening any of the
    * status-gated director tooling (Draw Editor, Referee Queue, etc). */
   allowLateRegistration?: boolean;
+  /** Whether the public registration page offers the direct "Donate" link
+   * alongside signing up. Opt-out: omitted means the link is shown, so
+   * tournaments created before this setting existed keep the donate path they
+   * already had. Only an explicit false hides it. */
+  allowDonations?: boolean;
   numberOfCourts?: number;
   tournamentDate?: string;
   prizePlaces?: PrizePlace[];

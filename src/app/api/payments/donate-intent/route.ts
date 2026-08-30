@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createPaymentIntent } from '@/lib/stripe';
+import { donationsAllowed } from '@/lib/donations';
 
 export async function POST(req: NextRequest) {
   let body: { amountCents?: number; tournamentId?: string };
@@ -19,10 +20,21 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: tournament } = await supabase
     .from('tournaments')
-    .select('tenant_id, tenants(display_name)')
+    .select('tenant_id, settings, tenants(display_name)')
     .eq('id', tournamentId)
     .single();
   const tenantRaw = tournament?.tenants as { display_name?: string } | null;
+
+  // A director who has turned the donate link off doesn't want donations taken
+  // at all — hiding the button isn't enough on its own, since a page loaded
+  // before the switch still has one. Recording an already-succeeded donation
+  // (/api/donations) stays open on purpose: money taken must still be booked.
+  if (!donationsAllowed(tournament?.settings as Record<string, unknown> | null)) {
+    return NextResponse.json(
+      { error: 'Donations are not being accepted for this tournament.' },
+      { status: 403 },
+    );
+  }
 
   try {
     const result = await createPaymentIntent(amountCents, {

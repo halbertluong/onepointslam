@@ -632,6 +632,7 @@ export default function TournamentAdminPage() {
           tenantSlug={tenantSlug}
           playerCount={players.length}
           onRegistered={load}
+          onSaveSettings={(patch) => handleSaveSettings(patch)}
         />
       )}
 
@@ -740,6 +741,7 @@ function SettingsEditor({
   const [receivingSide, setReceivingSide] = useState<Tournament['settings']['receivingSideSelection']>(s?.receivingSideSelection ?? 'server_choice');
   const [prizePlaces, setPrizePlaces] = useState(s?.prizePlaces ?? []);
   const [allowLateRegistration, setAllowLateRegistration] = useState(s?.allowLateRegistration ?? false);
+  const [allowDonations, setAllowDonations] = useState(s?.allowDonations !== false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -759,6 +761,7 @@ function SettingsEditor({
     patch.receivingSideSelection = receivingSide;
     patch.prizePlaces = prizePlaces.length > 0 ? prizePlaces : undefined;
     patch.allowLateRegistration = allowLateRegistration;
+    patch.allowDonations = allowDonations;
     patch.bracketFormat = bracketFormat;
     await onSave(patch, name);
   }
@@ -932,6 +935,23 @@ function SettingsEditor({
           ticketPrice={parseFloat(ticketPrice) || 0}
           onChange={setPrizePlaces}
         />
+
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3.5 cursor-pointer hover:bg-slate-50 transition-colors">
+          <input
+            type="checkbox"
+            checked={allowDonations}
+            onChange={(e) => setAllowDonations(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300"
+          />
+          <span>
+            <span className="block text-sm font-semibold text-slate-700">Show Donate Link on Registration Page</span>
+            <span className="block text-xs text-slate-400 mt-0.5">
+              Offers visitors a &ldquo;Donate to support the team&rdquo; option alongside signing up.
+              Turn it off and the registration page asks for sign-ups only — donations already
+              received still count toward the fundraising total.
+            </span>
+          </span>
+        </label>
       </div>
 
       {/* Match rules */}
