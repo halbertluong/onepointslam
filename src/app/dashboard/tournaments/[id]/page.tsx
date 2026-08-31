@@ -18,6 +18,7 @@ import { persistReversal } from '@/lib/tournamentWrites';
 import type { Tournament, Player, Match } from '@/types';
 import { mapPlayer, mapMatch } from '@/types';
 import { calcRaised, formatCurrency } from '@/lib/pricing';
+import { toDateTimeLocalValue } from '@/lib/dates';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
 import { MATCH_STATUS_ORDER, MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
@@ -741,8 +742,10 @@ function SettingsEditor({
   const [ticketPrice, setTicketPrice] = useState(String(s?.ticketPriceForFundraiser ?? ''));
   const [maxPlayers, setMaxPlayers] = useState(String(s?.maxPlayers ?? 32));
   const [bracketFormat, setBracketFormat] = useState<Tournament['settings']['bracketFormat']>(s?.bracketFormat ?? 'single_elimination');
-  const [tournamentDate, setTournamentDate] = useState(s?.tournamentDate ?? '');
-  const [deadline, setDeadline] = useState(s?.registrationDeadline ?? '');
+  // Normalised, not raw: a datetime-local input renders a date-only value as
+  // blank, and saving from there would wipe the date the public page shows.
+  const [tournamentDate, setTournamentDate] = useState(toDateTimeLocalValue(s?.tournamentDate));
+  const [deadline, setDeadline] = useState(toDateTimeLocalValue(s?.registrationDeadline));
   const [minReg, setMinReg] = useState(String(s?.minimumRegistrants ?? ''));
   const [courts, setCourts] = useState(String(s?.numberOfCourts ?? ''));
   const [serveRule, setServeRule] = useState<Tournament['settings']['serveRuleProfile']>(s?.serveRuleProfile ?? 'one_serve_sudden_death');

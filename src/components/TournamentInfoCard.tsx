@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/pricing';
+import { formatStoredDate, parseStoredDate } from '@/lib/dates';
 
 interface PrizePlace {
   place: number;
@@ -53,8 +54,10 @@ function useCountdown(deadline: string | undefined) {
 
   useEffect(() => {
     if (!deadline) return;
+    const closesAt = parseStoredDate(deadline);
+    if (!closesAt) return;
     function tick() {
-      const diff = new Date(deadline!).getTime() - Date.now();
+      const diff = closesAt!.getTime() - Date.now();
       if (diff <= 0) { setTimeLeft({ days: 0, hours: 0, mins: 0 }); return; }
       const totalMins = Math.floor(diff / 60000);
       const days = Math.floor(totalMins / 1440);
@@ -95,13 +98,9 @@ export default function TournamentInfoCard({
 
   const topPrize = prizePlaces.find((p) => p.place === 1);
 
-  const deadlineDate = registrationDeadline
-    ? new Date(registrationDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : null;
+  const deadlineDate = formatStoredDate(registrationDeadline, { month: 'short', day: 'numeric', year: 'numeric' });
 
-  const tournamentDateFmt = tournamentDate
-    ? new Date(tournamentDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-    : null;
+  const tournamentDateFmt = formatStoredDate(tournamentDate, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
