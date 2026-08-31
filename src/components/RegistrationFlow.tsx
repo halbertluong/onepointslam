@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/browser';
 import { useRouter } from 'next/navigation';
 import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
 import { donationsAllowed } from '@/lib/donations';
+import { tournamentPath } from '@/lib/slugs';
 import PlayerRegistrationForm, { type PlayerFormData } from '@/components/PlayerRegistrationForm';
 import TournamentInfoCard from '@/components/TournamentInfoCard';
 import RegistrationHero from '@/components/RegistrationHero';
@@ -196,12 +197,16 @@ type Step = 'loading' | 'form' | 'payment' | 'success' | 'closed' | 'already_reg
 export default function RegistrationFlow({
   slug,
   tournamentId,
+  tournamentSlug,
   embedded = false,
   onRegistered,
   directorEntry = false,
 }: {
   slug: string;
   tournamentId: string;
+  /** Readable URL segment for the links back to the bracket. Falls back to the
+   *  id, which the public routes still resolve, when a caller has only that. */
+  tournamentSlug?: string;
   /** Drop the full-page shell so the flow can sit inside a dashboard tab. */
   embedded?: boolean;
   /** Fired after a registration or donation completes, so a host can refresh. */
@@ -214,6 +219,7 @@ export default function RegistrationFlow({
   const router = useRouter();
   // Embedded, the surrounding page owns the height; standalone, this is the page.
   const SHELL = embedded ? '' : 'min-h-screen';
+  const bracketPath = tournamentPath(slug, tournamentSlug || tournamentId);
 
   const [step, setStep] = useState<Step>('loading');
   const [tournament, setTournament] = useState<Record<string, unknown> | null>(null);
@@ -476,7 +482,7 @@ export default function RegistrationFlow({
             </p>
             <div className="flex flex-col gap-2 pt-1">
               <button
-                onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
+                onClick={() => router.push(bracketPath)}
                 className="btn-secondary px-6 py-3 rounded-xl font-bold text-sm"
               >
                 View Bracket
@@ -508,7 +514,7 @@ export default function RegistrationFlow({
               You&apos;re already signed up for <strong>{tournamentName}</strong>.
             </p>
             <button
-              onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
+              onClick={() => router.push(bracketPath)}
               className="btn-primary px-6 py-3 rounded-xl font-bold text-sm"
             >
               View Bracket
@@ -756,7 +762,7 @@ export default function RegistrationFlow({
         {bracketReady && (
           <div className="flex justify-end">
             <a
-              href={`/t/${slug}/${tournamentId}`}
+              href={bracketPath}
               target="_blank"
               rel="noopener noreferrer"
               className="shrink-0 px-4 py-2 rounded-xl border border-slate-200 bg-white shadow-sm text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:shadow transition-all flex items-center gap-1.5"

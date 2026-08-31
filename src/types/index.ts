@@ -9,6 +9,7 @@ export interface AppUser {
 
 export interface Tenant {
   id: string;
+  /** Readable URL segment for the program: /t/<slug> */
   slug: string;
   displayName: string;
   logoUrl?: string;
@@ -77,6 +78,8 @@ export interface Tournament {
   id: string;
   tenantId: string;
   name: string;
+  /** Readable URL segment, unique within the tenant: /t/<tenant>/<slug>/register */
+  slug: string;
   status: TournamentStatus;
   settings: TournamentSettings;
   registrationCloseReason?: RegistrationCloseReason;
