@@ -467,7 +467,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title={tournamentName || 'Registration'} logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14">
+        <div className="relative z-10 max-w-sm mx-auto px-4 -mt-2 pb-14">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-7 text-center space-y-4">
             <div className="text-5xl">🔒</div>
             <h2 className="text-xl font-black text-slate-900">Registration Closed</h2>
@@ -500,7 +500,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title={tournamentName || 'Registration'} logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14">
+        <div className="relative z-10 max-w-sm mx-auto px-4 -mt-2 pb-14">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-7 text-center space-y-4">
             <div className="text-5xl">✅</div>
             <h2 className="text-xl font-black text-slate-900">Already Registered</h2>
@@ -524,7 +524,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title="You're In! 🎾" logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14 space-y-5">
+        <div className="relative z-10 max-w-sm mx-auto px-4 pt-6 pb-14 space-y-5">
           <div className="text-center space-y-2">
             <p className="text-slate-600">
               Welcome to <strong>{tournamentName}</strong>, {registeredName}!
@@ -597,7 +597,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title={tournamentName} logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-md mx-auto px-4 -mt-2 pb-14 space-y-6">
+        <div className="relative z-10 max-w-md mx-auto px-4 pt-6 pb-14 space-y-6">
           <p className="text-sm text-slate-500 text-center">Complete your registration</p>
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
             <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
@@ -629,7 +629,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title={tournamentName} logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-md mx-auto px-4 -mt-2 pb-14 space-y-6">
+        <div className="relative z-10 max-w-md mx-auto px-4 pt-6 pb-14 space-y-6">
           <div>
             <button
               type="button"
@@ -722,7 +722,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title="Thank You! 💚" logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14 text-center space-y-4">
+        <div className="relative z-10 max-w-sm mx-auto px-4 pt-6 pb-14 text-center space-y-4">
           <p className="text-slate-600">
             Your donation of <strong>{formatCurrency(effectiveAmount)}</strong> to{' '}
             <strong>{tenantName || tournamentName}</strong> is appreciated.
@@ -751,7 +751,7 @@ export default function RegistrationFlow({
     <div className={`${SHELL} bg-slate-50`}>
       <RegistrationHero eyebrow={tenantName || 'Tournament Registration'} title={tournamentName} logoUrl={tenantLogoUrl} pills={heroPills} />
 
-      <div className="max-w-4xl mx-auto px-4 -mt-4 sm:-mt-6 pb-14 space-y-5">
+      <div className="relative z-10 max-w-4xl mx-auto px-4 -mt-4 sm:-mt-6 pb-14 space-y-5">
         {/* Header */}
         {bracketReady && (
           <div className="flex justify-end">
