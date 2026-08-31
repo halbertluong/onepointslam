@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { calcRaised, formatCurrency } from '@/lib/pricing';
+import { formatStoredDate } from '@/lib/dates';
 import type { TournamentSettings } from '@/types';
 import CopyLinkButton from '@/components/CopyLinkButton';
 import TournamentArchiveButton from '@/components/TournamentArchiveButton';
@@ -195,11 +196,9 @@ export default async function DashboardPage() {
             const goalPct = goal > 0 ? Math.round((revenue / goal) * 100) : 0;
             const fillPct = cap > 0 ? Math.round((t.player_count / cap) * 100) : 0;
             const isLive = t.status === 'live_play';
-            const date = s.tournamentDate
-              ? new Date(s.tournamentDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-              : s.registrationDeadline
-                ? `Deadline ${new Date(s.registrationDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                : null;
+            const tournamentDay = formatStoredDate(s.tournamentDate, { month: 'short', day: 'numeric', year: 'numeric' });
+            const deadlineDay = formatStoredDate(s.registrationDeadline, { month: 'short', day: 'numeric' });
+            const date = tournamentDay || (deadlineDay ? `Deadline ${deadlineDay}` : null);
 
             return (
               <div
@@ -294,9 +293,8 @@ export default async function DashboardPage() {
               const s = t.settings ?? {} as TournamentSettings;
               const price = s.ticketPriceForFundraiser ?? 0;
               const revenue = calcRaised(t.player_count, price, t.donation_total);
-              const date = s.tournamentDate
-                ? new Date(s.tournamentDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                : new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+              const date = formatStoredDate(s.tournamentDate, { month: 'short', day: 'numeric', year: 'numeric' })
+                || new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
               return (
                 <div key={t.id} className="flex items-center gap-4 px-6 py-3">
                   <div className="flex-1 min-w-0">
