@@ -5,6 +5,7 @@ import { calcRaised, formatCurrency } from '@/lib/pricing';
 import { formatStoredDate } from '@/lib/dates';
 import type { TournamentSettings } from '@/types';
 import CopyLinkButton from '@/components/CopyLinkButton';
+import { tournamentPath } from '@/lib/slugs';
 import TournamentArchiveButton from '@/components/TournamentArchiveButton';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -57,6 +58,7 @@ function StatBox({ label, value, sub }: { label: string; value: string | number;
 
 interface TournamentRow {
   id: string;
+  slug: string;
   name: string;
   status: string;
   settings: TournamentSettings;
@@ -95,7 +97,7 @@ export default async function DashboardPage() {
     // Exclude soft-deleted; include archived (we'll separate them below)
     const { data: rows } = await supabase
       .from('tournaments')
-      .select('id, name, status, settings, created_at, archived_at')
+      .select('id, slug, name, status, settings, created_at, archived_at')
       .in('tenant_id', assignedTenantIds)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
@@ -217,7 +219,7 @@ export default async function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {tenantSlug && t.status !== 'completed' && (
-                      <CopyLinkButton url={`/t/${tenantSlug}/${t.id}/register`} />
+                      <CopyLinkButton url={tournamentPath(tenantSlug, t.slug, 'register')} />
                     )}
                     <TournamentArchiveButton tournamentId={t.id} isArchived={false} />
                     <Link

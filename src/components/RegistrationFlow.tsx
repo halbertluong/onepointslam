@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/browser';
 import { useRouter } from 'next/navigation';
 import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
 import { donationsAllowed } from '@/lib/donations';
+import { tournamentPath } from '@/lib/slugs';
 import PlayerRegistrationForm, { type PlayerFormData } from '@/components/PlayerRegistrationForm';
 import TournamentInfoCard from '@/components/TournamentInfoCard';
 import RegistrationHero from '@/components/RegistrationHero';
@@ -196,12 +197,16 @@ type Step = 'loading' | 'form' | 'payment' | 'success' | 'closed' | 'already_reg
 export default function RegistrationFlow({
   slug,
   tournamentId,
+  tournamentSlug,
   embedded = false,
   onRegistered,
   directorEntry = false,
 }: {
   slug: string;
   tournamentId: string;
+  /** Readable URL segment for the links back to the bracket. Falls back to the
+   *  id, which the public routes still resolve, when a caller has only that. */
+  tournamentSlug?: string;
   /** Drop the full-page shell so the flow can sit inside a dashboard tab. */
   embedded?: boolean;
   /** Fired after a registration or donation completes, so a host can refresh. */
@@ -214,6 +219,7 @@ export default function RegistrationFlow({
   const router = useRouter();
   // Embedded, the surrounding page owns the height; standalone, this is the page.
   const SHELL = embedded ? '' : 'min-h-screen';
+  const bracketPath = tournamentPath(slug, tournamentSlug || tournamentId);
 
   const [step, setStep] = useState<Step>('loading');
   const [tournament, setTournament] = useState<Record<string, unknown> | null>(null);
@@ -467,7 +473,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title={tournamentName || 'Registration'} logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14">
+        <div className="relative z-10 max-w-sm mx-auto px-4 -mt-2 pb-14">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-7 text-center space-y-4">
             <div className="text-5xl">🔒</div>
             <h2 className="text-xl font-black text-slate-900">Registration Closed</h2>
@@ -476,7 +482,7 @@ export default function RegistrationFlow({
             </p>
             <div className="flex flex-col gap-2 pt-1">
               <button
-                onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
+                onClick={() => router.push(bracketPath)}
                 className="btn-secondary px-6 py-3 rounded-xl font-bold text-sm"
               >
                 View Bracket
@@ -500,7 +506,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title={tournamentName || 'Registration'} logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14">
+        <div className="relative z-10 max-w-sm mx-auto px-4 -mt-2 pb-14">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-7 text-center space-y-4">
             <div className="text-5xl">✅</div>
             <h2 className="text-xl font-black text-slate-900">Already Registered</h2>
@@ -508,7 +514,7 @@ export default function RegistrationFlow({
               You&apos;re already signed up for <strong>{tournamentName}</strong>.
             </p>
             <button
-              onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
+              onClick={() => router.push(bracketPath)}
               className="btn-primary px-6 py-3 rounded-xl font-bold text-sm"
             >
               View Bracket
@@ -524,7 +530,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title="You're In! 🎾" logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14 space-y-5">
+        <div className="relative z-10 max-w-sm mx-auto px-4 pt-6 pb-14 space-y-5">
           <div className="text-center space-y-2">
             <p className="text-slate-600">
               Welcome to <strong>{tournamentName}</strong>, {registeredName}!
@@ -597,7 +603,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title={tournamentName} logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-md mx-auto px-4 -mt-2 pb-14 space-y-6">
+        <div className="relative z-10 max-w-md mx-auto px-4 pt-6 pb-14 space-y-6">
           <p className="text-sm text-slate-500 text-center">Complete your registration</p>
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
             <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
@@ -629,7 +635,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title={tournamentName} logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-md mx-auto px-4 -mt-2 pb-14 space-y-6">
+        <div className="relative z-10 max-w-md mx-auto px-4 pt-6 pb-14 space-y-6">
           <div>
             <button
               type="button"
@@ -722,7 +728,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title="Thank You! 💚" logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14 text-center space-y-4">
+        <div className="relative z-10 max-w-sm mx-auto px-4 pt-6 pb-14 text-center space-y-4">
           <p className="text-slate-600">
             Your donation of <strong>{formatCurrency(effectiveAmount)}</strong> to{' '}
             <strong>{tenantName || tournamentName}</strong> is appreciated.
@@ -751,12 +757,12 @@ export default function RegistrationFlow({
     <div className={`${SHELL} bg-slate-50`}>
       <RegistrationHero eyebrow={tenantName || 'Tournament Registration'} title={tournamentName} logoUrl={tenantLogoUrl} pills={heroPills} />
 
-      <div className="max-w-4xl mx-auto px-4 -mt-4 sm:-mt-6 pb-14 space-y-5">
+      <div className="relative z-10 max-w-4xl mx-auto px-4 -mt-4 sm:-mt-6 pb-14 space-y-5">
         {/* Header */}
         {bracketReady && (
           <div className="flex justify-end">
             <a
-              href={`/t/${slug}/${tournamentId}`}
+              href={bracketPath}
               target="_blank"
               rel="noopener noreferrer"
               className="shrink-0 px-4 py-2 rounded-xl border border-slate-200 bg-white shadow-sm text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:shadow transition-all flex items-center gap-1.5"

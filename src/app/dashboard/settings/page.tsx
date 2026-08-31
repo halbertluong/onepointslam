@@ -3,13 +3,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import TenantThemeProvider from '@/components/TenantThemeProvider';
+import SlugField from '@/components/SlugField';
 import type { Tenant } from '@/types';
 import { ALL_SCHOOLS, SUGGEST_CORRECTION_URL } from '@/lib/schools';
+import { slugify, validateTenantSlug } from '@/lib/slugs';
 
 export default function SettingsPage() {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [slug, setSlug] = useState('');
+  const [savedSlug, setSavedSlug] = useState('');
+  const [slugError, setSlugError] = useState<string | null>(null);
   const [primary, setPrimary] = useState('#1d4ed8');
   const [secondary, setSecondary] = useState('#7c3aed');
   const [logoUrl, setLogoUrl] = useState('');
@@ -43,6 +47,7 @@ export default function SettingsPage() {
         setTenant(t);
         setDisplayName(t.display_name ?? t.displayName ?? '');
         setSlug(t.slug);
+        setSavedSlug(t.slug);
         setPrimary(t.primary_color ?? t.primaryColor ?? '#1d4ed8');
         setSecondary(t.secondary_color ?? t.secondaryColor ?? '#7c3aed');
         setLogoUrl(t.logo_url ?? t.logoUrl ?? '');
@@ -53,7 +58,8 @@ export default function SettingsPage() {
 
   function applySchool(school: typeof ALL_SCHOOLS[0]) {
     setDisplayName(school.name + ' Tennis');
-    setSlug(school.slug + '-tennis');
+    setSlug(slugify(school.slug + '-tennis'));
+    setSlugError(null);
     setPrimary(school.primary);
     setSecondary(school.secondary);
     setSelectedSchoolUnverified(!school.colorsVerified);
@@ -96,10 +102,11 @@ export default function SettingsPage() {
     setSaving(true);
     setMessage('');
     const supabase = createClient();
-    const RESERVED_SLUGS = ['admin', 'api', 'auth', 'dashboard', 't', '_next', 'referee', 'favicon.ico', 'demo', 'soccer'];
-    const cleanSlug = slug.toLowerCase().replace(/\s+/g, '-');
-    if (RESERVED_SLUGS.includes(cleanSlug)) {
-      setMessage('That slug is reserved. Please choose a different one.');
+    const cleanSlug = slugify(slug);
+    const slugProblem = validateTenantSlug(cleanSlug);
+    if (slugProblem) {
+      setSlugError(slugProblem);
+      setMessage('Check the program URL below — it must be fixed before saving.');
       setSaving(false);
       return;
     }
@@ -119,8 +126,24 @@ export default function SettingsPage() {
         logo_url: logoUrl || null,
       })
       .eq('id', tenant.id);
-    if (error) setMessage(error.message);
-    else setMessage('Settings saved!');
+    if (error) {
+      // 23505 unique_violation — another program already holds this URL.
+      // 23514 check_violation — reserved name or a shape the client missed.
+      if (error.code === '23505') {
+        setSlugError('Another program already uses that URL. Try adding your sport or campus.');
+        setMessage('That program URL is taken — pick another one.');
+      } else if (error.code === '23514') {
+        setSlugError('That URL is reserved. Please choose a different one.');
+        setMessage('That program URL is reserved — pick another one.');
+      } else {
+        setMessage(error.message);
+      }
+    } else {
+      setSlug(cleanSlug);
+      setSavedSlug(cleanSlug);
+      setSlugError(null);
+      setMessage('Settings saved!');
+    }
     setSaving(false);
   }
 
@@ -249,22 +272,22 @@ export default function SettingsPage() {
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                URL Slug
-              </label>
-              <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden">
-                <span className="px-3 py-2.5 bg-slate-50 text-slate-400 text-sm border-r border-slate-200 shrink-0">
-                  /t/
-                </span>
-                <input
-                  type="text"
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  className="flex-1 px-3 py-2.5 text-sm focus:outline-none"
-                  placeholder="stanford-club-tennis"
-                />
-              </div>
+            <div className="space-y-2">
+              <SlugField
+                label="Program URL"
+                prefix="/t/"
+                value={slug}
+                onChange={(v) => { setSlug(v); setSlugError(null); }}
+                placeholder="university-of-portland-tennis-womens"
+                error={slugError}
+                hint="Lowercase letters, numbers, and dashes. This is the first half of every registration link you hand out."
+              />
+              {savedSlug && slug !== savedSlug && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
+                  Renaming this retires every link under <span className="font-mono">/t/{savedSlug}/</span>.
+                  Re-share your registration links after saving.
+                </p>
+              )}
             </div>
 
             {colorMode === 'school' && !selectedSchoolUnverified && (

@@ -11,6 +11,7 @@ import {
 } from '@/lib/assetStudio';
 import { formatCurrency } from '@/lib/pricing';
 import { formatStoredDate } from '@/lib/dates';
+import { tournamentPath } from '@/lib/slugs';
 import type { Tournament } from '@/types';
 
 interface Props {
@@ -59,8 +60,10 @@ export default function AssetStudio({ tournament, tenantSlug, tenantName, primar
   // hydration mismatch.
   const [registrationUrl, setRegistrationUrl] = useState('');
   useEffect(() => {
-    setRegistrationUrl(`${window.location.origin}/t/${tenantSlug}/${tournament.id}/register`);
-  }, [tenantSlug, tournament.id]);
+    // The readable link, not the id — this is the URL that ends up printed on a
+    // flyer and encoded in the QR code, so it has to be one a person can type.
+    setRegistrationUrl(`${window.location.origin}${tournamentPath(tenantSlug, tournament.slug)}/register`);
+  }, [tenantSlug, tournament.slug]);
 
   const content: AssetContent = useMemo(
     () => ({ eyebrow, headline, dateLabel, locationLabel, entryFeeLabel, prizeLabel, ctaText, registrationUrl, hashtag }),
