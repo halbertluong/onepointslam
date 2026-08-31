@@ -11,6 +11,7 @@ import LiveScoreboard from '@/components/LiveScoreboard';
 import RegistrationPanel from '@/components/RegistrationPanel';
 import NotesPanel from '@/components/NotesPanel';
 import AssetStudio from '@/components/AssetStudio';
+import TournamentUrlCard from '@/components/TournamentUrlCard';
 import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 import { persistReversal } from '@/lib/tournamentWrites';
@@ -20,6 +21,7 @@ import { calcRaised, formatCurrency } from '@/lib/pricing';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
 import { MATCH_STATUS_ORDER, MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
+import { tournamentPath } from '@/lib/slugs';
 
 function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; isArchived: boolean }) {
   const router = useRouter();
@@ -405,7 +407,7 @@ export default function TournamentAdminPage() {
           {tenantSlug && tournament.status !== 'completed' && (
             <button
               onClick={() => {
-                const link = `${window.location.origin}/t/${tenantSlug}/${id}/register`;
+                const link = `${window.location.origin}${tournamentPath(tenantSlug, tournament.slug, 'register')}`;
                 navigator.clipboard.writeText(link);
                 setLinkCopied(true);
                 setTimeout(() => setLinkCopied(false), 2000);
@@ -418,7 +420,7 @@ export default function TournamentAdminPage() {
           {tenantSlug && (tournament.status === 'live_play' || tournament.status === 'bracket_generated') && (
             <button
               onClick={() => {
-                const link = `${window.location.origin}/t/${tenantSlug}/${id}/live`;
+                const link = `${window.location.origin}${tournamentPath(tenantSlug, tournament.slug, 'live')}`;
                 navigator.clipboard.writeText(link);
                 setMessage('📺 Live scoreboard link copied! Open on a TV or share with spectators.');
                 setTimeout(() => setMessage(''), 4000);
@@ -654,6 +656,13 @@ export default function TournamentAdminPage() {
       {/* Settings tab */}
       {tab === 'settings' && (
         <div className="space-y-6">
+          <TournamentUrlCard
+            key={tournament.slug}
+            tournament={tournament}
+            tenantSlug={tenantSlug}
+            onSaved={load}
+          />
+
           <SettingsEditor
             tournament={tournament}
             saving={saving}

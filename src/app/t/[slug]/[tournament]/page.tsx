@@ -1,30 +1,37 @@
 import { createClient } from '@/lib/supabase/server';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import BracketView from '@/components/BracketView';
+import { resolvePublicTournament, isCanonicalPath, searchSuffix } from '@/lib/publicRoutes';
 import type { Player, Match } from '@/types';
 
 interface Props {
-  params: Promise<{ slug: string; tournamentId: string }>;
+  params: Promise<{ slug: string; tournament: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function PublicBracketPage({ params }: Props) {
-  const { slug, tournamentId } = await params;
-  const supabase = await createClient();
+export default async function PublicBracketPage({ params, searchParams }: Props) {
+  const { slug, tournament: tournamentRef } = await params;
 
-  const [{ data: tournament }, { data: players }, { data: matches }, { data: tenant }] = await Promise.all([
-    supabase.from('tournaments').select('*').eq('id', tournamentId).single(),
-    supabase.from('players').select('*').eq('tournament_id', tournamentId),
+  const resolved = await resolvePublicTournament(slug, tournamentRef);
+  if (!resolved) notFound();
+  const { tenant, tournament, canonicalPath } = resolved;
+
+  // Arrived on an old UUID link, or typed the slug in a different case — send
+  // them to the one canonical URL so that is the one that gets shared onward.
+  if (!isCanonicalPath(slug, tournamentRef, tenant.slug, tournament.slug)) {
+    redirect(`${canonicalPath}${searchSuffix(await searchParams)}`);
+  }
+
+  const supabase = await createClient();
+  const [{ data: players }, { data: matches }] = await Promise.all([
+    supabase.from('players').select('*').eq('tournament_id', tournament.id),
     supabase
       .from('matches')
       .select('*')
-      .eq('tournament_id', tournamentId)
+      .eq('tournament_id', tournament.id)
       .order('round_index')
       .order('match_index'),
-    supabase.from('tenants').select('id').eq('slug', slug).single(),
   ]);
-
-  if (!tournament) notFound();
-  if (!tenant || tournament.tenant_id !== tenant.id) notFound();
 
   const typedPlayers: Player[] = (players ?? []).map((p) => ({
     id: p.id,
@@ -50,6 +57,7 @@ export default async function PublicBracketPage({ params }: Props) {
     courtNumber: m.court_number,
   }));
 
+  const settings = tournament.settings as Record<string, unknown> | null;
   const isLive = tournament.status === 'live_play';
 
   return (
@@ -82,8 +90,8 @@ export default async function PublicBracketPage({ params }: Props) {
             <BracketView
               initialMatches={typedMatches}
               players={typedPlayers}
-              maxPlayers={tournament.settings?.maxPlayers ?? 32}
-              tournamentId={tournamentId}
+              maxPlayers={(settings?.maxPlayers as number) ?? 32}
+              tournamentId={tournament.id}
               liveUpdates={isLive}
             />
           </div>

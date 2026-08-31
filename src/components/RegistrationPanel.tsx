@@ -5,6 +5,7 @@ import PlayerRegistrationForm, { type PlayerFormData } from '@/components/Player
 import RegistrationFlow from '@/components/RegistrationFlow';
 import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
 import { donationsAllowed } from '@/lib/donations';
+import { tournamentPath } from '@/lib/slugs';
 import type { Tournament } from '@/types';
 
 type Mode = 'flow' | 'offline';
@@ -50,7 +51,7 @@ export default function RegistrationPanel({
   const entranceFee = settings?.ticketPriceForFundraiser ?? 0;
   const platformFee = settings?.systemTechFee ?? DEFAULT_PLATFORM_FEE;
 
-  const registrationUrl = tenantSlug ? `/t/${tenantSlug}/${tournamentId}/register` : '';
+  const registrationUrl = tenantSlug ? tournamentPath(tenantSlug, tournament.slug, 'register') : '';
 
   // Mirrors the gate on the public page: open while registration_open, or
   // whenever late registration has been switched on and play isn't finished.
@@ -236,6 +237,7 @@ export default function RegistrationPanel({
               key={`donate-${donateOn}`}
               slug={tenantSlug}
               tournamentId={tournamentId}
+              tournamentSlug={tournament.slug}
               embedded
               directorEntry
               onRegistered={onRegistered}
