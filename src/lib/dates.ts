@@ -49,3 +49,37 @@ export function formatStoredDate(
   const parsed = parseStoredDate(stored);
   return parsed ? parsed.toLocaleDateString('en-US', options) : '';
 }
+
+const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+
+/**
+ * Whether a stored value carries a time of day worth showing.
+ *
+ * Exact midnight counts as "no time". It is what a legacy date-only value
+ * normalises to (`2026-09-26` -> `2026-09-26T00:00`), so it means "a day was
+ * chosen, an hour never was" — printing "12:00 AM" would invent a start time
+ * nobody set, on precisely the tournaments that predate the time picker.
+ */
+export function storedHasTimeOfDay(stored: string | null | undefined): boolean {
+  const m = /T(\d{2}):(\d{2})/.exec(stored ?? '');
+  return !!m && !(m[1] === '00' && m[2] === '00');
+}
+
+/** The time of day on its own, or '' when the value doesn't carry one. */
+export function formatStoredTime(stored: string | null | undefined): string {
+  if (!storedHasTimeOfDay(stored)) return '';
+  const parsed = parseStoredDate(stored);
+  return parsed ? parsed.toLocaleTimeString('en-US', TIME_FORMAT) : '';
+}
+
+/** Date, followed by the time when there is one — for single-line labels. */
+export function formatStoredDateTime(
+  stored: string | null | undefined,
+  dateOptions: Intl.DateTimeFormatOptions,
+  separator = ' \u00b7 ',
+): string {
+  const date = formatStoredDate(stored, dateOptions);
+  if (!date) return '';
+  const time = formatStoredTime(stored);
+  return time ? `${date}${separator}${time}` : date;
+}

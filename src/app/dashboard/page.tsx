@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { calcRaised, formatCurrency } from '@/lib/pricing';
-import { formatStoredDate } from '@/lib/dates';
+import { formatStoredDateTime } from '@/lib/dates';
 import type { TournamentSettings } from '@/types';
 import CopyLinkButton from '@/components/CopyLinkButton';
 import { tournamentPath } from '@/lib/slugs';
@@ -198,8 +198,8 @@ export default async function DashboardPage() {
             const goalPct = goal > 0 ? Math.round((revenue / goal) * 100) : 0;
             const fillPct = cap > 0 ? Math.round((t.player_count / cap) * 100) : 0;
             const isLive = t.status === 'live_play';
-            const tournamentDay = formatStoredDate(s.tournamentDate, { month: 'short', day: 'numeric', year: 'numeric' });
-            const deadlineDay = formatStoredDate(s.registrationDeadline, { month: 'short', day: 'numeric' });
+            const tournamentDay = formatStoredDateTime(s.tournamentDate, { month: 'short', day: 'numeric', year: 'numeric' });
+            const deadlineDay = formatStoredDateTime(s.registrationDeadline, { month: 'short', day: 'numeric' });
             const date = tournamentDay || (deadlineDay ? `Deadline ${deadlineDay}` : null);
 
             return (
@@ -295,7 +295,7 @@ export default async function DashboardPage() {
               const s = t.settings ?? {} as TournamentSettings;
               const price = s.ticketPriceForFundraiser ?? 0;
               const revenue = calcRaised(t.player_count, price, t.donation_total);
-              const date = formatStoredDate(s.tournamentDate, { month: 'short', day: 'numeric', year: 'numeric' })
+              const date = formatStoredDateTime(s.tournamentDate, { month: 'short', day: 'numeric', year: 'numeric' })
                 || new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
               return (
                 <div key={t.id} className="flex items-center gap-4 px-6 py-3">

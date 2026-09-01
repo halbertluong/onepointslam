@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/pricing';
-import { formatStoredDate, parseStoredDate } from '@/lib/dates';
+import { formatStoredDate, formatStoredTime, parseStoredDate } from '@/lib/dates';
 
 interface PrizePlace {
   place: number;
@@ -99,8 +99,10 @@ export default function TournamentInfoCard({
   const topPrize = prizePlaces.find((p) => p.place === 1);
 
   const deadlineDate = formatStoredDate(registrationDeadline, { month: 'short', day: 'numeric', year: 'numeric' });
+  const deadlineTime = formatStoredTime(registrationDeadline);
 
   const tournamentDateFmt = formatStoredDate(tournamentDate, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const tournamentTime = formatStoredTime(tournamentDate);
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
@@ -158,6 +160,7 @@ export default function TournamentInfoCard({
           <div className="px-5 py-4">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Tournament Date</p>
             <p className="text-sm font-bold text-slate-800">{tournamentDateFmt}</p>
+            {tournamentTime && <p className="text-sm text-slate-500 mt-0.5">{tournamentTime}</p>}
           </div>
         )}
 
@@ -165,6 +168,7 @@ export default function TournamentInfoCard({
           <div className="px-5 py-4">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Registration Closes</p>
             <p className="text-sm font-bold text-slate-800">{deadlineDate}</p>
+            {deadlineTime && <p className="text-sm text-slate-500 mt-0.5">{deadlineTime}</p>}
             {withinSeven && timeLeft && (
               <div className="mt-1 flex items-center gap-1">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />

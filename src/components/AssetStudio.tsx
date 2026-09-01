@@ -10,7 +10,7 @@ import {
   type AssetKind,
 } from '@/lib/assetStudio';
 import { formatCurrency } from '@/lib/pricing';
-import { formatStoredDate } from '@/lib/dates';
+import { formatStoredDateTime } from '@/lib/dates';
 import { tournamentPath } from '@/lib/slugs';
 import type { Tournament } from '@/types';
 
@@ -30,7 +30,7 @@ const ASSET_ICON: Record<AssetKind, string> = {
 };
 
 function defaultDateLabel(tournamentDate?: string): string {
-  return formatStoredDate(tournamentDate, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  return formatStoredDateTime(tournamentDate, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 export default function AssetStudio({ tournament, tenantSlug, tenantName, primaryColor, secondaryColor, logoUrl }: Props) {

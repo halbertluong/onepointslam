@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { findTenant } from '@/lib/publicRoutes';
 import { tournamentPath } from '@/lib/slugs';
-import { parseStoredDate } from '@/lib/dates';
+import { formatStoredDateTime } from '@/lib/dates';
 import type { Tournament } from '@/types';
 
 interface Props {
@@ -92,7 +92,7 @@ export default async function TenantPage({ params }: Props) {
                     <div className="text-sm text-slate-500 space-y-1 mb-4">
                       <p>Draw: {t.settings?.maxPlayers ?? '?'} players max</p>
                       {t.settings?.registrationDeadline && (
-                        <p>Deadline: {parseStoredDate(t.settings.registrationDeadline)?.toLocaleString()}</p>
+                        <p>Deadline: {formatStoredDateTime(t.settings.registrationDeadline, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                       )}
                     </div>
                     <div className="flex gap-2">
