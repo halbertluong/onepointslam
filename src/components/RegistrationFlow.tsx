@@ -28,7 +28,10 @@ function StripeCheckoutForm({
 }: {
   playerName: string;
   totalDollars: number;
-  onSuccess: (paymentIntentId: string) => void;
+  /** Records the registration once the card has been charged. Returning an
+   *  error here means the money is taken but the player is not signed up, so
+   *  the message has to reach them rather than being dropped. */
+  onSuccess: (paymentIntentId: string) => Promise<{ error?: string }>;
   onBack: () => void;
 }) {
   const stripe   = useStripe();
@@ -62,7 +65,18 @@ function StripeCheckoutForm({
     }
 
     if (paymentIntent?.status === 'succeeded') {
-      onSuccess(paymentIntent.id);
+      // The charge has gone through by this point. If recording the
+      // registration fails, say so plainly and warn against paying again —
+      // silently leaving the button spinning bills someone for nothing.
+      const result = await onSuccess(paymentIntent.id);
+      if (result?.error) {
+        setError(
+          `Your payment went through, but we couldn't complete your registration: ${result.error} ` +
+          'Your card has already been charged, so please contact the tournament organizer ' +
+          'instead of paying again.',
+        );
+        setLoading(false);
+      }
     } else {
       setError('Payment did not complete. Please try again.');
       setLoading(false);
@@ -610,9 +624,7 @@ export default function RegistrationFlow({
               <StripeCheckoutForm
                 playerName={pendingPlayerData.fullName}
                 totalDollars={totalDollars}
-                onSuccess={async (paymentIntentId) => {
-                  await insertPlayer(pendingPlayerData, paymentIntentId);
-                }}
+                onSuccess={(paymentIntentId) => insertPlayer(pendingPlayerData, paymentIntentId)}
                 onBack={() => {
                   setStep('form');
                   setClientSecret('');

@@ -85,19 +85,30 @@ export async function POST(req: NextRequest) {
     const { createStripeClient } = await import('@/lib/stripe');
     const stripe = await createStripeClient(stripeKey, '2025-04-30');
 
+    // Past this point the card may already be charged, so every rejection is a
+    // registrant who paid and did not get signed up. Each one is logged with
+    // what failed — without that, the only visible symptom is a 400 with no
+    // way to tell which check rejected it.
     let pi;
     try {
       pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId!);
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[registrations] Could not retrieve PI ${stripePaymentIntentId}: ${message}`);
       return NextResponse.json({ error: 'Invalid payment reference' }, { status: 400 });
     }
 
     if (pi.status !== 'succeeded') {
+      console.error(`[registrations] PI ${pi.id} status is ${pi.status}, expected succeeded`);
       return NextResponse.json({ error: 'Payment has not been completed' }, { status: 402 });
     }
 
     // Verify this PI was minted for this specific tournament (prevents cross-tournament reuse)
     if (pi.metadata?.tournament_id !== tournamentId) {
+      console.error(
+        `[registrations] PI ${pi.id} tournament mismatch: metadata has ` +
+        `${pi.metadata?.tournament_id ?? '(none)'}, request has ${tournamentId}`,
+      );
       return NextResponse.json({ error: 'Payment does not belong to this tournament' }, { status: 400 });
     }
 
@@ -126,7 +137,12 @@ export async function POST(req: NextRequest) {
     .eq('tournament_id', tournamentId)
     .eq('email', email)
     .maybeSingle();
-  if (existing) return NextResponse.json({ error: 'This email is already registered for this tournament.' }, { status: 409 });
+  if (existing) {
+    if (verifiedPaymentIntentId) {
+      console.error(`[registrations] Charged PI ${verifiedPaymentIntentId} but ${email} is already registered for ${tournamentId}`);
+    }
+    return NextResponse.json({ error: 'This email is already registered for this tournament.' }, { status: 409 });
+  }
 
   // PI reuse check — prevent one payment from registering multiple accounts
   if (verifiedPaymentIntentId) {
@@ -147,6 +163,9 @@ export async function POST(req: NextRequest) {
       .eq('tournament_id', tournamentId)
       .neq('status', 'no_show_eliminated');
     if ((count ?? 0) >= playerCap) {
+      if (verifiedPaymentIntentId) {
+        console.error(`[registrations] Charged PI ${verifiedPaymentIntentId} but ${tournamentId} is full (cap ${playerCap})`);
+      }
       return NextResponse.json({ error: 'Registration is full' }, { status: 409 });
     }
   }
@@ -167,6 +186,9 @@ export async function POST(req: NextRequest) {
   }).select('id').single();
 
   if (insertErr) {
+    if (verifiedPaymentIntentId) {
+      console.error(`[registrations] Charged PI ${verifiedPaymentIntentId} but the insert failed: ${insertErr.message}`);
+    }
     if (insertErr.code === '23505') return NextResponse.json({ error: 'This email is already registered.' }, { status: 409 });
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
