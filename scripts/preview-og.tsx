@@ -6,21 +6,22 @@ import { writeFile } from 'node:fs/promises';
 import { tournamentCard, type OgCardData } from '../src/lib/ogCard';
 
 const CASES: Record<string, OgCardData> = {
+  // Live production data, so the check is against what registrants actually see.
   portland: {
     title: 'Portland One Point Bowl Fall 2026',
-    school: "University of Portland - Tennis - Women's",
-    primaryColor: '#7a11c0',
-    secondaryColor: '#000000',
-    facts: ['Sat, Oct 17', '$25 entry', '32-player draw'],
+    school: 'University of Portland Pilots Tennis - Womens',
+    primaryColor: '#4B2E83',
+    secondaryColor: '#FFFFFF',
+    facts: ['Sat, Sep 26', '$80 entry', '128-player draw'],
     cta: 'Register →',
   },
   ucla: {
     title: 'Fall 2026 Charity Cup',
     school: 'UCLA Bruins Tennis',
-    primaryColor: '#2774ae',
-    secondaryColor: '#ffd100',
-    facts: ['Bracket live', '16 players'],
-    cta: 'View bracket →',
+    primaryColor: '#2D68C4',
+    secondaryColor: '#F2A900',
+    facts: ['Fri, Oct 30', '$155 entry', '96-player draw'],
+    cta: 'Register →',
   },
   paleColors: {
     title: 'Spring Invitational',
