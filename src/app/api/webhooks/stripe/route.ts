@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createStripeClient } from '@/lib/stripe';
 
 async function getStripe() {
-  return createStripeClient(process.env.STRIPE_SECRET_KEY ?? '', '2025-04-30');
+  return createStripeClient(process.env.STRIPE_SECRET_KEY ?? '');
 }
 
 // Tell Next.js not to parse the body — Stripe signature verification requires the raw bytes

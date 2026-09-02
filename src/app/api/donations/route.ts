@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeKey) return NextResponse.json({ error: 'Payment processing not configured' }, { status: 500 });
 
-  const stripe = await createStripeClient(stripeKey, '2025-04-30');
+  const stripe = await createStripeClient(stripeKey);
 
   let pi;
   try {
