@@ -1,12 +1,39 @@
+import type { Metadata } from 'next';
 import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import BracketView from '@/components/BracketView';
 import { resolvePublicTournament, isCanonicalPath, searchSuffix } from '@/lib/publicRoutes';
+import { loadPreviewSource, previewDescription } from '@/lib/ogData';
+import { tournamentPath } from '@/lib/slugs';
 import type { Player, Match } from '@/types';
 
 interface Props {
   params: Promise<{ slug: string; tournament: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+/** Tournament-specific link preview; the card image lives in opengraph-image.tsx. */
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug, tournament } = await params;
+  const source = await loadPreviewSource(slug, tournament);
+  if (!source) return { title: 'Tournament not found' };
+
+  const description = previewDescription(source, 'bracket');
+  const url = tournamentPath(source.tenantSlug, source.tournamentSlug);
+
+  return {
+    title: source.name,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      title: source.name,
+      description,
+      type: 'website',
+      siteName: 'One Point Bowl',
+      url,
+    },
+    twitter: { card: 'summary_large_image', title: source.name, description },
+  };
 }
 
 export default async function PublicBracketPage({ params, searchParams }: Props) {
