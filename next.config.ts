@@ -21,6 +21,14 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // The link-preview cards read the display font off disk at render time.
+  // File tracing doesn't always follow a runtime readFile, and a missed font
+  // would silently downgrade every shared card to the fallback face.
+  outputFileTracingIncludes: {
+    '/t/[slug]/[tournament]/opengraph-image': ['src/assets/**/*.ttf'],
+    '/t/[slug]/[tournament]/register/opengraph-image': ['src/assets/**/*.ttf'],
+  },
+
   async headers() {
     return [
       {

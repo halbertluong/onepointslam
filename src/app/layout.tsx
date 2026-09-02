@@ -18,7 +18,18 @@ const inter = Inter({
   display: 'swap',
 });
 
+/**
+ * Link previews need absolute URLs. Production is the real domain; a preview
+ * deployment points at itself so a shared preview link shows its own card.
+ */
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_ENV !== 'production' && process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : 'https://onepointbowl.com');
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: 'One Point Bowl — D1 Tennis Fundraising Platform',
   description: 'Run high-energy single-elimination tennis tournaments that grow your donor base. Built for D1 collegiate tennis programs.',
   icons: {
@@ -28,6 +39,12 @@ export const metadata: Metadata = {
     title: 'One Point Bowl',
     description: 'The fundraising tournament platform for D1 tennis programs.',
     type: 'website',
+    siteName: 'One Point Bowl',
+  },
+  twitter: {
+    // Chat apps and social clients show a full-width image for this card type
+    // rather than the small square thumbnail 'summary' gives.
+    card: 'summary_large_image',
   },
 };
 
