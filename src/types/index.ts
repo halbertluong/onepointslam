@@ -33,6 +33,18 @@ export interface PrizePlace {
   value: number; // dollar amount if fixed, 0-100 if percentage
 }
 
+/** The editable copy behind a tournament's flyer, Instagram post and story. */
+export interface AssetDetails {
+  eyebrow?: string;
+  headline?: string;
+  dateLabel?: string;
+  locationLabel?: string;
+  entryFeeLabel?: string;
+  prizeLabel?: string;
+  ctaText?: string;
+  hashtag?: string;
+}
+
 export interface TournamentSettings {
   /** Defaults to 'tennis' when omitted (pre-dates multi-sport support). */
   sport?: Sport;
@@ -62,6 +74,9 @@ export interface TournamentSettings {
   inviteCode?: string;
   /** Defaults to 'single_elimination' when omitted (pre-dates other formats). */
   bracketFormat?: BracketFormat;
+  /** Saved Asset Studio copy. Absent until a director saves, in which case
+   *  every field falls back to the value computed from the tournament. */
+  assetDetails?: AssetDetails;
 }
 
 export type TournamentStatus =
