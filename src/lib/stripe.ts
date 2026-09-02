@@ -29,15 +29,17 @@ function assertKeyIsSendable(key: string): void {
   }
 }
 
-/** Every Stripe client is built here so key validation can't be skipped. */
-export async function createStripeClient(key: string, apiVersion?: string) {
+/**
+ * Every Stripe client is built here so key validation can't be skipped.
+ * Deliberately does not pin an apiVersion — Stripe's dated + codename format
+ * (e.g. "2025-03-31.basil") changes with each release, and a stale pin is
+ * rejected outright with "Invalid Stripe API version", not a compatibility
+ * warning. Omitting it uses the account's actual current default.
+ */
+export async function createStripeClient(key: string) {
   assertKeyIsSendable(key);
   const { default: Stripe } = await import('stripe');
-  return new Stripe(key, {
-    httpClient: Stripe.createFetchHttpClient(),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ...(apiVersion ? { apiVersion: apiVersion as any } : {}),
-  });
+  return new Stripe(key, { httpClient: Stripe.createFetchHttpClient() });
 }
 
 /**

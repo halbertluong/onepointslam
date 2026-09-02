@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
 
     // Verify the PaymentIntent server-side via Stripe API
     const { createStripeClient } = await import('@/lib/stripe');
-    const stripe = await createStripeClient(stripeKey, '2025-04-30');
+    const stripe = await createStripeClient(stripeKey);
 
     // Past this point the card may already be charged, so every rejection is a
     // registrant who paid and did not get signed up. Each one is logged with
