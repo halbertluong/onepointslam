@@ -145,12 +145,64 @@ function drawBackground(ctx: CanvasRenderingContext2D, w: number, h: number, pri
   ctx.restore();
 }
 
+/**
+ * The One Point Bowl mark — tennis ball seam + lightning bolt — traced from
+ * OnePointBowlLogo.tsx's SVG paths onto canvas. Used inside the badge below
+ * for a program that hasn't uploaded its own logo yet, the same fallback the
+ * nav bar already draws (OnePointBowlLogo in the tenant's primary color)
+ * rather than the blank badge this used to leave on the flyer.
+ */
+function drawBrandMark(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string) {
+  // Traced on a 64x64 viewBox; scale maps that space onto `size`.
+  const scale = size / 64;
+  ctx.save();
+  ctx.translate(cx - size / 2, cy - size / 2);
+  ctx.scale(scale, scale);
+  ctx.strokeStyle = color;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Outer ring
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  ctx.arc(32, 32, 29, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Tennis ball seams
+  ctx.lineWidth = 2.5;
+  ctx.globalAlpha = 0.45;
+  ctx.beginPath();
+  ctx.moveTo(14, 18);
+  ctx.quadraticCurveTo(28, 32, 14, 46);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(50, 18);
+  ctx.quadraticCurveTo(36, 32, 50, 46);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Lightning bolt
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(36, 8);
+  ctx.lineTo(24, 34);
+  ctx.lineTo(32, 34);
+  ctx.lineTo(28, 56);
+  ctx.lineTo(42, 28);
+  ctx.lineTo(34, 28);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
 async function drawLogoBadge(
   ctx: CanvasRenderingContext2D,
   logoUrl: string | undefined,
   cx: number,
   cy: number,
   size: number,
+  primaryColor: string,
 ) {
   const r = size / 2;
   ctx.save();
@@ -163,22 +215,27 @@ async function drawLogoBadge(
   ctx.fill();
   ctx.restore();
 
-  if (!logoUrl) return;
-  try {
-    const img = await loadImage(logoUrl);
-    const pad = size * 0.16;
-    const inner = size - pad * 2;
-    const scale = Math.min(inner / img.width, inner / img.height);
-    const dw = img.width * scale;
-    const dh = img.height * scale;
-    ctx.save();
-    roundRectPath(ctx, cx - r, cy - r, size, size, size * 0.28);
-    ctx.clip();
-    ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
-    ctx.restore();
-  } catch {
-    // No usable logo (missing, or blocked by CORS) — the white badge still reads fine on its own.
+  if (logoUrl) {
+    try {
+      const img = await loadImage(logoUrl);
+      const pad = size * 0.16;
+      const inner = size - pad * 2;
+      const scale = Math.min(inner / img.width, inner / img.height);
+      const dw = img.width * scale;
+      const dh = img.height * scale;
+      ctx.save();
+      roundRectPath(ctx, cx - r, cy - r, size, size, size * 0.28);
+      ctx.clip();
+      ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
+      ctx.restore();
+      return;
+    } catch {
+      // Falls through to the brand mark below — missing or CORS-blocked is
+      // treated the same as "no logo uploaded".
+    }
   }
+
+  drawBrandMark(ctx, cx, cy, size * 0.62, primaryColor);
 }
 
 async function drawQrCard(
@@ -254,7 +311,7 @@ async function renderPortrait({ ctx, w, h, primary, secondary }: DrawCtx, brandi
   const cx = w / 2;
   let y = h * 0.1;
 
-  await drawLogoBadge(ctx, branding.logoUrl, cx, y, w * 0.16);
+  await drawLogoBadge(ctx, branding.logoUrl, cx, y, w * 0.16, primary);
   y += w * 0.16;
 
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
@@ -344,7 +401,7 @@ async function renderSquare({ ctx, w, h, primary, secondary }: DrawCtx, branding
   const cx = w / 2;
   let y = h * 0.12;
 
-  await drawLogoBadge(ctx, branding.logoUrl, cx, y, w * 0.16);
+  await drawLogoBadge(ctx, branding.logoUrl, cx, y, w * 0.16, primary);
   y += w * 0.155;
 
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
@@ -408,7 +465,7 @@ async function renderStory({ ctx, w, h, primary, secondary }: DrawCtx, branding:
   const cx = w / 2;
   let y = h * 0.14;
 
-  await drawLogoBadge(ctx, branding.logoUrl, cx, y, w * 0.2);
+  await drawLogoBadge(ctx, branding.logoUrl, cx, y, w * 0.2, primary);
   y += w * 0.19;
 
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
