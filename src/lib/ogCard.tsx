@@ -76,16 +76,49 @@ function luminance(hex: string): number {
   return 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2);
 }
 
+/** Above this, a colour needs dark ink on it; below, light ink. */
+const LIGHT = 0.45;
+
+/** Mixes a colour toward black (amount < 0) or white (amount > 0). */
+function mix(hex: string, amount: number): string {
+  const target = amount > 0 ? 255 : 0;
+  const t = Math.abs(amount);
+  const part = (i: number) => {
+    const v = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+    return Math.round(v + (target - v) * t).toString(16).padStart(2, '0');
+  };
+  return `#${part(0)}${part(1)}${part(2)}`;
+}
+
 /**
- * A school whose colours are pale (gold, cream, light grey) would drown white
- * text, so the card flips to dark ink on those. Averaged across both brand
- * colours because the background is a gradient between them.
+ * Picks a background the text is guaranteed to read on.
+ *
+ * A school's two brand colours are often at opposite ends — Portland's are deep
+ * purple and white — and a gradient spanning that range has no single ink
+ * colour that works across it: white disappears at one end, dark at the other.
+ * So the two stops are only used together when they sit on the same side of the
+ * light/dark line. When they straddle it, the gradient is built from the
+ * primary and a shaded copy of itself, and the secondary moves to the call-to-
+ * action pill, where it keeps the school's second colour on the card without
+ * ever having to carry body text.
  */
-function inkFor(primary: string, secondary: string) {
-  const light = (luminance(primary) + luminance(secondary)) / 2 > 0.42;
-  return light
-    ? { text: '#10131c', muted: 'rgba(16,19,28,0.68)', chip: 'rgba(16,19,28,0.09)', pillBg: '#10131c', pillText: '#ffffff' }
-    : { text: '#ffffff', muted: 'rgba(255,255,255,0.76)', chip: 'rgba(255,255,255,0.16)', pillBg: '#ffffff', pillText: '#10131c' };
+function palette(primary: string, secondary: string) {
+  const primaryIsLight = luminance(primary) > LIGHT;
+  const secondaryIsLight = luminance(secondary) > LIGHT;
+  const straddles = primaryIsLight !== secondaryIsLight;
+
+  const from = primary;
+  const to = straddles ? mix(primary, primaryIsLight ? 0.28 : -0.42) : secondary;
+
+  const ink = primaryIsLight
+    ? { text: '#10131c', muted: 'rgba(16,19,28,0.66)', chip: 'rgba(16,19,28,0.10)' }
+    : { text: '#ffffff', muted: 'rgba(255,255,255,0.74)', chip: 'rgba(255,255,255,0.17)' };
+
+  // The freed-up secondary becomes the pill; otherwise the pill just inverts.
+  const pillBg = straddles ? secondary : primaryIsLight ? '#10131c' : '#ffffff';
+  const pillText = luminance(pillBg) > LIGHT ? '#10131c' : '#ffffff';
+
+  return { from, to, ...ink, pillBg, pillText };
 }
 
 /** Only http(s) images can be fetched by the renderer; anything else is dropped. */
@@ -98,7 +131,7 @@ export async function tournamentCard(data: OgCardData): Promise<ImageResponse> {
   const fonts = await loadFonts();
   const primary = safeColor(data.primaryColor, '#1a2033');
   const secondary = safeColor(data.secondaryColor, '#4f6ef7');
-  const ink = inkFor(primary, secondary);
+  const ink = palette(primary, secondary);
   const logo = usableLogo(data.logoUrl);
 
   // Long tournament names have to stay on the card rather than run off it.
@@ -114,7 +147,7 @@ export async function tournamentCard(data: OgCardData): Promise<ImageResponse> {
           flexDirection: 'column',
           justifyContent: 'space-between',
           padding: '68px 76px',
-          background: `linear-gradient(135deg, ${primary} 0%, ${secondary} 100%)`,
+          background: `linear-gradient(135deg, ${ink.from} 0%, ${ink.to} 100%)`,
           color: ink.text,
           fontFamily: 'Outfit',
           fontWeight: 500,
