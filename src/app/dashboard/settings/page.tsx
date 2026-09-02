@@ -387,25 +387,6 @@ export default function SettingsPage() {
             </p>
           </div>
 
-          {/* Stripe Payments */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-3">
-            <h2 className="font-bold text-slate-800">Payment Collection</h2>
-            {tenant?.stripeConnectAccountId ? (
-              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">
-                <span>✓</span>
-                <span>Stripe account connected — entry fees will be collected and transferred to your account.</span>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 rounded-xl px-4 py-3">
-                  <span className="mt-0.5">⚠</span>
-                  <span>No Stripe account connected. Entry fees will not be collected until Stripe is configured. Contact your One Point Bowl administrator to set up payments for your account.</span>
-                </div>
-                <p className="text-xs text-slate-400">Once connected, registration fees will transfer directly to your program&apos;s Stripe account minus the platform fee.</p>
-              </div>
-            )}
-          </div>
-
           {message && (
             <p className={`text-sm text-center rounded-xl p-3 ${message.includes('error') || message.includes('Error') || message.includes('must') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
               {message}

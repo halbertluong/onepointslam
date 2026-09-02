@@ -15,7 +15,6 @@ export interface Tenant {
   logoUrl?: string;
   primaryColor: string;
   secondaryColor: string;
-  stripeConnectAccountId?: string;
   createdAt: string;
 }
 
