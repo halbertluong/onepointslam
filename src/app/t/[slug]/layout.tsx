@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 import NavBar from '@/components/NavBar';
+import { findTenant } from '@/lib/publicRoutes';
 
 interface Props {
   children: React.ReactNode;
@@ -11,12 +12,9 @@ export default async function TenantLayout({ children, params }: Props) {
   const { slug } = await params;
   const supabase = await createClient();
 
-  const { data: tenant } = await supabase
-    .from('tenants')
-    .select('*')
-    .eq('slug', slug)
-    .single();
-
+  // Case-insensitive, so a link typed as /t/University-of-Portland-Tennis-Womens
+  // still finds the tenant; the page below redirects to the canonical casing.
+  const tenant = await findTenant(supabase, slug);
   if (!tenant) notFound();
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -35,7 +33,7 @@ export default async function TenantLayout({ children, params }: Props) {
       <style>{`:root { --tenant-primary: ${/^#[0-9a-fA-F]{6}$/.test(tenant.primary_color ?? '') ? tenant.primary_color : '#1a2033'}; --tenant-secondary: ${/^#[0-9a-fA-F]{6}$/.test(tenant.secondary_color ?? '') ? tenant.secondary_color : '#4f6ef7'}; }`}</style>
       <NavBar
         role={role}
-        tenantSlug={slug}
+        tenantSlug={tenant.slug}
         displayName={tenant.display_name}
         logoUrl={tenant.logo_url}
       />

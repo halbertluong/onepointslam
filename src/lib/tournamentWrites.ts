@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Match, Player } from '@/types';
 import { mapMatch } from '@/types';
-import { reverseWinner, distributeBySeeding } from './bracket';
+import { reverseWinner, distributeBySeeding, resolveAdvancement, matchUpdatesToColumns } from './bracket';
+import { releaseCourtToNextMatch } from './courts';
 
 /**
  * Every per-sport result column. Cleared together whenever a match loses its
@@ -77,6 +78,16 @@ export async function persistReversal(
     if (error) return { error: error.message };
   }
   return {};
+}
+
+/** Update a single player's self-reported skill tier, e.g. after a director re-assesses them. */
+export async function updatePlayerTier(
+  supabase: SupabaseClient,
+  playerId: string,
+  tier: string | null,
+): Promise<WriteResult> {
+  const { error } = await supabase.from('players').update({ skill_tier: tier }).eq('id', playerId);
+  return error ? { error: error.message } : {};
 }
 
 /** Persist seed numbers for players. A blank or invalid entry clears the seed. */
@@ -241,4 +252,53 @@ export async function addPlayersToDraw(
   }
 
   return { added, skipped, noRoom };
+}
+
+/**
+ * A player who can no longer make it, pulled off the tournament's active side
+ * without erasing their record. If they're sitting in an unplayed match
+ * against a real opponent, that opponent is awarded a walkover — the same
+ * advancement the referee console applies for an in-match no-show (see
+ * resolveAdvancement) — so the bracket keeps moving instead of stalling on
+ * someone who isn't coming. A slot still waiting on the other side of the
+ * bracket (no opponent decided yet) is left alone; there's nothing to award a
+ * walkover to yet, and a director can sort out the placement by hand once the
+ * opponent is known.
+ *
+ * Reuses no_show_eliminated — the same status an in-match walkover already
+ * sets — so everywhere that already treats it as "not an active registrant"
+ * (cap counts, the players table's own no-show badge) treats a withdrawal
+ * exactly the same way.
+ */
+export async function withdrawPlayer(
+  supabase: SupabaseClient,
+  matches: Match[],
+  tournamentId: string,
+  playerId: string,
+  winnersRounds: number,
+): Promise<WriteResult> {
+  const current = matches.find(
+    (m) => (m.player1Id === playerId || m.player2Id === playerId) && !m.winnerId && m.status !== 'walkover',
+  );
+  const opponentId = current
+    ? (current.player1Id === playerId ? current.player2Id : current.player1Id)
+    : null;
+
+  if (current && opponentId && opponentId !== 'BYE') {
+    const advancement = resolveAdvancement(matches, current, opponentId, playerId, winnersRounds);
+    const [first, ...rest] = advancement;
+    const { error } = await supabase
+      .from('matches')
+      .update({ ...matchUpdatesToColumns(first.updates), status: 'walkover' })
+      .eq('id', first.matchId);
+    if (error) return { error: error.message };
+    for (const { matchId, updates } of rest) {
+      const { error: restErr } = await supabase.from('matches').update(matchUpdatesToColumns(updates)).eq('id', matchId);
+      if (restErr) return { error: restErr.message };
+    }
+    await releaseCourtToNextMatch(supabase, tournamentId, current.courtNumber);
+  }
+
+  const { error } = await supabase.from('players').update({ status: 'no_show_eliminated' }).eq('id', playerId);
+  return error ? { error: error.message } : {};
 }

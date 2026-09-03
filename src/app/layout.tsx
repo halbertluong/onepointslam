@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Outfit, Inter } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/next';
+import { ImpersonationBanner } from '@/components/ImpersonationBanner';
+import { getSiteUrl } from '@/lib/siteUrl';
 import './globals.css';
 
 const outfit = Outfit({
@@ -18,6 +20,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getSiteUrl()),
   title: 'One Point Bowl — D1 Tennis Fundraising Platform',
   description: 'Run high-energy single-elimination tennis tournaments that grow your donor base. Built for D1 collegiate tennis programs.',
   icons: {
@@ -27,6 +30,12 @@ export const metadata: Metadata = {
     title: 'One Point Bowl',
     description: 'The fundraising tournament platform for D1 tennis programs.',
     type: 'website',
+    siteName: 'One Point Bowl',
+  },
+  twitter: {
+    // Chat apps and social clients show a full-width image for this card type
+    // rather than the small square thumbnail 'summary' gives.
+    card: 'summary_large_image',
   },
 };
 
@@ -34,6 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`h-full ${outfit.variable} ${inter.variable}`}>
       <body className="min-h-full flex flex-col antialiased">
+        <ImpersonationBanner />
         {children}
         <Analytics />
       </body>

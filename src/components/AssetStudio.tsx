@@ -10,7 +10,10 @@ import {
   type AssetKind,
 } from '@/lib/assetStudio';
 import { formatCurrency } from '@/lib/pricing';
-import type { Tournament } from '@/types';
+import { formatStoredDateTime } from '@/lib/dates';
+import { defaultHashtags, PLATFORM_HASHTAG } from '@/lib/schools';
+import { tournamentPath } from '@/lib/slugs';
+import type { AssetDetails, Tournament } from '@/types';
 
 interface Props {
   tournament: Tournament;
@@ -19,6 +22,9 @@ interface Props {
   primaryColor: string;
   secondaryColor: string;
   logoUrl?: string;
+  /** Persists the copy below so it survives leaving the tab. Without it the
+   *  studio still works, it just starts from the computed defaults each time. */
+  onSaveDetails?: (details: AssetDetails) => Promise<void>;
 }
 
 const ASSET_ICON: Record<AssetKind, string> = {
@@ -28,30 +34,43 @@ const ASSET_ICON: Record<AssetKind, string> = {
 };
 
 function defaultDateLabel(tournamentDate?: string): string {
-  if (!tournamentDate) return '';
-  const d = new Date(tournamentDate);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  return formatStoredDateTime(tournamentDate, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
-export default function AssetStudio({ tournament, tenantSlug, tenantName, primaryColor, secondaryColor, logoUrl }: Props) {
+export default function AssetStudio({ tournament, tenantSlug, tenantName, primaryColor, secondaryColor, logoUrl, onSaveDetails }: Props) {
   const settings = tournament.settings;
+  // Saved copy wins; anything the director hasn't touched falls back to what
+  // the tournament itself implies.
+  const saved = settings?.assetDetails;
   const [kind, setKind] = useState<AssetKind>('flyer');
-  const [eyebrow, setEyebrow] = useState(tenantName ? `${tenantName} Presents` : 'Tournament Registration');
-  const [headline, setHeadline] = useState(tournament.name);
-  const [dateLabel, setDateLabel] = useState(defaultDateLabel(settings?.tournamentDate));
-  const [locationLabel, setLocationLabel] = useState('');
+  const [eyebrow, setEyebrow] = useState(saved?.eyebrow ?? (tenantName ? `${tenantName} Presents` : 'Tournament Registration'));
+  const [headline, setHeadline] = useState(saved?.headline ?? tournament.name);
+  const [dateLabel, setDateLabel] = useState(saved?.dateLabel ?? defaultDateLabel(settings?.tournamentDate));
+  const [locationLabel, setLocationLabel] = useState(saved?.locationLabel ?? '');
   const [entryFeeLabel, setEntryFeeLabel] = useState(
-    settings?.ticketPriceForFundraiser ? `${formatCurrency(settings.ticketPriceForFundraiser)} Entry` : 'Free Entry',
+    saved?.entryFeeLabel
+      ?? (settings?.ticketPriceForFundraiser ? `${formatCurrency(settings.ticketPriceForFundraiser)} Entry` : 'Free Entry'),
   );
   const topPrize = settings?.prizePlaces?.find((p) => p.place === 1);
   const [prizeLabel, setPrizeLabel] = useState(
-    topPrize ? `Top prize: ${topPrize.type === 'fixed' ? formatCurrency(topPrize.value) : `${topPrize.value}%`}` : '',
+    saved?.prizeLabel
+      ?? (topPrize ? `Top prize: ${topPrize.type === 'fixed' ? formatCurrency(topPrize.value) : `${topPrize.value}%`}` : ''),
   );
-  const [ctaText, setCtaText] = useState('Register Now');
-  const [hashtag, setHashtag] = useState('');
+  const [ctaText, setCtaText] = useState(saved?.ctaText ?? 'Register Now');
+  const [hashtag, setHashtag] = useState(saved?.hashtag ?? defaultHashtags(tenantName));
   const [rendering, setRendering] = useState(false);
   const [downloadedAll, setDownloadedAll] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [savedDetails, setSavedDetails] = useState(false);
+
+  async function handleSaveDetails() {
+    if (!onSaveDetails) return;
+    setSavingDetails(true);
+    await onSaveDetails({ eyebrow, headline, dateLabel, locationLabel, entryFeeLabel, prizeLabel, ctaText, hashtag });
+    setSavingDetails(false);
+    setSavedDetails(true);
+    setTimeout(() => setSavedDetails(false), 2000);
+  }
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const offscreenRef = useRef<HTMLCanvasElement | null>(null);
@@ -61,8 +80,10 @@ export default function AssetStudio({ tournament, tenantSlug, tenantName, primar
   // hydration mismatch.
   const [registrationUrl, setRegistrationUrl] = useState('');
   useEffect(() => {
-    setRegistrationUrl(`${window.location.origin}/t/${tenantSlug}/${tournament.id}/register`);
-  }, [tenantSlug, tournament.id]);
+    // The readable link, not the id — this is the URL that ends up printed on a
+    // flyer and encoded in the QR code, so it has to be one a person can type.
+    setRegistrationUrl(`${window.location.origin}${tournamentPath(tenantSlug, tournament.slug)}/register`);
+  }, [tenantSlug, tournament.slug]);
 
   const content: AssetContent = useMemo(
     () => ({ eyebrow, headline, dateLabel, locationLabel, entryFeeLabel, prizeLabel, ctaText, registrationUrl, hashtag }),
@@ -145,7 +166,7 @@ export default function AssetStudio({ tournament, tenantSlug, tenantName, primar
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Location</label>
               <input value={locationLabel} onChange={(e) => setLocationLabel(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm" placeholder="Taube Tennis Center" />
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm" placeholder="Campus Tennis Courts" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -169,13 +190,30 @@ export default function AssetStudio({ tournament, tenantSlug, tenantName, primar
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Hashtag</label>
               <input value={hashtag} onChange={(e) => setHashtag(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm" placeholder="#GoStanford" />
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm" placeholder={PLATFORM_HASHTAG} />
             </div>
           </div>
           <p className="text-xs text-slate-400">
             Every asset carries a scannable QR code that links straight to{' '}
             <span className="font-mono text-slate-500 break-all">{registrationUrl || '…'}</span>
           </p>
+
+          {onSaveDetails && (
+            <div className="flex items-center gap-3 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                onClick={handleSaveDetails}
+                disabled={savingDetails}
+                className="btn-primary px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60"
+              >
+                {savingDetails ? 'Saving…' : 'Save Details'}
+              </button>
+              {savedDetails && <span className="text-sm text-emerald-600 font-semibold">✓ Saved!</span>}
+              <span className="text-xs text-slate-400">
+                Downloads always use what&apos;s on screen — saving is so this copy is still here next time.
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-3">

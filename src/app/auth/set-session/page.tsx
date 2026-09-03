@@ -19,8 +19,11 @@ function SetSessionInner() {
     }
 
     const supabase = createClient();
-    // Sign out any existing session first so there's no race with the new one
-    supabase.auth.signOut().then(() =>
+    // Sign out any existing session first so there's no race with the new one.
+    // scope: 'local' only clears this browser's cookies — the default 'global'
+    // scope revokes the refresh token server-side, which would break "stop
+    // impersonating" since it restores the admin by refreshing that same token.
+    supabase.auth.signOut({ scope: 'local' }).then(() =>
       supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'magiclink' })
     ).then(({ error }) => {
       if (error) router.replace('/auth/login?error=link_expired');

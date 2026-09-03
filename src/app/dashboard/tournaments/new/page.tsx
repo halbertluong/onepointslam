@@ -3,17 +3,18 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { useRouter } from 'next/navigation';
-import FundraisingCalculator from '@/components/FundraisingCalculator';
+import FundraisingCalculator, { type FundraisingCalculatorResult } from '@/components/FundraisingCalculator';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
 import type { TournamentSettings, MaxPlayers, Sport } from '@/types';
-import { DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
+import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
 
 const DEFAULT_SETTINGS: TournamentSettings = {
   sport: 'tennis',
   maxPlayers: 32,
   bracketFormat: 'single_elimination',
   ticketPriceForFundraiser: 20,
+  allowDonations: true,
   systemTechFee: DEFAULT_PLATFORM_FEE,
   serveRuleProfile: 'one_serve_sudden_death',
   serverDetermination: 'random_coin_toss',
@@ -33,8 +34,28 @@ export default function NewTournamentPage() {
   const [error, setError] = useState('');
   const router = useRouter();
 
+  // The fundraising goal is computed from whichever calculator mode is
+  // active. `goalDirty` tracks whether the director has typed over that
+  // computed value directly — once they have, the calculator no longer
+  // overwrites it until they explicitly reset.
+  const [impliedGoal, setImpliedGoal] = useState(0);
+  const [goalDirty, setGoalDirty] = useState(false);
+
   function updateSettings<K extends keyof TournamentSettings>(key: K, value: TournamentSettings[K]) {
     setSettings((s) => ({ ...s, [key]: value }));
+  }
+
+  function handleCalculatorChange(result: FundraisingCalculatorResult) {
+    updateSettings('ticketPriceForFundraiser', result.entranceFeePerPlayer);
+    setImpliedGoal(result.impliedGoal);
+    if (!goalDirty) {
+      updateSettings('fundraisingGoal', result.impliedGoal || undefined);
+    }
+  }
+
+  function resetGoalToCalculated() {
+    setGoalDirty(false);
+    updateSettings('fundraisingGoal', impliedGoal || undefined);
   }
 
   /**
@@ -169,7 +190,7 @@ export default function NewTournamentPage() {
                 Tournament Date (optional)
               </label>
               <input
-                type="date"
+                type="datetime-local"
                 value={settings.tournamentDate ?? ''}
                 onChange={(e) => updateSettings('tournamentDate', e.target.value || undefined)}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none"
@@ -254,31 +275,6 @@ export default function NewTournamentPage() {
           </div>
         </div>
 
-        {/* Fundraising Goal */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-          <div>
-            <h2 className="font-bold text-slate-800">Fundraising Goal</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Optional — shown as a progress bar on the public registration page</p>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Goal Amount (USD)
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-              <input
-                type="number"
-                min="0"
-                step="100"
-                placeholder="e.g. 5000"
-                value={settings.fundraisingGoal ?? ''}
-                onChange={(e) => updateSettings('fundraisingGoal', e.target.value ? Number(e.target.value) : undefined)}
-                className="w-full border border-slate-200 rounded-xl pl-7 pr-3 py-2.5 text-sm focus:outline-none"
-              />
-            </div>
-          </div>
-        </div>
-
         {/* Prize money */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
           <div className="flex items-center justify-between">
@@ -300,9 +296,61 @@ export default function NewTournamentPage() {
         </div>
 
         {/* Pricing calculator */}
-        <FundraisingCalculator
-          onPriceSet={(price) => updateSettings('ticketPriceForFundraiser', price)}
-        />
+        <FundraisingCalculator onChange={handleCalculatorChange} />
+
+        {/* Fundraising Goal — computed from the calculator above, overridable */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+          <div>
+            <h2 className="font-bold text-slate-800">Fundraising Goal</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Shown as a progress bar on the public registration page</p>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Goal Amount (USD)
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+              <input
+                type="number"
+                min="0"
+                step="100"
+                placeholder="e.g. 5000"
+                value={settings.fundraisingGoal ?? ''}
+                onChange={(e) => {
+                  setGoalDirty(true);
+                  updateSettings('fundraisingGoal', e.target.value ? Number(e.target.value) : undefined);
+                }}
+                className="w-full border border-slate-200 rounded-xl pl-7 pr-3 py-2.5 text-sm focus:outline-none"
+              />
+            </div>
+            {goalDirty && (
+              <button
+                type="button"
+                onClick={resetGoalToCalculated}
+                className="text-xs font-semibold mt-1.5 hover:underline"
+                style={{ color: 'var(--tenant-primary)' }}
+              >
+                Reset to calculated value — {formatCurrency(impliedGoal)}
+              </button>
+            )}
+          </div>
+
+          <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3.5 cursor-pointer hover:bg-slate-50 transition-colors">
+            <input
+              type="checkbox"
+              checked={settings.allowDonations !== false}
+              onChange={(e) => updateSettings('allowDonations', e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-slate-700">Offer a Donate Link on the Registration Page</span>
+              <span className="block text-xs text-slate-400 mt-0.5">
+                Lets visitors who aren&apos;t playing chip in instead. Leave it unchecked to ask for
+                sign-ups only — you can change this later from the Registration tab.
+              </span>
+            </span>
+          </label>
+        </div>
 
         {error && (
           <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{error}</p>

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { useRouter } from 'next/navigation';
 import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
+import { donationsAllowed } from '@/lib/donations';
+import { tournamentPath } from '@/lib/slugs';
 import PlayerRegistrationForm, { type PlayerFormData } from '@/components/PlayerRegistrationForm';
 import TournamentInfoCard from '@/components/TournamentInfoCard';
 import RegistrationHero from '@/components/RegistrationHero';
@@ -195,12 +197,16 @@ type Step = 'loading' | 'form' | 'payment' | 'success' | 'closed' | 'already_reg
 export default function RegistrationFlow({
   slug,
   tournamentId,
+  tournamentSlug,
   embedded = false,
   onRegistered,
   directorEntry = false,
 }: {
   slug: string;
   tournamentId: string;
+  /** Readable URL segment for the links back to the bracket. Falls back to the
+   *  id, which the public routes still resolve, when a caller has only that. */
+  tournamentSlug?: string;
   /** Drop the full-page shell so the flow can sit inside a dashboard tab. */
   embedded?: boolean;
   /** Fired after a registration or donation completes, so a host can refresh. */
@@ -213,6 +219,7 @@ export default function RegistrationFlow({
   const router = useRouter();
   // Embedded, the surrounding page owns the height; standalone, this is the page.
   const SHELL = embedded ? '' : 'min-h-screen';
+  const bracketPath = tournamentPath(slug, tournamentSlug || tournamentId);
 
   const [step, setStep] = useState<Step>('loading');
   const [tournament, setTournament] = useState<Record<string, unknown> | null>(null);
@@ -245,6 +252,7 @@ export default function RegistrationFlow({
   const [donateCustom, setDonateCustom] = useState('');
   const [donating, setDonating] = useState(false);
   const [donationTotal, setDonationTotal] = useState(0);
+  const [donationRecordingError, setDonationRecordingError] = useState('');
 
   useEffect(() => {
     async function init() {
@@ -335,8 +343,11 @@ export default function RegistrationFlow({
     }
   }
 
-  // All player insertion goes through the server route which verifies payment server-side
-  async function insertPlayer(data: PlayerFormData, paymentIntentId: string | null): Promise<{ error?: string }> {
+  // For a free tournament, or the local-dev mock path where nothing was
+  // really charged — a real card payment never reaches this route; it is
+  // promoted straight from its reservation once Stripe confirms it (see
+  // handleRegister below and src/lib/paymentPromotion.ts).
+  async function insertPlayer(data: PlayerFormData): Promise<{ error?: string }> {
     const res = await fetch('/api/registrations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -349,7 +360,6 @@ export default function RegistrationFlow({
         utr: data.utr || null,
         age: data.age || null,
         skillTier: data.skillTier || null,
-        stripePaymentIntentId: paymentIntentId,
         ...(directorEntry ? { directorEntry: true } : {}),
       }),
     });
@@ -367,19 +377,43 @@ export default function RegistrationFlow({
   }
 
   async function handleRegister(data: PlayerFormData): Promise<{ error?: string }> {
-    // When there is an entry fee and Stripe is configured, collect payment first
-    if (entranceFee > 0 && stripePromise) {
+    if (entranceFee > 0) {
+      // Stripe.js failed to load (almost always a missing/misconfigured
+      // NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) — fail loudly here rather than
+      // silently falling through to an unpaid registration. That silent
+      // fallback is exactly the kind of defect that lets someone register
+      // without paying and nobody notices.
+      if (!stripePromise) {
+        return { error: 'Card payments are not available right now — the site is missing its Stripe configuration. Please contact the tournament director.' };
+      }
+
+      // This reserves the entry — full details and the PaymentIntent about to
+      // charge them are written to pending_registrations before any card is
+      // charged, so a director sees them in the "Awaiting Payment" list from
+      // this moment, not only after the card succeeds.
       const res = await fetch('/api/payments/create-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tournamentId, ...(directorEntry ? { directorEntry: true } : {}) }),
+        body: JSON.stringify({
+          tournamentId,
+          fullName: data.fullName,
+          email: data.email,
+          gender: data.gender || null,
+          ntrp: data.ntrp || null,
+          utr: data.utr || null,
+          age: data.age || null,
+          skillTier: data.skillTier || null,
+          ...(directorEntry ? { directorEntry: true } : {}),
+        }),
       });
       const json = await res.json() as { clientSecret?: string; mock?: boolean; error?: string };
       if (!res.ok) return { error: json.error ?? 'Failed to set up payment. Please try again.' };
 
       if (json.mock) {
-        // Dev mode: Stripe not configured — skip payment
-        return insertPlayer(data, null);
+        // Local dev only: no STRIPE_SECRET_KEY set, so the server mocked the
+        // intent and wrote no reservation — never happens in production
+        // (createPaymentIntent throws there instead of mocking).
+        return insertPlayer(data);
       }
 
       if (!json.clientSecret) return { error: 'Payment setup failed. Please try again.' };
@@ -387,11 +421,14 @@ export default function RegistrationFlow({
       setPendingPlayerData(data);
       setClientSecret(json.clientSecret);
       setStep('payment');
+      // The reservation already exists — a director watching the Players tab
+      // should see this entrant right away, not only once they've paid.
+      onRegistered?.();
       return {};
     }
 
-    // No fee or Stripe not configured
-    return insertPlayer(data, null);
+    // No entry fee for this tournament
+    return insertPlayer(data);
   }
 
   async function handleSavePassword() {
@@ -422,18 +459,40 @@ export default function RegistrationFlow({
   }
 
   async function handleDonatePaymentSuccess(paymentIntentId: string, amountDollars: number) {
-    await fetch('/api/donations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tournamentId, stripePaymentIntentId: paymentIntentId, amountDollars }),
-    });
-    setDonationTotal((prev) => prev + amountDollars);
+    // The donation is already paid for; this call is what books it. Ignoring
+    // its result is how a donation ends up in Stripe and nowhere else, with a
+    // thank-you screen hiding the fact — so surface a failure to the donor and
+    // give the director the reference to recover it from.
+    let recorded = false;
+    try {
+      const res = await fetch('/api/donations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tournamentId, stripePaymentIntentId: paymentIntentId, amountDollars }),
+      });
+      recorded = res.ok;
+    } catch {
+      recorded = false;
+    }
+
+    if (recorded) {
+      setDonationTotal((prev) => prev + amountDollars);
+      setDonationRecordingError('');
+    } else {
+      setDonationRecordingError(
+        `Your donation was charged, but we couldn't add it to this tournament's total. `
+        + `Nothing more is owed — send the organizer this reference and they can record it: ${paymentIntentId}`,
+      );
+    }
     setStep('donate_success');
     onRegistered?.();
   }
 
   const settings = tournament?.settings as Record<string, unknown> | null;
   const entranceFee = (settings?.ticketPriceForFundraiser as number) ?? 0;
+  // Directors who don't want a donation ask alongside sign-up switch this off;
+  // every route into the donate step is gated on it, and so is the server.
+  const donateEnabled = donationsAllowed(settings);
   const tenantRecord = tournament?.tenants as Record<string, unknown> | null;
   const tenantName = tenantRecord?.display_name as string ?? '';
   const tenantLogoUrl = tenantRecord?.logo_url as string | undefined;
@@ -449,7 +508,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title={tournamentName || 'Registration'} logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14">
+        <div className="relative z-10 max-w-sm mx-auto px-4 -mt-2 pb-14">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-7 text-center space-y-4">
             <div className="text-5xl">🔒</div>
             <h2 className="text-xl font-black text-slate-900">Registration Closed</h2>
@@ -458,17 +517,19 @@ export default function RegistrationFlow({
             </p>
             <div className="flex flex-col gap-2 pt-1">
               <button
-                onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
+                onClick={() => router.push(bracketPath)}
                 className="btn-secondary px-6 py-3 rounded-xl font-bold text-sm"
               >
                 View Bracket
               </button>
-              <button
-                onClick={() => setStep('donate')}
-                className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2"
-              >
-                Donate to support the team
-              </button>
+              {donateEnabled && (
+                <button
+                  onClick={() => setStep('donate')}
+                  className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2"
+                >
+                  Donate to support the team
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -480,7 +541,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title={tournamentName || 'Registration'} logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14">
+        <div className="relative z-10 max-w-sm mx-auto px-4 -mt-2 pb-14">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-7 text-center space-y-4">
             <div className="text-5xl">✅</div>
             <h2 className="text-xl font-black text-slate-900">Already Registered</h2>
@@ -488,7 +549,7 @@ export default function RegistrationFlow({
               You&apos;re already signed up for <strong>{tournamentName}</strong>.
             </p>
             <button
-              onClick={() => router.push(`/t/${slug}/${tournamentId}`)}
+              onClick={() => router.push(bracketPath)}
               className="btn-primary px-6 py-3 rounded-xl font-bold text-sm"
             >
               View Bracket
@@ -504,7 +565,7 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title="You're In! 🎾" logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14 space-y-5">
+        <div className="relative z-10 max-w-sm mx-auto px-4 pt-6 pb-14 space-y-5">
           <div className="text-center space-y-2">
             <p className="text-slate-600">
               Welcome to <strong>{tournamentName}</strong>, {registeredName}!
@@ -577,15 +638,30 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title={tournamentName} logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-md mx-auto px-4 -mt-2 pb-14 space-y-6">
+        <div className="relative z-10 max-w-md mx-auto px-4 pt-6 pb-14 space-y-6">
           <p className="text-sm text-slate-500 text-center">Complete your registration</p>
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
             <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
               <StripeCheckoutForm
                 playerName={pendingPlayerData.fullName}
                 totalDollars={totalDollars}
-                onSuccess={async (paymentIntentId) => {
-                  await insertPlayer(pendingPlayerData, paymentIntentId);
+                onSuccess={(paymentIntentId) => {
+                  // Fast path only: this is what moves the reservation into
+                  // players within moments instead of waiting on webhook
+                  // delivery. The webhook (src/app/api/webhooks/stripe) is
+                  // what actually guarantees the move happens — Stripe has
+                  // already told this browser the charge succeeded, so the
+                  // payer's own success screen doesn't wait on this call.
+                  fetch('/api/payments/confirm-paid', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paymentIntentId }),
+                  }).catch(() => {});
+                  setRegisteredName(pendingPlayerData.fullName);
+                  setRegisteredEmail(pendingPlayerData.email);
+                  setWasGuest(!currentUser);
+                  setStep('success');
+                  onRegistered?.();
                 }}
                 onBack={() => {
                   setStep('form');
@@ -601,12 +677,15 @@ export default function RegistrationFlow({
   }
 
   // ── Donation flow ────────────────────────────────────────────────────────────
-  if (step === 'donate') {
+  // Gated on the setting as well as on the entry points: a director can switch
+  // donations off while someone is sat on the page, and this render is what
+  // that visitor would otherwise still be looking at.
+  if (step === 'donate' && donateEnabled) {
     const effectiveAmount = donateCustom ? parseFloat(donateCustom) || 0 : donateAmount;
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title={tournamentName} logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-md mx-auto px-4 -mt-2 pb-14 space-y-6">
+        <div className="relative z-10 max-w-md mx-auto px-4 pt-6 pb-14 space-y-6">
           <div>
             <button
               type="button"
@@ -699,11 +778,16 @@ export default function RegistrationFlow({
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title="Thank You! 💚" logoUrl={tenantLogoUrl} compact />
-        <div className="max-w-sm mx-auto px-4 -mt-2 pb-14 text-center space-y-4">
+        <div className="relative z-10 max-w-sm mx-auto px-4 pt-6 pb-14 text-center space-y-4">
           <p className="text-slate-600">
             Your donation of <strong>{formatCurrency(effectiveAmount)}</strong> to{' '}
             <strong>{tenantName || tournamentName}</strong> is appreciated.
           </p>
+          {donationRecordingError && (
+            <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-3 text-left">
+              {donationRecordingError}
+            </p>
+          )}
           <button
             onClick={() => setStep('form')}
             className="btn-primary w-full py-3 rounded-xl font-bold text-sm"
@@ -728,12 +812,12 @@ export default function RegistrationFlow({
     <div className={`${SHELL} bg-slate-50`}>
       <RegistrationHero eyebrow={tenantName || 'Tournament Registration'} title={tournamentName} logoUrl={tenantLogoUrl} pills={heroPills} />
 
-      <div className="max-w-4xl mx-auto px-4 -mt-4 sm:-mt-6 pb-14 space-y-5">
+      <div className="relative z-10 max-w-4xl mx-auto px-4 -mt-4 sm:-mt-6 pb-14 space-y-5">
         {/* Header */}
         {bracketReady && (
           <div className="flex justify-end">
             <a
-              href={`/t/${slug}/${tournamentId}`}
+              href={bracketPath}
               target="_blank"
               rel="noopener noreferrer"
               className="shrink-0 px-4 py-2 rounded-xl border border-slate-200 bg-white shadow-sm text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:shadow transition-all flex items-center gap-1.5"
@@ -763,13 +847,14 @@ export default function RegistrationFlow({
           playerCount={playerCount}
           donationTotal={donationTotal}
           maxPlayers={settings?.maxPlayers as number | undefined}
+          beneficiaryName={tenantName}
           prizePlaces={settings?.prizePlaces as Array<{ place: number; value: number; type: string }> | undefined}
           matchRules={{
             serveRuleProfile: settings?.serveRuleProfile as string | undefined,
             serverDetermination: settings?.serverDetermination as string | undefined,
             receivingSideSelection: settings?.receivingSideSelection as string | undefined,
           }}
-          onDonate={() => setStep('donate')}
+          onDonate={donateEnabled ? () => setStep('donate') : undefined}
         />
 
         {currentUser && (
@@ -791,6 +876,7 @@ export default function RegistrationFlow({
 
         <PlayerRegistrationForm
           tournamentName={tournamentName}
+          tenantName={tenantName}
           hideHeader
           entranceFee={entranceFee}
           platformFee={platformFee}
@@ -804,7 +890,7 @@ export default function RegistrationFlow({
             onSignIn: handleWelcomeBackSignIn,
             onDismiss: () => { setWelcomeBackVisible(false); setWelcomeBackError(''); },
           } : undefined}
-          onDonate={() => setStep('donate')}
+          onDonate={donateEnabled ? () => setStep('donate') : undefined}
           onSubmit={handleRegister}
         />
         </>)}

@@ -1,7 +1,11 @@
 import { createClient } from '@/lib/supabase/server';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
-import type { Tenant, Tournament } from '@/types';
+import { findTenant } from '@/lib/publicRoutes';
+import { tournamentPath } from '@/lib/slugs';
+import { formatStoredDateTime } from '@/lib/dates';
+import { DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
+import type { Tournament } from '@/types';
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -19,13 +23,10 @@ export default async function TenantPage({ params }: Props) {
   const { slug } = await params;
   const supabase = await createClient();
 
-  const { data: tenant } = await supabase
-    .from('tenants')
-    .select('*')
-    .eq('slug', slug)
-    .single();
-
+  const tenant = await findTenant(supabase, slug);
   if (!tenant) notFound();
+  // One canonical spelling of the program's URL, whatever casing was typed.
+  if (slug !== tenant.slug) redirect(`/t/${tenant.slug}`);
 
   const { data: tournaments } = await supabase
     .from('tournaments')
@@ -92,16 +93,16 @@ export default async function TenantPage({ params }: Props) {
                     <div className="text-sm text-slate-500 space-y-1 mb-4">
                       <p>Draw: {t.settings?.maxPlayers ?? '?'} players max</p>
                       {t.settings?.registrationDeadline && (
-                        <p>Deadline: {new Date(t.settings.registrationDeadline).toLocaleString()}</p>
+                        <p>Deadline: {formatStoredDateTime(t.settings.registrationDeadline, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                       )}
                     </div>
                     <div className="flex gap-2">
                       {isOpen ? (
                         <Link
-                          href={`/t/${slug}/${t.id}/register`}
+                          href={tournamentPath(tenant.slug, t.slug, 'register')}
                           className="btn-primary flex-1 py-3 rounded-xl font-bold text-sm text-center"
                         >
-                          Register — ${(t.settings?.ticketPriceForFundraiser ?? 0) + (t.settings?.systemTechFee ?? 5)}
+                          Register — ${(t.settings?.ticketPriceForFundraiser ?? 0) + (t.settings?.systemTechFee ?? DEFAULT_PLATFORM_FEE)}
                         </Link>
                       ) : (
                         <div className="flex-1 py-3 rounded-xl border-2 border-slate-200 text-slate-400 text-sm font-semibold text-center">
@@ -110,7 +111,7 @@ export default async function TenantPage({ params }: Props) {
                       )}
                       {(t.status === 'bracket_generated' || t.status === 'live_play' || t.status === 'completed') && (
                         <Link
-                          href={`/t/${slug}/${t.id}`}
+                          href={tournamentPath(tenant.slug, t.slug)}
                           className="btn-secondary px-4 py-3 rounded-xl font-bold text-sm text-center"
                         >
                           Bracket
@@ -132,7 +133,7 @@ export default async function TenantPage({ params }: Props) {
               {(pastTournaments ?? []).map((t: Tournament) => (
                 <Link
                   key={t.id}
-                  href={`/t/${slug}/${t.id}`}
+                  href={tournamentPath(tenant.slug, t.slug)}
                   className="flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors"
                 >
                   <span className="font-medium text-slate-700">{t.name}</span>

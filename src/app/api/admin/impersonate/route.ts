@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
+import { IMPERSONATOR_COOKIE } from '@/lib/impersonation';
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -10,6 +12,15 @@ export async function POST(req: NextRequest) {
   const { data: appUser } = await supabase.from('users').select('role').eq('id', user.id).single();
   if (appUser?.role !== 'super_admin') {
     return NextResponse.json({ error: 'Must be super_admin' }, { status: 403 });
+  }
+
+  // Capture the admin's own refresh token *before* the target user's session
+  // overwrites the shared auth cookies, so "stop impersonating" has a session
+  // to restore. verifyOtp() on /auth/set-session signs the admin out first,
+  // which otherwise leaves no way back.
+  const { data: { session: adminSession } } = await supabase.auth.getSession();
+  if (!adminSession?.refresh_token) {
+    return NextResponse.json({ error: 'No active session to preserve' }, { status: 500 });
   }
 
   let body: { targetEmail: string; origin: string; landingPath: string };
@@ -54,6 +65,18 @@ export async function POST(req: NextRequest) {
 
   const safeLandingPath = landingPath?.startsWith('/') ? landingPath : '/';
   const setSessionUrl = `${base}/auth/set-session?th=${encodeURIComponent(tokenHash)}&next=${encodeURIComponent(safeLandingPath)}`;
+
+  const cookieStore = await cookies();
+  const payload = Buffer.from(
+    JSON.stringify({ refresh_token: adminSession.refresh_token, email: user.email }),
+  ).toString('base64url');
+  cookieStore.set(IMPERSONATOR_COOKIE, payload, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 60 * 60 * 12, // 12 hours
+  });
 
   return NextResponse.json({ url: setSessionUrl });
 }

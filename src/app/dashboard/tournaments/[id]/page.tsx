@@ -9,17 +9,21 @@ import SeedAssignmentPanel from '@/components/SeedAssignmentPanel';
 import DrawEditorPanel from '@/components/DrawEditorPanel';
 import LiveScoreboard from '@/components/LiveScoreboard';
 import RegistrationPanel from '@/components/RegistrationPanel';
+import PaymentsPanel from '@/components/PaymentsPanel';
 import NotesPanel from '@/components/NotesPanel';
 import AssetStudio from '@/components/AssetStudio';
+import TournamentUrlCard from '@/components/TournamentUrlCard';
 import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 import { persistReversal } from '@/lib/tournamentWrites';
-import type { Tournament, Player, Match } from '@/types';
-import { mapPlayer, mapMatch } from '@/types';
-import { calcRaised, formatCurrency } from '@/lib/pricing';
+import type { Tournament, Player, Match, PendingRegistration } from '@/types';
+import { mapPlayer, mapMatch, mapPendingRegistration } from '@/types';
+import { calcRaised, formatCurrency, DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
+import { toDateTimeLocalValue } from '@/lib/dates';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
 import { MATCH_STATUS_ORDER, MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
+import { tournamentPath } from '@/lib/slugs';
 
 function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; isArchived: boolean }) {
   const router = useRouter();
@@ -55,7 +59,7 @@ function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; is
   );
 }
 
-type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'assets' | 'notes' | 'settings';
+type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'payments' | 'assets' | 'notes' | 'settings';
 
 const TAB_LABELS: Record<Tab, string> = {
   players: 'Players',
@@ -65,12 +69,13 @@ const TAB_LABELS: Record<Tab, string> = {
   bracket: 'Bracket',
   scoreboard: 'Scoreboard',
   registration: 'Registration',
+  payments: 'Payments',
   assets: 'Assets',
   notes: 'Notes',
   settings: 'Settings',
 };
 
-const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'assets', 'notes', 'settings'];
+const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'payments', 'assets', 'notes', 'settings'];
 
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
   const active = matches
@@ -151,6 +156,8 @@ export default function TournamentAdminPage() {
   const { id } = useParams<{ id: string }>();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
+  const [pendingRegistrations, setPendingRegistrations] = useState<PendingRegistration[]>([]);
+  const [focusPaymentIntentId, setFocusPaymentIntentId] = useState<string | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -169,13 +176,20 @@ export default function TournamentAdminPage() {
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const [{ data: t }, { data: p }, { data: m }, { data: me }, { data: donations }] = await Promise.all([
+    const [{ data: t }, { data: p }, { data: m }, { data: me }, { data: donations }, pendingRes] = await Promise.all([
       supabase.from('tournaments').select('*, tenants(slug, display_name, primary_color, secondary_color, logo_url)').eq('id', id).single(),
       supabase.from('players').select('*').eq('tournament_id', id).order('created_at'),
       supabase.from('matches').select('*').eq('tournament_id', id).order('round_index').order('match_index'),
       supabase.from('users').select('role').eq('id', (await supabase.auth.getUser()).data.user?.id ?? '').single(),
       supabase.from('donations').select('amount').eq('tournament_id', id),
+      // pending_registrations has no client-readable RLS policy (it carries
+      // personal details of people who haven't completed registration) — a
+      // director-authorized API route is the only way to read it.
+      fetch(`/api/tournaments/${id}/pending-registrations`).then((r) => r.json()).catch(() => ({ pendingRegistrations: [] })),
     ]);
+    setPendingRegistrations(
+      ((pendingRes.pendingRegistrations ?? []) as Record<string, unknown>[]).map(mapPendingRegistration),
+    );
     if (t) {
       setTournament(t);
       const tenantRow = t.tenants as Record<string, unknown> | null;
@@ -195,6 +209,23 @@ export default function TournamentAdminPage() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  /** Jumps to the Payments tab with this payment highlighted — used from both
+   *  the confirmed roster and the Awaiting Payment sub-table. */
+  function handleViewPayment(paymentIntentId: string) {
+    setFocusPaymentIntentId(paymentIntentId);
+    setTab('payments');
+  }
+
+  async function handleDismissPending(pendingId: string): Promise<{ error?: string }> {
+    const res = await fetch(`/api/tournaments/${id}/pending-registrations?pendingId=${pendingId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      return { error: json.error ?? 'Could not remove this reservation.' };
+    }
+    await load();
+    return {};
+  }
 
   async function handleForceClose() {
     setSaving(true);
@@ -217,7 +248,9 @@ export default function TournamentAdminPage() {
     }
     setSaving(true);
     const supabase = createClient();
-    const generated = generateBracket(players, tournament.settings, id);
+    // A player withdrawn before the draw existed shouldn't get seeded into it.
+    const eligible = players.filter((p) => p.status !== 'no_show_eliminated');
+    const generated = generateBracket(eligible, tournament.settings, id);
     const { error } = await supabase.from('matches').upsert(
       generated.map((m) => ({
         id: m.id,
@@ -361,7 +394,7 @@ export default function TournamentAdminPage() {
 
   const totalPricePerPlayer =
     (tournament.settings?.ticketPriceForFundraiser ?? 0) +
-    (tournament.settings?.systemTechFee ?? 5);
+    (tournament.settings?.systemTechFee ?? DEFAULT_PLATFORM_FEE);
 
   const canManageDraw =
     tournament.status === 'bracket_generated' || tournament.status === 'live_play';
@@ -376,8 +409,10 @@ export default function TournamentAdminPage() {
       .flatMap((m) => [m.player1Id, m.player2Id])
       .filter((pid): pid is string => !!pid && pid !== 'BYE'),
   );
+  // A withdrawn player was deliberately pulled, not left behind — they don't
+  // count toward "needs attention" here any more than they do in PlayersPanel.
   const unplacedCount = bracketGenerated
-    ? players.filter((p) => !placedPlayerIds.has(p.id)).length
+    ? players.filter((p) => p.status !== 'no_show_eliminated' && !placedPlayerIds.has(p.id)).length
     : 0;
 
   return (
@@ -405,7 +440,7 @@ export default function TournamentAdminPage() {
           {tenantSlug && tournament.status !== 'completed' && (
             <button
               onClick={() => {
-                const link = `${window.location.origin}/t/${tenantSlug}/${id}/register`;
+                const link = `${window.location.origin}${tournamentPath(tenantSlug, tournament.slug, 'register')}`;
                 navigator.clipboard.writeText(link);
                 setLinkCopied(true);
                 setTimeout(() => setLinkCopied(false), 2000);
@@ -418,7 +453,7 @@ export default function TournamentAdminPage() {
           {tenantSlug && (tournament.status === 'live_play' || tournament.status === 'bracket_generated') && (
             <button
               onClick={() => {
-                const link = `${window.location.origin}/t/${tenantSlug}/${id}/live`;
+                const link = `${window.location.origin}${tournamentPath(tenantSlug, tournament.slug, 'live')}`;
                 navigator.clipboard.writeText(link);
                 setMessage('📺 Live scoreboard link copied! Open on a TV or share with spectators.');
                 setTimeout(() => setMessage(''), 4000);
@@ -475,7 +510,7 @@ export default function TournamentAdminPage() {
           { label: 'Players', value: players.length },
           { label: 'Ticket Price', value: formatCurrency(tournament.settings?.ticketPriceForFundraiser ?? 0) },
           { label: 'Total Raised', value: formatCurrency(calcRaised(players.length, tournament.settings?.ticketPriceForFundraiser ?? 0, donationTotal)) },
-          ...(isSuperAdmin ? [{ label: 'Platform Fees', value: formatCurrency((tournament.settings?.systemTechFee ?? 5) * players.length) }] : []),
+          ...(isSuperAdmin ? [{ label: 'Service Fees', value: formatCurrency((tournament.settings?.systemTechFee ?? DEFAULT_PLATFORM_FEE) * players.length) }] : []),
         ]) as { label: string; value: string | number }[]).map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-4">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{s.label}</p>
@@ -496,7 +531,7 @@ export default function TournamentAdminPage() {
           return (
             <button
               key={t}
-              onClick={() => setTab(t)}
+              onClick={() => { setTab(t); if (t !== 'payments') setFocusPaymentIntentId(null); }}
               className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-colors whitespace-nowrap flex items-center gap-1.5 ${
                 tab === t
                   ? 'border-b-2 text-slate-900'
@@ -524,6 +559,12 @@ export default function TournamentAdminPage() {
           players={players}
           matches={matches}
           bracketGenerated={bracketGenerated}
+          tournamentId={id}
+          maxPlayers={tournament.settings?.maxPlayers ?? 8}
+          entranceFee={tournament.settings?.ticketPriceForFundraiser ?? 0}
+          pendingRegistrations={pendingRegistrations}
+          onViewPayment={handleViewPayment}
+          onDismissPending={handleDismissPending}
           onSaved={load}
         />
       )}
@@ -631,7 +672,22 @@ export default function TournamentAdminPage() {
           tenantSlug={tenantSlug}
           playerCount={players.length}
           onRegistered={load}
+          onSaveSettings={(patch) => handleSaveSettings(patch)}
         />
+      )}
+
+      {/* Payments tab — Stripe against the registrations it should have created */}
+      {tab === 'payments' && (
+        <div className="space-y-4">
+          <div>
+            <h2 className="font-bold text-slate-800">Payments</h2>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Every card Stripe has charged for this tournament, checked against the registrations
+              and donations recorded here.
+            </p>
+          </div>
+          <PaymentsPanel tournamentId={id} focusPaymentIntentId={focusPaymentIntentId} onRecovered={load} />
+        </div>
       )}
 
       {/* Assets tab — branded flyer / Instagram post / story generator */}
@@ -643,6 +699,7 @@ export default function TournamentAdminPage() {
           primaryColor={tenantBranding.primaryColor}
           secondaryColor={tenantBranding.secondaryColor}
           logoUrl={tenantBranding.logoUrl}
+          onSaveDetails={(assetDetails) => handleSaveSettings({ assetDetails })}
         />
       )}
 
@@ -652,6 +709,13 @@ export default function TournamentAdminPage() {
       {/* Settings tab */}
       {tab === 'settings' && (
         <div className="space-y-6">
+          <TournamentUrlCard
+            key={tournament.slug}
+            tournament={tournament}
+            tenantSlug={tenantSlug}
+            onSaved={load}
+          />
+
           <SettingsEditor
             tournament={tournament}
             saving={saving}
@@ -730,8 +794,10 @@ function SettingsEditor({
   const [ticketPrice, setTicketPrice] = useState(String(s?.ticketPriceForFundraiser ?? ''));
   const [maxPlayers, setMaxPlayers] = useState(String(s?.maxPlayers ?? 32));
   const [bracketFormat, setBracketFormat] = useState<Tournament['settings']['bracketFormat']>(s?.bracketFormat ?? 'single_elimination');
-  const [tournamentDate, setTournamentDate] = useState(s?.tournamentDate ?? '');
-  const [deadline, setDeadline] = useState(s?.registrationDeadline ?? '');
+  // Normalised, not raw: a datetime-local input renders a date-only value as
+  // blank, and saving from there would wipe the date the public page shows.
+  const [tournamentDate, setTournamentDate] = useState(toDateTimeLocalValue(s?.tournamentDate));
+  const [deadline, setDeadline] = useState(toDateTimeLocalValue(s?.registrationDeadline));
   const [minReg, setMinReg] = useState(String(s?.minimumRegistrants ?? ''));
   const [courts, setCourts] = useState(String(s?.numberOfCourts ?? ''));
   const [serveRule, setServeRule] = useState<Tournament['settings']['serveRuleProfile']>(s?.serveRuleProfile ?? 'one_serve_sudden_death');
@@ -739,6 +805,7 @@ function SettingsEditor({
   const [receivingSide, setReceivingSide] = useState<Tournament['settings']['receivingSideSelection']>(s?.receivingSideSelection ?? 'server_choice');
   const [prizePlaces, setPrizePlaces] = useState(s?.prizePlaces ?? []);
   const [allowLateRegistration, setAllowLateRegistration] = useState(s?.allowLateRegistration ?? false);
+  const [allowDonations, setAllowDonations] = useState(s?.allowDonations !== false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -758,6 +825,7 @@ function SettingsEditor({
     patch.receivingSideSelection = receivingSide;
     patch.prizePlaces = prizePlaces.length > 0 ? prizePlaces : undefined;
     patch.allowLateRegistration = allowLateRegistration;
+    patch.allowDonations = allowDonations;
     patch.bracketFormat = bracketFormat;
     await onSave(patch, name);
   }
@@ -931,6 +999,23 @@ function SettingsEditor({
           ticketPrice={parseFloat(ticketPrice) || 0}
           onChange={setPrizePlaces}
         />
+
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3.5 cursor-pointer hover:bg-slate-50 transition-colors">
+          <input
+            type="checkbox"
+            checked={allowDonations}
+            onChange={(e) => setAllowDonations(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300"
+          />
+          <span>
+            <span className="block text-sm font-semibold text-slate-700">Show Donate Link on Registration Page</span>
+            <span className="block text-xs text-slate-400 mt-0.5">
+              Offers visitors a &ldquo;Donate to support the team&rdquo; option alongside signing up.
+              Turn it off and the registration page asks for sign-ups only — donations already
+              received still count toward the fundraising total.
+            </span>
+          </span>
+        </label>
       </div>
 
       {/* Match rules */}

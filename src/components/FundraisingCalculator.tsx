@@ -1,13 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { calcGoalBased, calcPlayerBased, formatCurrency, DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
 
-interface FundraisingCalculatorProps {
-  onPriceSet?: (entranceFeePerPlayer: number) => void;
+export interface FundraisingCalculatorResult {
+  mode: 'goal' | 'player';
+  entranceFeePerPlayer: number;
+  impliedGoal: number;
 }
 
-export default function FundraisingCalculator({ onPriceSet }: FundraisingCalculatorProps) {
+interface FundraisingCalculatorProps {
+  onChange?: (result: FundraisingCalculatorResult) => void;
+}
+
+export default function FundraisingCalculator({ onChange }: FundraisingCalculatorProps) {
   const [mode, setMode] = useState<'goal' | 'player'>('goal');
 
   // Goal-based inputs
@@ -23,6 +29,19 @@ export default function FundraisingCalculator({ onPriceSet }: FundraisingCalcula
 
   const activeEntranceFee = mode === 'goal' ? goalResult.entranceFeePerPlayer : playerResult.entranceFeePerPlayer;
 
+  // Reports the currently selected mode's result live, so the rest of the form
+  // (prize money, the fundraising goal, the entrance fee) always reflects
+  // whichever tab is active without a separate "apply" step.
+  useEffect(() => {
+    const impliedGoal = mode === 'goal' ? (parseFloat(goal) || 0) : playerResult.schoolRevenue;
+    onChange?.({
+      mode,
+      entranceFeePerPlayer: Math.round(activeEntranceFee * 100) / 100,
+      impliedGoal: Math.round(impliedGoal * 100) / 100,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, goal, goalPlayerCount, entranceFee, playerPlayerCount]);
+
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5">
       <div>
@@ -31,10 +50,9 @@ export default function FundraisingCalculator({ onPriceSet }: FundraisingCalcula
       </div>
 
       {/*
-        Every button here is type="button" on purpose. This calculator is
-        embedded inside the new-tournament form, and a button with no type
-        submits the form it sits in — so switching modes or setting the price
-        created the half-filled tournament and navigated away from it.
+        This calculator is embedded inside the new-tournament form, and a button
+        with no type submits the form it sits in — so every button here is
+        type="button" on purpose.
       */}
       {/* Mode toggle */}
       <div className="flex rounded-xl border border-slate-200 overflow-hidden">
@@ -178,25 +196,15 @@ export default function FundraisingCalculator({ onPriceSet }: FundraisingCalcula
         </div>
       )}
 
-      {/* Platform fee disclaimer */}
+      {/* Service fee disclaimer */}
       <div className="flex items-start gap-2.5 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
         <span className="text-slate-400 mt-0.5 shrink-0">ℹ️</span>
         <p className="text-xs text-slate-500 leading-relaxed">
-          A <strong className="text-slate-700">{formatCurrency(DEFAULT_PLATFORM_FEE)} platform fee per registrant</strong> is
+          A <strong className="text-slate-700">{formatCurrency(DEFAULT_PLATFORM_FEE)} service fee per registrant</strong> is
           charged separately at checkout and goes directly to One Point Bowl. This fee is not
           included in the calculations above.
         </p>
       </div>
-
-      {onPriceSet && (
-        <button
-          type="button"
-          onClick={() => onPriceSet(Math.round(activeEntranceFee * 100) / 100)}
-          className="btn-primary w-full py-3 rounded-xl font-semibold text-sm"
-        >
-          Use This Price — {formatCurrency(activeEntranceFee)} per player
-        </button>
-      )}
     </div>
   );
 }

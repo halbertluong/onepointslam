@@ -1,9 +1,11 @@
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { calcRaised, formatCurrency } from '@/lib/pricing';
+import { calcRaised, formatCurrency, DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
+import { formatStoredDateTime } from '@/lib/dates';
 import type { TournamentSettings } from '@/types';
 import CopyLinkButton from '@/components/CopyLinkButton';
+import { tournamentPath } from '@/lib/slugs';
 import TournamentArchiveButton from '@/components/TournamentArchiveButton';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -56,6 +58,7 @@ function StatBox({ label, value, sub }: { label: string; value: string | number;
 
 interface TournamentRow {
   id: string;
+  slug: string;
   name: string;
   status: string;
   settings: TournamentSettings;
@@ -94,7 +97,7 @@ export default async function DashboardPage() {
     // Exclude soft-deleted; include archived (we'll separate them below)
     const { data: rows } = await supabase
       .from('tournaments')
-      .select('id, name, status, settings, created_at, archived_at')
+      .select('id, slug, name, status, settings, created_at, archived_at')
       .in('tenant_id', assignedTenantIds)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
@@ -195,11 +198,9 @@ export default async function DashboardPage() {
             const goalPct = goal > 0 ? Math.round((revenue / goal) * 100) : 0;
             const fillPct = cap > 0 ? Math.round((t.player_count / cap) * 100) : 0;
             const isLive = t.status === 'live_play';
-            const date = s.tournamentDate
-              ? new Date(s.tournamentDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-              : s.registrationDeadline
-                ? `Deadline ${new Date(s.registrationDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                : null;
+            const tournamentDay = formatStoredDateTime(s.tournamentDate, { month: 'short', day: 'numeric', year: 'numeric' });
+            const deadlineDay = formatStoredDateTime(s.registrationDeadline, { month: 'short', day: 'numeric' });
+            const date = tournamentDay || (deadlineDay ? `Deadline ${deadlineDay}` : null);
 
             return (
               <div
@@ -218,7 +219,7 @@ export default async function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {tenantSlug && t.status !== 'completed' && (
-                      <CopyLinkButton url={`/t/${tenantSlug}/${t.id}/register`} />
+                      <CopyLinkButton url={tournamentPath(tenantSlug, t.slug, 'register')} />
                     )}
                     <TournamentArchiveButton tournamentId={t.id} isArchived={false} />
                     <Link
@@ -232,7 +233,7 @@ export default async function DashboardPage() {
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
                   <StatBox label="Registered" value={`${t.player_count} / ${cap}`} sub={`${fillPct}% full`} />
-                  <StatBox label="Price / player" value={formatCurrency(price)} sub={`+${formatCurrency(s.systemTechFee ?? 5)} platform fee`} />
+                  <StatBox label="Price / player" value={formatCurrency(price)} sub={`+${formatCurrency(s.systemTechFee ?? DEFAULT_PLATFORM_FEE)} service fee`} />
                   <StatBox label="Revenue" value={formatCurrency(revenue)} sub="collected so far" />
                   <StatBox label="Goal" value={formatCurrency(goal)} sub={`${goalPct}% reached`} />
                 </div>
@@ -294,9 +295,8 @@ export default async function DashboardPage() {
               const s = t.settings ?? {} as TournamentSettings;
               const price = s.ticketPriceForFundraiser ?? 0;
               const revenue = calcRaised(t.player_count, price, t.donation_total);
-              const date = s.tournamentDate
-                ? new Date(s.tournamentDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                : new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+              const date = formatStoredDateTime(s.tournamentDate, { month: 'short', day: 'numeric', year: 'numeric' })
+                || new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
               return (
                 <div key={t.id} className="flex items-center gap-4 px-6 py-3">
                   <div className="flex-1 min-w-0">

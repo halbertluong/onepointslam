@@ -4,6 +4,8 @@ import { useState } from 'react';
 import PlayerRegistrationForm, { type PlayerFormData } from '@/components/PlayerRegistrationForm';
 import RegistrationFlow from '@/components/RegistrationFlow';
 import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
+import { donationsAllowed } from '@/lib/donations';
+import { tournamentPath } from '@/lib/slugs';
 import type { Tournament } from '@/types';
 
 type Mode = 'flow' | 'offline';
@@ -23,24 +25,33 @@ export default function RegistrationPanel({
   tenantSlug,
   playerCount,
   onRegistered,
+  onSaveSettings,
 }: {
   tournament: Tournament;
   tournamentId: string;
   tenantSlug: string;
   playerCount: number;
   onRegistered: () => void;
+  /** Persists a settings patch — used by the donate-link switch below, so a
+   *  director can turn the donate ask off from the page it appears on rather
+   *  than hunting for it in the Settings tab. */
+  onSaveSettings: (patch: Partial<Tournament['settings']>) => Promise<void>;
 }) {
   const [mode, setMode] = useState<Mode>('flow');
   const [copied, setCopied] = useState(false);
   const [markPaid, setMarkPaid] = useState(true);
   const [added, setAdded] = useState<string[]>([]);
   const [formKey, setFormKey] = useState(0);
+  // Held locally so the switch flips immediately; the saved tournament arrives
+  // back a moment later and agrees.
+  const [donateOn, setDonateOn] = useState(donationsAllowed(tournament.settings));
+  const [donateSaving, setDonateSaving] = useState(false);
 
   const settings = tournament.settings;
   const entranceFee = settings?.ticketPriceForFundraiser ?? 0;
   const platformFee = settings?.systemTechFee ?? DEFAULT_PLATFORM_FEE;
 
-  const registrationUrl = tenantSlug ? `/t/${tenantSlug}/${tournamentId}/register` : '';
+  const registrationUrl = tenantSlug ? tournamentPath(tenantSlug, tournament.slug, 'register') : '';
 
   // Mirrors the gate on the public page: open while registration_open, or
   // whenever late registration has been switched on and play isn't finished.
@@ -48,6 +59,17 @@ export default function RegistrationPanel({
   const isOpen = tournament.status === 'registration_open' || lateAllowed;
   // A director can register right up until the event is done.
   const canRegister = tournament.status !== 'completed';
+
+  async function toggleDonateLink(next: boolean) {
+    setDonateOn(next);
+    setDonateSaving(true);
+    try {
+      await onSaveSettings({ allowDonations: next });
+    } catch {
+      setDonateOn(!next); // save failed — don't leave the switch claiming otherwise
+    }
+    setDonateSaving(false);
+  }
 
   function copyLink() {
     if (!registrationUrl) return;
@@ -136,6 +158,27 @@ export default function RegistrationPanel({
             Registration link unavailable — this tournament has no tenant slug.
           </p>
         )}
+
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3.5 cursor-pointer hover:bg-slate-50 transition-colors">
+          <input
+            type="checkbox"
+            checked={donateOn}
+            disabled={donateSaving}
+            onChange={(e) => toggleDonateLink(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300"
+          />
+          <span>
+            <span className="block text-sm font-semibold text-slate-700">
+              Show the donate link on this page
+              {donateSaving && <span className="text-xs font-normal text-slate-400 ml-2">Saving…</span>}
+            </span>
+            <span className="block text-xs text-slate-400 mt-0.5">
+              {donateOn
+                ? 'Visitors who don’t want to play can donate instead. Turn this off to ask for sign-ups only.'
+                : 'The registration page asks for sign-ups only — no donation option is offered. Donations already received still count toward the fundraising total.'}
+            </span>
+          </span>
+        </label>
       </div>
 
       {/* Mode switch */}
@@ -189,8 +232,12 @@ export default function RegistrationPanel({
           </div>
           <div className="bg-slate-50">
             <RegistrationFlow
+              // Remount when the donate link is switched, so this preview shows
+              // what a registrant now sees rather than its first-load copy.
+              key={`donate-${donateOn}`}
               slug={tenantSlug}
               tournamentId={tournamentId}
+              tournamentSlug={tournament.slug}
               embedded
               directorEntry
               onRegistered={onRegistered}

@@ -6,10 +6,50 @@ export interface PaymentIntentResult {
   mock: boolean;
 }
 
+/**
+ * A secret key that isn't sendable as an HTTP header fails in a badly
+ * misleading way: the header can't be encoded, so `fetch` throws before any
+ * request goes out, and the SDK reports that as
+ * "An error occurred with our connection to Stripe. Request was retried 2
+ * times." — which reads like a network outage rather than a bad key.
+ *
+ * The usual cause is copying the key out of the Stripe dashboard while it is
+ * still masked, capturing the bullet characters (•, U+2022) instead of the
+ * key. Checking for non-ASCII up front turns a day of chasing phantom network
+ * problems into one obvious error message.
+ */
+function assertKeyIsSendable(key: string): void {
+  const bad = [...key].find((ch) => ch.charCodeAt(0) > 255);
+  if (bad) {
+    throw new Error(
+      `STRIPE_SECRET_KEY contains a non-ASCII character (${JSON.stringify(bad)}), so it cannot be ` +
+        'sent as an HTTP header. It is most likely a masked value copied from the Stripe ' +
+        'dashboard rather than the real key — re-copy it with "Reveal key" first.',
+    );
+  }
+}
+
+/**
+ * Every Stripe client is built here so key validation can't be skipped.
+ * Deliberately does not pin an apiVersion — Stripe's dated + codename format
+ * (e.g. "2025-03-31.basil") changes with each release, and a stale pin is
+ * rejected outright with "Invalid Stripe API version", not a compatibility
+ * warning. Omitting it uses the account's actual current default.
+ */
+export async function createStripeClient(key: string) {
+  assertKeyIsSendable(key);
+  const { default: Stripe } = await import('stripe');
+  return new Stripe(key, { httpClient: Stripe.createFetchHttpClient() });
+}
+
+/**
+ * Every tenant shares this one platform Stripe account — there is no per-tenant
+ * Stripe Connect account to onboard. Money for every tenant lands in the same
+ * place; `metadata` is what ties a charge back to its tenant, tournament, and
+ * registrant so it can be reconciled and paid out to the right school.
+ */
 export async function createPaymentIntent(
   amountCents: number,
-  tenantConnectAccountId: string | undefined,
-  applicationFeeCents: number,
   metadata?: Record<string, string>,
 ): Promise<PaymentIntentResult> {
   if (!STRIPE_SECRET_KEY) {
@@ -23,20 +63,13 @@ export async function createPaymentIntent(
     };
   }
 
-  const stripe = await import('stripe').then((m) => new m.default(STRIPE_SECRET_KEY!));
+  const stripe = await createStripeClient(STRIPE_SECRET_KEY);
 
-  const params: Parameters<typeof stripe.paymentIntents.create>[0] = {
+  const intent = await stripe.paymentIntents.create({
     amount: amountCents,
     currency: 'usd',
     automatic_payment_methods: { enabled: true },
     ...(metadata ? { metadata } : {}),
-  };
-
-  if (tenantConnectAccountId) {
-    params.application_fee_amount = applicationFeeCents;
-    params.transfer_data = { destination: tenantConnectAccountId };
-  }
-
-  const intent = await stripe.paymentIntents.create(params);
+  });
   return { clientSecret: intent.client_secret!, paymentIntentId: intent.id, mock: false };
 }

@@ -9,12 +9,12 @@ export interface AppUser {
 
 export interface Tenant {
   id: string;
+  /** Readable URL segment for the program: /t/<slug> */
   slug: string;
   displayName: string;
   logoUrl?: string;
   primaryColor: string;
   secondaryColor: string;
-  stripeConnectAccountId?: string;
   createdAt: string;
 }
 
@@ -31,6 +31,18 @@ export interface PrizePlace {
   place: number;
   type: 'fixed' | 'percentage';
   value: number; // dollar amount if fixed, 0-100 if percentage
+}
+
+/** The editable copy behind a tournament's flyer, Instagram post and story. */
+export interface AssetDetails {
+  eyebrow?: string;
+  headline?: string;
+  dateLabel?: string;
+  locationLabel?: string;
+  entryFeeLabel?: string;
+  prizeLabel?: string;
+  ctaText?: string;
+  hashtag?: string;
 }
 
 export interface TournamentSettings {
@@ -50,6 +62,11 @@ export interface TournamentSettings {
    * generated / live play already started), without reopening any of the
    * status-gated director tooling (Draw Editor, Referee Queue, etc). */
   allowLateRegistration?: boolean;
+  /** Whether the public registration page offers the direct "Donate" link
+   * alongside signing up. Opt-out: omitted means the link is shown, so
+   * tournaments created before this setting existed keep the donate path they
+   * already had. Only an explicit false hides it. */
+  allowDonations?: boolean;
   numberOfCourts?: number;
   tournamentDate?: string;
   prizePlaces?: PrizePlace[];
@@ -57,6 +74,9 @@ export interface TournamentSettings {
   inviteCode?: string;
   /** Defaults to 'single_elimination' when omitted (pre-dates other formats). */
   bracketFormat?: BracketFormat;
+  /** Saved Asset Studio copy. Absent until a director saves, in which case
+   *  every field falls back to the value computed from the tournament. */
+  assetDetails?: AssetDetails;
 }
 
 export type TournamentStatus =
@@ -72,6 +92,8 @@ export interface Tournament {
   id: string;
   tenantId: string;
   name: string;
+  /** Readable URL segment, unique within the tenant: /t/<tenant>/<slug>/register */
+  slug: string;
   status: TournamentStatus;
   settings: TournamentSettings;
   registrationCloseReason?: RegistrationCloseReason;
@@ -92,8 +114,9 @@ export interface Player {
   utrRating?: number;
   age?: number;
   status: PlayerStatus;
-  paymentStatus?: 'pending' | 'paid' | 'failed';
+  paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded';
   stripePaymentIntentId?: string;
+  createdAt?: string;
 }
 
 export function mapPlayer(row: Record<string, unknown>): Player {
@@ -109,8 +132,52 @@ export function mapPlayer(row: Record<string, unknown>): Player {
     utrRating: (row.utr_rating ?? row.utrRating) as number | undefined,
     age: row.age as number | undefined,
     status: (row.status as PlayerStatus) ?? 'registered',
-    paymentStatus: (row.payment_status ?? row.paymentStatus) as 'pending' | 'paid' | 'failed' | undefined,
+    paymentStatus: (row.payment_status ?? row.paymentStatus) as 'pending' | 'paid' | 'failed' | 'refunded' | undefined,
     stripePaymentIntentId: (row.stripe_payment_intent_id ?? row.stripePaymentIntentId) as string | undefined,
+    createdAt: (row.created_at ?? row.createdAt) as string | undefined,
+  };
+}
+
+/**
+ * A registration attempt reserved before its payment finishes — written the
+ * moment the form is submitted, promoted into a Player once Stripe confirms
+ * the charge (see src/lib/paymentPromotion.ts). One that never gets promoted
+ * is a visible record of someone who started registering and didn't finish.
+ */
+export interface PendingRegistration {
+  id: string;
+  tournamentId: string;
+  fullName: string;
+  email: string;
+  gender?: string;
+  ntrpRating?: number;
+  utrRating?: number;
+  age?: number;
+  skillTier?: string;
+  stripePaymentIntentId: string;
+  /** Set once Stripe reports a terminal non-success outcome for this attempt's
+   *  payment (declined, canceled). Absent while still open — no outcome yet,
+   *  they may still return and finish paying. */
+  lastStripeStatus?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function mapPendingRegistration(row: Record<string, unknown>): PendingRegistration {
+  return {
+    id: row.id as string,
+    tournamentId: (row.tournament_id ?? row.tournamentId) as string,
+    fullName: (row.full_name ?? row.fullName) as string,
+    email: row.email as string,
+    gender: row.gender as string | undefined,
+    ntrpRating: (row.ntrp_rating ?? row.ntrpRating) as number | undefined,
+    utrRating: (row.utr_rating ?? row.utrRating) as number | undefined,
+    age: row.age as number | undefined,
+    skillTier: (row.skill_tier ?? row.skillTier) as string | undefined,
+    stripePaymentIntentId: (row.stripe_payment_intent_id ?? row.stripePaymentIntentId) as string,
+    lastStripeStatus: (row.last_stripe_status ?? row.lastStripeStatus) as string | undefined,
+    createdAt: (row.created_at ?? row.createdAt) as string,
+    updatedAt: (row.updated_at ?? row.updatedAt) as string,
   };
 }
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/pricing';
+import { formatStoredDate, formatStoredTime, parseStoredDate } from '@/lib/dates';
 
 interface PrizePlace {
   place: number;
@@ -24,6 +25,8 @@ interface Props {
   /** Sum of all donations for this tournament */
   donationTotal?: number;
   maxPlayers?: number;
+  /** The team the money is being raised for, named wherever money is shown. */
+  beneficiaryName?: string;
   prizePlaces?: PrizePlace[];
   matchRules?: MatchRules;
   onDonate?: () => void;
@@ -53,8 +56,10 @@ function useCountdown(deadline: string | undefined) {
 
   useEffect(() => {
     if (!deadline) return;
+    const closesAt = parseStoredDate(deadline);
+    if (!closesAt) return;
     function tick() {
-      const diff = new Date(deadline!).getTime() - Date.now();
+      const diff = closesAt!.getTime() - Date.now();
       if (diff <= 0) { setTimeLeft({ days: 0, hours: 0, mins: 0 }); return; }
       const totalMins = Math.floor(diff / 60000);
       const days = Math.floor(totalMins / 1440);
@@ -79,6 +84,7 @@ export default function TournamentInfoCard({
   playerCount,
   donationTotal = 0,
   maxPlayers,
+  beneficiaryName,
   prizePlaces = [],
   matchRules,
   onDonate,
@@ -95,13 +101,11 @@ export default function TournamentInfoCard({
 
   const topPrize = prizePlaces.find((p) => p.place === 1);
 
-  const deadlineDate = registrationDeadline
-    ? new Date(registrationDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : null;
+  const deadlineDate = formatStoredDate(registrationDeadline, { month: 'short', day: 'numeric', year: 'numeric' });
+  const deadlineTime = formatStoredTime(registrationDeadline);
 
-  const tournamentDateFmt = tournamentDate
-    ? new Date(tournamentDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-    : null;
+  const tournamentDateFmt = formatStoredDate(tournamentDate, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const tournamentTime = formatStoredTime(tournamentDate);
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
@@ -150,6 +154,9 @@ export default function TournamentInfoCard({
               </div>
             )}
           </div>
+          <p className="text-xs text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100">
+            💜 Every entry fee goes to <strong className="text-slate-700">{beneficiaryName || 'the team'}</strong>.
+          </p>
         </div>
       )}
 
@@ -159,6 +166,7 @@ export default function TournamentInfoCard({
           <div className="px-5 py-4">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Tournament Date</p>
             <p className="text-sm font-bold text-slate-800">{tournamentDateFmt}</p>
+            {tournamentTime && <p className="text-sm text-slate-500 mt-0.5">{tournamentTime}</p>}
           </div>
         )}
 
@@ -166,6 +174,7 @@ export default function TournamentInfoCard({
           <div className="px-5 py-4">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Registration Closes</p>
             <p className="text-sm font-bold text-slate-800">{deadlineDate}</p>
+            {deadlineTime && <p className="text-sm text-slate-500 mt-0.5">{deadlineTime}</p>}
             {withinSeven && timeLeft && (
               <div className="mt-1 flex items-center gap-1">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
@@ -194,6 +203,7 @@ export default function TournamentInfoCard({
             {prizePlaces.length > 1 && (
               <p className="text-xs text-slate-400 mt-0.5">+{prizePlaces.length - 1} more prize{prizePlaces.length > 2 ? 's' : ''}</p>
             )}
+            <p className="text-xs text-slate-400 mt-0.5">Awarded from the entry pool</p>
           </div>
         )}
       </div>

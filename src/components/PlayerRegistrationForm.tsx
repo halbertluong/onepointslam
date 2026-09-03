@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { formatCurrency } from '@/lib/pricing';
 
-const SKILL_TIERS = ['Beginner', 'Intermediate', 'Advanced'];
+export const SKILL_TIERS = ['Beginner', 'Intermediate', 'Advanced'];
 const GENDERS = [
   { value: 'male', label: '♂ Male' },
   { value: 'female', label: '♀ Female' },
@@ -300,12 +300,19 @@ export default function PlayerRegistrationForm({
           </div>
           <div className="divide-y divide-slate-100">
             <div className="flex justify-between px-5 py-3 text-sm">
-              <span className="text-slate-600">Tournament entry</span>
+              <span>
+                <span className="text-slate-600">Tournament entry</span>
+                {entranceFee > 0 && (
+                  <span className="block text-xs text-emerald-600 mt-0.5">
+                    Goes to {tenantName || 'the team'}
+                  </span>
+                )}
+              </span>
               <span className="font-semibold text-emerald-600">{formatCurrency(entranceFee)}</span>
             </div>
             {platformFee > 0 && (
               <div className="flex justify-between px-5 py-3 text-sm">
-                <span className="text-slate-600">Platform fee</span>
+                <span className="text-slate-600">Service fee</span>
                 <span className="font-semibold text-slate-500">{formatCurrency(platformFee)}</span>
               </div>
             )}
