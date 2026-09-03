@@ -313,7 +313,7 @@ export default function PlayerRegistrationForm({
             {platformFee > 0 && (
               <div className="flex justify-between px-5 py-3 text-sm">
                 <span>
-                  <span className="text-slate-600">Platform fee</span>
+                  <span className="text-slate-600">Service fee</span>
                   <span className="block text-xs text-slate-400 mt-0.5">
                     Runs the tournament software — not part of the fundraiser
                   </span>

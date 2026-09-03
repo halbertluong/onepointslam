@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import PlayerRegistrationForm, { type PlayerFormData } from '@/components/PlayerRegistrationForm';
 import RegistrationFlow from '@/components/RegistrationFlow';
-import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
+import { DEFAULT_SERVICE_FEE, formatCurrency } from '@/lib/pricing';
 import { donationsAllowed } from '@/lib/donations';
 import { tournamentPath } from '@/lib/slugs';
 import type { Tournament } from '@/types';
@@ -49,7 +49,7 @@ export default function RegistrationPanel({
 
   const settings = tournament.settings;
   const entranceFee = settings?.ticketPriceForFundraiser ?? 0;
-  const platformFee = settings?.systemTechFee ?? DEFAULT_PLATFORM_FEE;
+  const platformFee = settings?.systemTechFee ?? DEFAULT_SERVICE_FEE;
 
   const registrationUrl = tenantSlug ? tournamentPath(tenantSlug, tournament.slug, 'register') : '';
 

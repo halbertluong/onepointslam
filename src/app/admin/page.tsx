@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/browser';
-import { formatCurrency, DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
+import { formatCurrency, DEFAULT_SERVICE_FEE } from '@/lib/pricing';
 
 interface TenantRow {
   id: string;
@@ -97,7 +97,7 @@ export default function AdminOverviewPage() {
 
     const tf: Record<string, string> = {};
     (t ?? []).forEach((ten: TenantRow) => {
-      tf[ten.id] = String(ten.platform_fee ?? DEFAULT_PLATFORM_FEE);
+      tf[ten.id] = String(ten.platform_fee ?? DEFAULT_SERVICE_FEE);
     });
     setTenantFees(tf);
   }, []);
@@ -120,12 +120,12 @@ export default function AdminOverviewPage() {
   const live = tournaments.filter((t) => t.status === 'live_play');
   const active = tournaments.filter((t) => t.status !== 'completed');
 
-  // Estimate platform revenue: sum of (platform_fee or default) * player_count per tournament
+  // Estimate platform revenue: sum of (service fee or default) * player_count per tournament
   const platformRevenue = tournaments.reduce((acc, tm) => {
     const tenant = tenants.find((t) => t.id === tm.tenant_id);
     const fee = tm.settings?.systemTechFee as number | undefined
       ?? tenant?.platform_fee
-      ?? DEFAULT_PLATFORM_FEE;
+      ?? DEFAULT_SERVICE_FEE;
     return acc + fee * (tm.player_count ?? 0);
   }, 0);
 
@@ -172,7 +172,7 @@ export default function AdminOverviewPage() {
                 <th className="px-5 py-3 text-left">School</th>
                 <th className="px-5 py-3 text-left">Status</th>
                 <th className="px-5 py-3 text-left">Players</th>
-                <th className="px-5 py-3 text-left">Platform Fee</th>
+                <th className="px-5 py-3 text-left">Service Fee</th>
                 <th className="px-5 py-3 text-left"></th>
               </tr>
             </thead>
@@ -183,7 +183,7 @@ export default function AdminOverviewPage() {
               {tournaments.map((tm) => {
                 const tenant = tenants.find((t) => t.id === tm.tenant_id);
                 const feeOverride = tm.settings?.systemTechFee as number | undefined;
-                const effectiveFee = feeOverride ?? tenant?.platform_fee ?? DEFAULT_PLATFORM_FEE;
+                const effectiveFee = feeOverride ?? tenant?.platform_fee ?? DEFAULT_SERVICE_FEE;
                 return (
                   <tr key={tm.id} className="hover:bg-slate-50">
                     <td className="px-5 py-3">
@@ -228,8 +228,8 @@ export default function AdminOverviewPage() {
       {/* Tenants & fees */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="font-bold text-slate-800">Schools & Platform Fees</h2>
-          <span className="text-xs text-slate-400">Default: {formatCurrency(DEFAULT_PLATFORM_FEE)}/registrant</span>
+          <h2 className="font-bold text-slate-800">Schools & Service Fees</h2>
+          <span className="text-xs text-slate-400">Default: {formatCurrency(DEFAULT_SERVICE_FEE)}/registrant</span>
         </div>
         <div className="divide-y divide-slate-100">
           {tenants.length === 0 && (
@@ -258,7 +258,7 @@ export default function AdminOverviewPage() {
                         type="number"
                         min="0"
                         step="0.50"
-                        value={tenantFees[t.id] ?? DEFAULT_PLATFORM_FEE}
+                        value={tenantFees[t.id] ?? DEFAULT_SERVICE_FEE}
                         onChange={(e) => setTenantFees((prev) => ({ ...prev, [t.id]: e.target.value }))}
                         className="w-16 px-2.5 py-2 text-sm focus:outline-none"
                       />

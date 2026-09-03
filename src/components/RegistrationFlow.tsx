@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { useRouter } from 'next/navigation';
-import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
+import { DEFAULT_SERVICE_FEE, formatCurrency } from '@/lib/pricing';
 import { donationsAllowed } from '@/lib/donations';
 import { tournamentPath } from '@/lib/slugs';
 import PlayerRegistrationForm, { type PlayerFormData } from '@/components/PlayerRegistrationForm';
@@ -223,7 +223,7 @@ export default function RegistrationFlow({
 
   const [step, setStep] = useState<Step>('loading');
   const [tournament, setTournament] = useState<Record<string, unknown> | null>(null);
-  const [platformFee, setPlatformFee] = useState(DEFAULT_PLATFORM_FEE);
+  const [platformFee, setPlatformFee] = useState(DEFAULT_SERVICE_FEE);
   const [playerCount, setPlayerCount] = useState(0);
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null);
   const [registeredName, setRegisteredName] = useState('');
@@ -277,7 +277,7 @@ export default function RegistrationFlow({
         .then((d) => { if (typeof d.total === 'number') setDonationTotal(d.total); })
         .catch(() => {});
       const settings = t?.settings as Record<string, unknown> | null;
-      setPlatformFee((settings?.systemTechFee as number) ?? (tenant?.platform_fee as number) ?? DEFAULT_PLATFORM_FEE);
+      setPlatformFee((settings?.systemTechFee as number) ?? (tenant?.platform_fee as number) ?? DEFAULT_SERVICE_FEE);
 
       const lateRegistrationAllowed = !!settings?.allowLateRegistration && t?.status !== 'completed';
       // Only overrides a *closed* tournament — never a missing one, or a failed

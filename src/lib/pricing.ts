@@ -1,4 +1,9 @@
-export const DEFAULT_PLATFORM_FEE = 5.0;
+/**
+ * The per-registrant service fee charged on top of the entry, when neither the
+ * tournament nor the school overrides it. Read it from here rather than
+ * repeating the number — a stale literal silently undercharges.
+ */
+export const DEFAULT_SERVICE_FEE = 8.0;
 
 export interface GoalBasedResult {
   entranceFeePerPlayer: number;

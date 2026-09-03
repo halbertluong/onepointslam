@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { calcRaised, formatCurrency } from '@/lib/pricing';
+import { calcRaised, formatCurrency, DEFAULT_SERVICE_FEE } from '@/lib/pricing';
 import { formatStoredDateTime } from '@/lib/dates';
 import type { TournamentSettings } from '@/types';
 import CopyLinkButton from '@/components/CopyLinkButton';
@@ -233,7 +233,7 @@ export default async function DashboardPage() {
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
                   <StatBox label="Registered" value={`${t.player_count} / ${cap}`} sub={`${fillPct}% full`} />
-                  <StatBox label="Price / player" value={formatCurrency(price)} sub={`+${formatCurrency(s.systemTechFee ?? 5)} platform fee`} />
+                  <StatBox label="Price / player" value={formatCurrency(price)} sub={`+${formatCurrency(s.systemTechFee ?? DEFAULT_SERVICE_FEE)} service fee`} />
                   <StatBox label="Revenue" value={formatCurrency(revenue)} sub="collected so far" />
                   <StatBox label="Goal" value={formatCurrency(goal)} sub={`${goalPct}% reached`} />
                 </div>

@@ -7,7 +7,7 @@ import FundraisingCalculator, { type FundraisingCalculatorResult } from '@/compo
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
 import type { TournamentSettings, MaxPlayers, Sport } from '@/types';
-import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
+import { DEFAULT_SERVICE_FEE, formatCurrency } from '@/lib/pricing';
 
 const DEFAULT_SETTINGS: TournamentSettings = {
   sport: 'tennis',
@@ -15,7 +15,7 @@ const DEFAULT_SETTINGS: TournamentSettings = {
   bracketFormat: 'single_elimination',
   ticketPriceForFundraiser: 20,
   allowDonations: true,
-  systemTechFee: DEFAULT_PLATFORM_FEE,
+  systemTechFee: DEFAULT_SERVICE_FEE,
   serveRuleProfile: 'one_serve_sudden_death',
   serverDetermination: 'random_coin_toss',
   receivingSideSelection: 'server_choice',
