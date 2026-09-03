@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { formatCurrency } from '@/lib/pricing';
 
-const SKILL_TIERS = ['Beginner', 'Intermediate', 'Advanced'];
+export const SKILL_TIERS = ['Beginner', 'Intermediate', 'Advanced'];
 const GENDERS = [
   { value: 'male', label: '♂ Male' },
   { value: 'female', label: '♀ Female' },

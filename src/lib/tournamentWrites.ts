@@ -80,6 +80,16 @@ export async function persistReversal(
   return {};
 }
 
+/** Update a single player's self-reported skill tier, e.g. after a director re-assesses them. */
+export async function updatePlayerTier(
+  supabase: SupabaseClient,
+  playerId: string,
+  tier: string | null,
+): Promise<WriteResult> {
+  const { error } = await supabase.from('players').update({ skill_tier: tier }).eq('id', playerId);
+  return error ? { error: error.message } : {};
+}
+
 /** Persist seed numbers for players. A blank or invalid entry clears the seed. */
 export async function saveSeedRatings(
   supabase: SupabaseClient,

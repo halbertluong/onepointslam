@@ -144,6 +144,7 @@ export interface Player {
   status: PlayerStatus;
   paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded';
   stripePaymentIntentId?: string;
+  createdAt?: string;
 }
 
 export function mapPlayer(row: Record<string, unknown>): Player {
@@ -161,6 +162,7 @@ export function mapPlayer(row: Record<string, unknown>): Player {
     status: (row.status as PlayerStatus) ?? 'registered',
     paymentStatus: (row.payment_status ?? row.paymentStatus) as 'pending' | 'paid' | 'failed' | 'refunded' | undefined,
     stripePaymentIntentId: (row.stripe_payment_intent_id ?? row.stripePaymentIntentId) as string | undefined,
+    createdAt: (row.created_at ?? row.createdAt) as string | undefined,
   };
 }
 
