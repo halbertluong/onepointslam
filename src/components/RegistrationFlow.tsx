@@ -804,6 +804,7 @@ export default function RegistrationFlow({
           playerCount={playerCount}
           donationTotal={donationTotal}
           maxPlayers={settings?.maxPlayers as number | undefined}
+          beneficiaryName={tenantName}
           prizePlaces={settings?.prizePlaces as Array<{ place: number; value: number; type: string }> | undefined}
           matchRules={{
             serveRuleProfile: settings?.serveRuleProfile as string | undefined,
@@ -832,6 +833,7 @@ export default function RegistrationFlow({
 
         <PlayerRegistrationForm
           tournamentName={tournamentName}
+          tenantName={tenantName}
           hideHeader
           entranceFee={entranceFee}
           platformFee={platformFee}
