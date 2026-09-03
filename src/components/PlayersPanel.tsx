@@ -1,11 +1,39 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { saveSeedRatings, withdrawPlayer } from '@/lib/tournamentWrites';
 import { getRoundsCount } from '@/lib/bracket';
 import AwaitingPaymentTable from '@/components/AwaitingPaymentTable';
+import PlayerDetailModal from '@/components/PlayerDetailModal';
 import type { Match, PendingRegistration, Player } from '@/types';
+
+/** Optional columns a director can hide to focus on what matters to them.
+ *  '#' and Name are always shown — they're how you find a row — and Actions
+ *  always shows because withdrawing a player needs to stay reachable. */
+const OPTIONAL_COLUMNS = [
+  { key: 'gender', label: 'Gender' },
+  { key: 'ntrp', label: 'NTRP' },
+  { key: 'utr', label: 'UTR' },
+  { key: 'seed', label: 'Seed' },
+  { key: 'tier', label: 'Tier' },
+  { key: 'status', label: 'Status' },
+  { key: 'payment', label: 'Payment' },
+] as const;
+type ColumnKey = (typeof OPTIONAL_COLUMNS)[number]['key'];
+
+const COLUMNS_STORAGE_KEY = 'td-players-table-columns';
+
+function loadVisibleColumns(): Record<ColumnKey, boolean> {
+  const defaults = Object.fromEntries(OPTIONAL_COLUMNS.map((c) => [c.key, true])) as Record<ColumnKey, boolean>;
+  if (typeof window === 'undefined') return defaults;
+  try {
+    const raw = window.localStorage.getItem(COLUMNS_STORAGE_KEY);
+    return raw ? { ...defaults, ...JSON.parse(raw) } : defaults;
+  } catch {
+    return defaults;
+  }
+}
 
 const PLAYER_STATUS_STYLE: Record<string, string> = {
   checked_in: 'bg-emerald-100 text-emerald-700',
@@ -66,6 +94,27 @@ export default function PlayersPanel({
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const selectedPlayer = selectedPlayerId ? players.find((p) => p.id === selectedPlayerId) ?? null : null;
+  const [visibleCols, setVisibleCols] = useState<Record<ColumnKey, boolean>>(loadVisibleColumns);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const columnsMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (columnsMenuRef.current && !columnsMenuRef.current.contains(e.target as Node)) setColumnsOpen(false);
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  function toggleColumn(key: ColumnKey) {
+    setVisibleCols((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try { window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
 
   const dirty = players.some((p) => (seedEdits[p.id] ?? '') !== (p.seedRating != null ? String(p.seedRating) : ''));
 
@@ -199,13 +248,41 @@ export default function PlayersPanel({
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
           <h2 className="font-bold text-slate-800">Registered Players ({players.length})</h2>
-          <button
-            onClick={handleSaveSeeds}
-            disabled={saving || !dirty}
-            className="btn-primary px-3 py-2 rounded-xl text-xs font-bold disabled:opacity-40"
-          >
-            {saving ? 'Saving…' : dirty ? 'Save Seeds' : 'Seeds Saved'}
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="relative" ref={columnsMenuRef}>
+              <button
+                onClick={() => setColumnsOpen((v) => !v)}
+                className="px-3 py-2 rounded-xl text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50"
+              >
+                Columns
+              </button>
+              {columnsOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-10 py-2">
+                  {OPTIONAL_COLUMNS.filter((c) => c.key !== 'payment' || showPayments).map((c) => (
+                    <label
+                      key={c.key}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={visibleCols[c.key]}
+                        onChange={() => toggleColumn(c.key)}
+                        className="rounded border-slate-300"
+                      />
+                      {c.label}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={handleSaveSeeds}
+              disabled={saving || !dirty}
+              className="btn-primary px-3 py-2 rounded-xl text-xs font-bold disabled:opacity-40"
+            >
+              {saving ? 'Saving…' : dirty ? 'Save Seeds' : 'Seeds Saved'}
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -213,19 +290,19 @@ export default function PlayersPanel({
               <tr className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                 <th className="px-4 py-3 text-left">#</th>
                 <th className="px-4 py-3 text-left">Name</th>
-                <th className="px-4 py-3 text-left">Gender</th>
-                <th className="px-4 py-3 text-left">NTRP</th>
-                <th className="px-4 py-3 text-left">UTR</th>
-                <th className="px-4 py-3 text-left">Seed</th>
-                <th className="px-4 py-3 text-left">Tier</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                {showPayments && <th className="px-4 py-3 text-left">Payment</th>}
+                {visibleCols.gender && <th className="px-4 py-3 text-left">Gender</th>}
+                {visibleCols.ntrp && <th className="px-4 py-3 text-left">NTRP</th>}
+                {visibleCols.utr && <th className="px-4 py-3 text-left">UTR</th>}
+                {visibleCols.seed && <th className="px-4 py-3 text-left">Seed</th>}
+                {visibleCols.tier && <th className="px-4 py-3 text-left">Tier</th>}
+                {visibleCols.status && <th className="px-4 py-3 text-left">Status</th>}
+                {showPayments && visibleCols.payment && <th className="px-4 py-3 text-left">Payment</th>}
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {players.length === 0 && (
-                <tr><td colSpan={showPayments ? 10 : 9} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
+                <tr><td colSpan={10} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
               )}
               {sorted.map((p, i) => {
                 const missing = missingFromBracket(p);
@@ -234,41 +311,54 @@ export default function PlayersPanel({
                   <tr key={p.id} className={missing ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-slate-50'}>
                     <td className="px-4 py-3 text-slate-400">{i + 1}</td>
                     <td className={`px-4 py-3 ${missing ? 'font-black text-amber-900' : 'font-medium text-slate-800'}`}>
-                      {p.fullName}
+                      <button
+                        onClick={() => setSelectedPlayerId(p.id)}
+                        className="hover:underline underline-offset-2 text-left"
+                      >
+                        {p.fullName}
+                      </button>
                       {p.seedRating && (
                         <span className="ml-1.5 text-xs text-amber-600 font-bold">[{p.seedRating}]</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-500 capitalize">{p.gender ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      {p.ntrpRating != null ? (
-                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold text-xs">{p.ntrpRating}</span>
-                      ) : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      {p.utrRating != null ? (
-                        <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded font-semibold text-xs">{p.utrRating}</span>
-                      ) : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        min="1"
-                        max={players.length}
-                        value={seedEdits[p.id] ?? ''}
-                        onChange={(e) => setSeedEdits((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                        placeholder="—"
-                        aria-label={`Seed for ${p.fullName}`}
-                        className="w-14 text-center border border-slate-200 rounded-lg py-1 text-xs focus:outline-none focus:border-slate-400"
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-slate-500">{p.skillTier ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${status.cls}`}>
-                        {status.label}
-                      </span>
-                    </td>
-                    {showPayments && (
+                    {visibleCols.gender && <td className="px-4 py-3 text-slate-500 capitalize">{p.gender ?? '—'}</td>}
+                    {visibleCols.ntrp && (
+                      <td className="px-4 py-3">
+                        {p.ntrpRating != null ? (
+                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold text-xs">{p.ntrpRating}</span>
+                        ) : '—'}
+                      </td>
+                    )}
+                    {visibleCols.utr && (
+                      <td className="px-4 py-3">
+                        {p.utrRating != null ? (
+                          <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded font-semibold text-xs">{p.utrRating}</span>
+                        ) : '—'}
+                      </td>
+                    )}
+                    {visibleCols.seed && (
+                      <td className="px-4 py-3">
+                        <input
+                          type="number"
+                          min="1"
+                          max={players.length}
+                          value={seedEdits[p.id] ?? ''}
+                          onChange={(e) => setSeedEdits((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                          placeholder="—"
+                          aria-label={`Seed for ${p.fullName}`}
+                          className="w-14 text-center border border-slate-200 rounded-lg py-1 text-xs focus:outline-none focus:border-slate-400"
+                        />
+                      </td>
+                    )}
+                    {visibleCols.tier && <td className="px-4 py-3 text-slate-500">{p.skillTier ?? '—'}</td>}
+                    {visibleCols.status && (
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${status.cls}`}>
+                          {status.label}
+                        </span>
+                      </td>
+                    )}
+                    {showPayments && visibleCols.payment && (
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${PAYMENT_STATUS_STYLE[p.paymentStatus ?? 'pending']}`}>
                           {PAYMENT_STATUS_LABEL[p.paymentStatus ?? 'pending']}
@@ -303,6 +393,16 @@ export default function PlayersPanel({
           </table>
         </div>
       </div>
+
+      {selectedPlayer && (
+        <PlayerDetailModal
+          player={selectedPlayer}
+          showPayments={showPayments}
+          onClose={() => setSelectedPlayerId(null)}
+          onViewPayment={onViewPayment}
+          onSaved={onSaved}
+        />
+      )}
     </div>
   );
 }
