@@ -300,12 +300,24 @@ export default function PlayerRegistrationForm({
           </div>
           <div className="divide-y divide-slate-100">
             <div className="flex justify-between px-5 py-3 text-sm">
-              <span className="text-slate-600">Tournament entry</span>
+              <span>
+                <span className="text-slate-600">Tournament entry</span>
+                {entranceFee > 0 && (
+                  <span className="block text-xs text-emerald-600 mt-0.5">
+                    Goes to {tenantName || 'the team'}
+                  </span>
+                )}
+              </span>
               <span className="font-semibold text-emerald-600">{formatCurrency(entranceFee)}</span>
             </div>
             {platformFee > 0 && (
               <div className="flex justify-between px-5 py-3 text-sm">
-                <span className="text-slate-600">Platform fee</span>
+                <span>
+                  <span className="text-slate-600">Platform fee</span>
+                  <span className="block text-xs text-slate-400 mt-0.5">
+                    Runs the tournament software — not part of the fundraiser
+                  </span>
+                </span>
                 <span className="font-semibold text-slate-500">{formatCurrency(platformFee)}</span>
               </div>
             )}

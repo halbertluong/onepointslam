@@ -25,6 +25,8 @@ interface Props {
   /** Sum of all donations for this tournament */
   donationTotal?: number;
   maxPlayers?: number;
+  /** The team the money is being raised for, named wherever money is shown. */
+  beneficiaryName?: string;
   prizePlaces?: PrizePlace[];
   matchRules?: MatchRules;
   onDonate?: () => void;
@@ -82,6 +84,7 @@ export default function TournamentInfoCard({
   playerCount,
   donationTotal = 0,
   maxPlayers,
+  beneficiaryName,
   prizePlaces = [],
   matchRules,
   onDonate,
@@ -151,6 +154,9 @@ export default function TournamentInfoCard({
               </div>
             )}
           </div>
+          <p className="text-xs text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100">
+            💜 Every entry fee goes to <strong className="text-slate-700">{beneficiaryName || 'the team'}</strong>.
+          </p>
         </div>
       )}
 
@@ -197,6 +203,7 @@ export default function TournamentInfoCard({
             {prizePlaces.length > 1 && (
               <p className="text-xs text-slate-400 mt-0.5">+{prizePlaces.length - 1} more prize{prizePlaces.length > 2 ? 's' : ''}</p>
             )}
+            <p className="text-xs text-slate-400 mt-0.5">Awarded from the entry pool</p>
           </div>
         )}
       </div>
