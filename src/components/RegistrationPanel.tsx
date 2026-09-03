@@ -295,6 +295,7 @@ export default function RegistrationPanel({
               <PlayerRegistrationForm
                 key={formKey}
                 tournamentName={tournament.name}
+                tournamentId={tournamentId}
                 hideHeader
                 entranceFee={entranceFee}
                 platformFee={platformFee}

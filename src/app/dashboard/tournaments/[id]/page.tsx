@@ -12,6 +12,7 @@ import RegistrationPanel from '@/components/RegistrationPanel';
 import PaymentsPanel from '@/components/PaymentsPanel';
 import NotesPanel from '@/components/NotesPanel';
 import AssetStudio from '@/components/AssetStudio';
+import CouponCodesPanel from '@/components/CouponCodesPanel';
 import TournamentUrlCard from '@/components/TournamentUrlCard';
 import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
@@ -59,7 +60,7 @@ function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; is
   );
 }
 
-type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'payments' | 'assets' | 'notes' | 'settings';
+type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'payments' | 'coupons' | 'assets' | 'notes' | 'settings';
 
 const TAB_LABELS: Record<Tab, string> = {
   players: 'Players',
@@ -70,12 +71,13 @@ const TAB_LABELS: Record<Tab, string> = {
   scoreboard: 'Scoreboard',
   registration: 'Registration',
   payments: 'Payments',
+  coupons: 'Coupon Codes',
   assets: 'Assets',
   notes: 'Notes',
   settings: 'Settings',
 };
 
-const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'payments', 'assets', 'notes', 'settings'];
+const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'payments', 'coupons', 'assets', 'notes', 'settings'];
 
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
   const active = matches
@@ -688,6 +690,15 @@ export default function TournamentAdminPage() {
           </div>
           <PaymentsPanel tournamentId={id} focusPaymentIntentId={focusPaymentIntentId} onRecovered={load} />
         </div>
+      )}
+
+      {/* Coupon Codes tab */}
+      {tab === 'coupons' && (
+        <CouponCodesPanel
+          tournament={tournament}
+          tournamentId={id}
+          onSaveSettings={(patch) => handleSaveSettings(patch)}
+        />
       )}
 
       {/* Assets tab — branded flyer / Instagram post / story generator */}

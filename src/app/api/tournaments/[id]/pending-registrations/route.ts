@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { verifyDirector } from '@/lib/registrationAccess';
+import { releasePendingCoupon } from '@/lib/coupons';
 
 function admin() {
   return createAdminClient(
@@ -97,6 +98,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       // unreachable; there's nothing payable behind an intent that doesn't exist.
     }
   }
+
+  // Give back any coupon use this abandoned attempt reserved, before the row
+  // that tracks it is gone.
+  await releasePendingCoupon(db, { id: pendingId });
 
   const { error } = await db
     .from('pending_registrations')

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/browser';
 import { useRouter } from 'next/navigation';
 import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
 import { donationsAllowed } from '@/lib/donations';
+import { couponsEnabled } from '@/lib/coupons';
 import { tournamentPath } from '@/lib/slugs';
 import PlayerRegistrationForm, { type PlayerFormData } from '@/components/PlayerRegistrationForm';
 import TournamentInfoCard from '@/components/TournamentInfoCard';
@@ -27,6 +28,8 @@ function StripeCheckoutForm({
   onBack,
 }: {
   playerName: string;
+  /** The actual amount Stripe will charge — computed server-side in
+   *  create-intent, coupon discount already applied, not recomputed here. */
   totalDollars: number;
   onSuccess: (paymentIntentId: string) => void;
   onBack: () => void;
@@ -246,6 +249,10 @@ export default function RegistrationFlow({
   // Stripe payment state
   const [clientSecret,      setClientSecret]      = useState('');
   const [pendingPlayerData, setPendingPlayerData] = useState<PlayerFormData | null>(null);
+  // The amount create-intent actually reserved a PaymentIntent for — entry fee
+  // plus platform fee, minus any coupon discount it redeemed server-side.
+  // Null only briefly before a create-intent response has come back.
+  const [chargeAmountCents, setChargeAmountCents] = useState<number | null>(null);
 
   // Donation flow state
   const [donateAmount, setDonateAmount] = useState(25);
@@ -404,9 +411,10 @@ export default function RegistrationFlow({
           age: data.age || null,
           skillTier: data.skillTier || null,
           ...(directorEntry ? { directorEntry: true } : {}),
+          ...(data.couponCode ? { couponCode: data.couponCode } : {}),
         }),
       });
-      const json = await res.json() as { clientSecret?: string; mock?: boolean; error?: string };
+      const json = await res.json() as { clientSecret?: string; mock?: boolean; amountCents?: number; error?: string };
       if (!res.ok) return { error: json.error ?? 'Failed to set up payment. Please try again.' };
 
       if (json.mock) {
@@ -420,6 +428,7 @@ export default function RegistrationFlow({
 
       setPendingPlayerData(data);
       setClientSecret(json.clientSecret);
+      setChargeAmountCents(json.amountCents ?? Math.round((entranceFee + platformFee) * 100));
       setStep('payment');
       // The reservation already exists — a director watching the Players tab
       // should see this entrant right away, not only once they've paid.
@@ -493,6 +502,7 @@ export default function RegistrationFlow({
   // Directors who don't want a donation ask alongside sign-up switch this off;
   // every route into the donate step is gated on it, and so is the server.
   const donateEnabled = donationsAllowed(settings);
+  const couponsOn = couponsEnabled(settings);
   const tenantRecord = tournament?.tenants as Record<string, unknown> | null;
   const tenantName = tenantRecord?.display_name as string ?? '';
   const tenantLogoUrl = tenantRecord?.logo_url as string | undefined;
@@ -634,7 +644,7 @@ export default function RegistrationFlow({
 
   // ── Stripe payment step ──────────────────────────────────────────────────────
   if (step === 'payment' && clientSecret && pendingPlayerData && stripePromise) {
-    const totalDollars = entranceFee + platformFee;
+    const totalDollars = (chargeAmountCents ?? Math.round((entranceFee + platformFee) * 100)) / 100;
     return (
       <div className={`${SHELL} bg-slate-50`}>
         <RegistrationHero eyebrow={tenantName} title={tournamentName} logoUrl={tenantLogoUrl} compact />
@@ -667,6 +677,7 @@ export default function RegistrationFlow({
                   setStep('form');
                   setClientSecret('');
                   setPendingPlayerData(null);
+                  setChargeAmountCents(null);
                 }}
               />
             </Elements>
@@ -878,6 +889,8 @@ export default function RegistrationFlow({
           tournamentName={tournamentName}
           tenantName={tenantName}
           hideHeader
+          tournamentId={tournamentId}
+          couponCodesEnabled={couponsOn}
           entranceFee={entranceFee}
           platformFee={platformFee}
           playerCount={playerCount}

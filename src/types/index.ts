@@ -77,6 +77,10 @@ export interface TournamentSettings {
   /** Saved Asset Studio copy. Absent until a director saves, in which case
    *  every field falls back to the value computed from the tournament. */
   assetDetails?: AssetDetails;
+  /** Whether directors can create discount codes that registrants redeem on
+   * the registration page before paying. Opt-in: unlike allowDonations, this
+   * feature never existed before, so only an explicit `true` turns it on. */
+  couponCodesEnabled?: boolean;
 }
 
 export type TournamentStatus =
@@ -98,6 +102,30 @@ export interface Tournament {
   settings: TournamentSettings;
   registrationCloseReason?: RegistrationCloseReason;
   createdAt: string;
+}
+
+/** A discount code a director created for a tournament, entered by
+ * registrants on the registration page before paying. */
+export interface Coupon {
+  id: string;
+  tournamentId: string;
+  code: string;
+  discountCents: number;
+  usageLimit: number;
+  usedCount: number;
+  createdAt: string;
+}
+
+export function mapCoupon(row: Record<string, unknown>): Coupon {
+  return {
+    id: row.id as string,
+    tournamentId: (row.tournament_id ?? row.tournamentId) as string,
+    code: row.code as string,
+    discountCents: (row.discount_cents ?? row.discountCents) as number,
+    usageLimit: (row.usage_limit ?? row.usageLimit) as number,
+    usedCount: (row.used_count ?? row.usedCount) as number,
+    createdAt: (row.created_at ?? row.createdAt) as string,
+  };
 }
 
 export type PlayerStatus = 'registered' | 'checked_in' | 'no_show_eliminated';

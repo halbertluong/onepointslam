@@ -19,6 +19,9 @@ export interface PlayerFormData {
   utr: string;
   age: string;
   skillTier: string;
+  /** The coupon code applied and confirmed valid, if any — carried through to
+   *  create-intent, which redeems and prices it server-side. */
+  couponCode?: string;
 }
 
 export interface WelcomeBackProps {
@@ -31,6 +34,11 @@ export interface WelcomeBackProps {
 interface Props {
   tournamentName: string;
   tenantName?: string;
+  /** Needed to validate a coupon code against the right tournament. */
+  tournamentId: string;
+  /** Shows the coupon code field. Off by default — most tournaments never
+   *  turn coupons on. */
+  couponCodesEnabled?: boolean;
   entranceFee: number;
   platformFee: number;
   playerCount?: number;
@@ -61,6 +69,8 @@ interface Props {
 export default function PlayerRegistrationForm({
   tournamentName,
   tenantName,
+  tournamentId,
+  couponCodesEnabled,
   entranceFee,
   platformFee,
   playerCount,
@@ -89,13 +99,53 @@ export default function PlayerRegistrationForm({
   // Welcome-back inline sign-in state (local password field)
   const [wbPassword, setWbPassword] = useState('');
 
-  const totalPrice = entranceFee + platformFee;
+  // Coupon code state — "applied" only once /api/coupons/validate has
+  // confirmed it, so a typo or an exhausted code can't silently discount a
+  // total the payer never actually earned.
+  const [couponInput, setCouponInput] = useState('');
+  const [couponApplied, setCouponApplied] = useState<{ code: string; discountCents: number } | null>(null);
+  const [couponError, setCouponError] = useState('');
+  const [couponChecking, setCouponChecking] = useState(false);
+
+  const showCoupon = couponCodesEnabled && !hidePaymentBreakdown && entranceFee > 0;
+  const discountDollars = couponApplied ? couponApplied.discountCents / 100 : 0;
+  const totalPrice = Math.max(0, entranceFee + platformFee - discountDollars);
+
+  async function applyCoupon() {
+    const trimmed = couponInput.trim().toUpperCase();
+    if (!trimmed) return;
+    setCouponChecking(true);
+    setCouponError('');
+    try {
+      const res = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tournamentId, code: trimmed }),
+      });
+      const json = await res.json() as { valid?: boolean; discountCents?: number; error?: string };
+      if (!res.ok || !json.valid || json.discountCents == null) {
+        setCouponError(json.error ?? 'Invalid coupon code.');
+        setCouponApplied(null);
+      } else {
+        setCouponApplied({ code: trimmed, discountCents: json.discountCents });
+      }
+    } catch {
+      setCouponError('Could not check this code. Please try again.');
+    }
+    setCouponChecking(false);
+  }
+
+  function clearCoupon() {
+    setCouponApplied(null);
+    setCouponInput('');
+    setCouponError('');
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setFormError('');
-    const result = await onSubmit({ fullName, email, gender, ntrp, utr, age, skillTier });
+    const result = await onSubmit({ fullName, email, gender, ntrp, utr, age, skillTier, couponCode: couponApplied?.code });
     if (result?.error) {
       setFormError(result.error);
       setSubmitting(false);
@@ -292,6 +342,48 @@ export default function PlayerRegistrationForm({
           </div>
         </div>
 
+        {/* Coupon code */}
+        {showCoupon && (
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 space-y-3">
+            <h3 className="font-bold text-slate-800 text-sm">Coupon Code</h3>
+            {couponApplied ? (
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-2.5">
+                <span className="text-sm text-emerald-800">
+                  <span className="font-mono font-bold">{couponApplied.code}</span> applied —{' '}
+                  {formatCurrency(couponApplied.discountCents / 100)} off
+                </span>
+                <button
+                  type="button"
+                  onClick={clearCoupon}
+                  className="text-emerald-600 hover:text-emerald-800 text-lg leading-none shrink-0"
+                  aria-label="Remove coupon"
+                >
+                  ×
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={couponInput}
+                  onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponError(''); }}
+                  placeholder="ENTER CODE"
+                  className="flex-1 min-w-0 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono uppercase focus:outline-none focus:ring-2"
+                />
+                <button
+                  type="button"
+                  disabled={couponChecking || !couponInput.trim()}
+                  onClick={applyCoupon}
+                  className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50 transition-colors shrink-0"
+                >
+                  {couponChecking ? '…' : 'Apply'}
+                </button>
+              </div>
+            )}
+            {couponError && <p className="text-xs text-red-600">{couponError}</p>}
+          </div>
+        )}
+
         {/* Payment breakdown */}
         {!hidePaymentBreakdown && (
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
@@ -314,6 +406,12 @@ export default function PlayerRegistrationForm({
               <div className="flex justify-between px-5 py-3 text-sm">
                 <span className="text-slate-600">Service fee</span>
                 <span className="font-semibold text-slate-500">{formatCurrency(platformFee)}</span>
+              </div>
+            )}
+            {couponApplied && (
+              <div className="flex justify-between px-5 py-3 text-sm">
+                <span className="text-slate-600">Coupon ({couponApplied.code})</span>
+                <span className="font-semibold text-emerald-600">−{formatCurrency(discountDollars)}</span>
               </div>
             )}
             <div
