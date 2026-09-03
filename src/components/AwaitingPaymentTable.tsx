@@ -26,16 +26,23 @@ export default function AwaitingPaymentTable({
 }: {
   pendingRegistrations: PendingRegistration[];
   onViewPayment: (paymentIntentId: string) => void;
-  onDismiss: (id: string) => Promise<void>;
+  onDismiss: (id: string) => Promise<{ error?: string }>;
 }) {
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
   if (pendingRegistrations.length === 0) return null;
 
-  async function handleDismiss(id: string) {
-    setBusyId(id);
-    await onDismiss(id);
+  async function handleDismiss(p: PendingRegistration) {
+    if (!window.confirm(
+      `Remove ${p.fullName}'s reservation? If their payment is still open, it will be canceled so they ` +
+      "can't be charged after being removed.",
+    )) return;
+    setBusyId(p.id);
+    setError('');
+    const result = await onDismiss(p.id);
     setBusyId(null);
+    if (result.error) setError(result.error);
   }
 
   return (
@@ -47,6 +54,9 @@ export default function AwaitingPaymentTable({
           the moment Stripe confirms the card — nothing to do unless one has clearly been abandoned.
         </p>
       </div>
+      {error && (
+        <p className="px-6 py-3 text-sm text-red-700 bg-red-50 border-b border-red-100">{error}</p>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -79,7 +89,7 @@ export default function AwaitingPaymentTable({
                     View payment →
                   </button>
                   <button
-                    onClick={() => handleDismiss(p.id)}
+                    onClick={() => handleDismiss(p)}
                     disabled={busyId === p.id}
                     className="text-xs font-semibold text-red-500 hover:text-red-700 disabled:opacity-50"
                   >

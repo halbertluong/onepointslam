@@ -46,7 +46,7 @@ export default function PlayersPanel({
   pendingRegistrations?: PendingRegistration[];
   /** Jumps to the Payments tab, highlighting this payment. */
   onViewPayment: (paymentIntentId: string) => void;
-  onDismissPending: (id: string) => Promise<void>;
+  onDismissPending: (id: string) => Promise<{ error?: string }>;
   onSaved: () => void;
 }) {
   const showPayments = entranceFee > 0;

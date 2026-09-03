@@ -217,9 +217,14 @@ export default function TournamentAdminPage() {
     setTab('payments');
   }
 
-  async function handleDismissPending(pendingId: string) {
-    await fetch(`/api/tournaments/${id}/pending-registrations?pendingId=${pendingId}`, { method: 'DELETE' });
+  async function handleDismissPending(pendingId: string): Promise<{ error?: string }> {
+    const res = await fetch(`/api/tournaments/${id}/pending-registrations?pendingId=${pendingId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      return { error: json.error ?? 'Could not remove this reservation.' };
+    }
     await load();
+    return {};
   }
 
   async function handleForceClose() {
