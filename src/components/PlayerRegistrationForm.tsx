@@ -305,7 +305,7 @@ export default function PlayerRegistrationForm({
             </div>
             {platformFee > 0 && (
               <div className="flex justify-between px-5 py-3 text-sm">
-                <span className="text-slate-600">Platform fee</span>
+                <span className="text-slate-600">Service fee</span>
                 <span className="font-semibold text-slate-500">{formatCurrency(platformFee)}</span>
               </div>
             )}

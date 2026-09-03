@@ -172,7 +172,7 @@ export default function AdminOverviewPage() {
                 <th className="px-5 py-3 text-left">School</th>
                 <th className="px-5 py-3 text-left">Status</th>
                 <th className="px-5 py-3 text-left">Players</th>
-                <th className="px-5 py-3 text-left">Platform Fee</th>
+                <th className="px-5 py-3 text-left">Service Fee</th>
                 <th className="px-5 py-3 text-left"></th>
               </tr>
             </thead>
@@ -228,7 +228,7 @@ export default function AdminOverviewPage() {
       {/* Tenants & fees */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="font-bold text-slate-800">Schools & Platform Fees</h2>
+          <h2 className="font-bold text-slate-800">Schools & Service Fees</h2>
           <span className="text-xs text-slate-400">Default: {formatCurrency(DEFAULT_PLATFORM_FEE)}/registrant</span>
         </div>
         <div className="divide-y divide-slate-100">
