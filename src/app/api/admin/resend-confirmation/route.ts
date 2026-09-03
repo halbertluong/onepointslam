@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { getSiteUrl } from '@/lib/siteUrl';
 
 export async function POST(req: NextRequest) {
   const adminClient = createClient(
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
     type: 'magiclink',
     email,
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/auth/confirm`,
+      redirectTo: `${getSiteUrl()}/auth/confirm`,
     },
   });
 
