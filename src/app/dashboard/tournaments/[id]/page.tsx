@@ -248,7 +248,9 @@ export default function TournamentAdminPage() {
     }
     setSaving(true);
     const supabase = createClient();
-    const generated = generateBracket(players, tournament.settings, id);
+    // A player withdrawn before the draw existed shouldn't get seeded into it.
+    const eligible = players.filter((p) => p.status !== 'no_show_eliminated');
+    const generated = generateBracket(eligible, tournament.settings, id);
     const { error } = await supabase.from('matches').upsert(
       generated.map((m) => ({
         id: m.id,
@@ -407,8 +409,10 @@ export default function TournamentAdminPage() {
       .flatMap((m) => [m.player1Id, m.player2Id])
       .filter((pid): pid is string => !!pid && pid !== 'BYE'),
   );
+  // A withdrawn player was deliberately pulled, not left behind — they don't
+  // count toward "needs attention" here any more than they do in PlayersPanel.
   const unplacedCount = bracketGenerated
-    ? players.filter((p) => !placedPlayerIds.has(p.id)).length
+    ? players.filter((p) => p.status !== 'no_show_eliminated' && !placedPlayerIds.has(p.id)).length
     : 0;
 
   return (
@@ -555,6 +559,8 @@ export default function TournamentAdminPage() {
           players={players}
           matches={matches}
           bracketGenerated={bracketGenerated}
+          tournamentId={id}
+          maxPlayers={tournament.settings?.maxPlayers ?? 8}
           entranceFee={tournament.settings?.ticketPriceForFundraiser ?? 0}
           pendingRegistrations={pendingRegistrations}
           onViewPayment={handleViewPayment}

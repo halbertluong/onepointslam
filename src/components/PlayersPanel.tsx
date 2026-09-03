@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
-import { saveSeedRatings } from '@/lib/tournamentWrites';
+import { saveSeedRatings, withdrawPlayer } from '@/lib/tournamentWrites';
+import { getRoundsCount } from '@/lib/bracket';
 import AwaitingPaymentTable from '@/components/AwaitingPaymentTable';
 import type { Match, PendingRegistration, Player } from '@/types';
 
@@ -30,6 +31,9 @@ export default function PlayersPanel({
   players,
   matches,
   bracketGenerated,
+  tournamentId,
+  /** Draw size, for computing how many rounds a withdrawal's walkover needs to advance through. */
+  maxPlayers = 8,
   /** The tournament's entry fee — when 0, this is a free event and there's
    *  nothing to reconcile, so the Payment column is hidden entirely. */
   entranceFee = 0,
@@ -41,6 +45,8 @@ export default function PlayersPanel({
   players: Player[];
   matches: Match[];
   bracketGenerated: boolean;
+  tournamentId: string;
+  maxPlayers?: number;
   entranceFee?: number;
   /** Registrations reserved before payment finished — see AwaitingPaymentTable. */
   pendingRegistrations?: PendingRegistration[];
@@ -57,6 +63,7 @@ export default function PlayersPanel({
     return m;
   });
   const [saving, setSaving] = useState(false);
+  const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
@@ -71,6 +78,21 @@ export default function PlayersPanel({
     setMsg('Seeds saved!');
     onSaved();
     setTimeout(() => setMsg(''), 2000);
+  }
+
+  async function handleWithdraw(p: Player) {
+    if (!window.confirm(
+      `Withdraw ${p.fullName} from the tournament? If they have an active match, ` +
+      'their opponent will be awarded a walkover.',
+    )) return;
+    setWithdrawingId(p.id);
+    const { error } = await withdrawPlayer(createClient(), matches, tournamentId, p.id, getRoundsCount(maxPlayers));
+    setWithdrawingId(null);
+    if (error) { setErr(`Could not withdraw ${p.fullName}: ${error}`); return; }
+    setErr('');
+    setMsg(`${p.fullName} withdrawn.`);
+    onSaved();
+    setTimeout(() => setMsg(''), 2500);
   }
 
   // "In the bracket" means holding a first-round slot — that's the source of
@@ -95,13 +117,19 @@ export default function PlayersPanel({
       }),
   );
 
-  const unplaced = bracketGenerated ? players.filter((p) => !placedIds.has(p.id)) : [];
+  // A withdrawn player who never held a slot isn't "missing" — they were
+  // deliberately pulled, not left behind, so they don't belong in either the
+  // warning banner or the amber "needs attention" sort/status below.
+  const missingFromBracket = (p: Player) =>
+    bracketGenerated && p.status !== 'no_show_eliminated' && !placedIds.has(p.id);
+
+  const unplaced = players.filter(missingFromBracket);
 
   // Players missing from a generated draw sort to the very top — that's an
   // action the director needs to see immediately, not hunt for.
   const sorted = [...players].sort((a, b) => {
-    const aMissing = bracketGenerated && !placedIds.has(a.id);
-    const bMissing = bracketGenerated && !placedIds.has(b.id);
+    const aMissing = missingFromBracket(a);
+    const bMissing = missingFromBracket(b);
     if (aMissing !== bMissing) return aMissing ? -1 : 1;
     if (a.seedRating && b.seedRating) return a.seedRating - b.seedRating;
     if (a.seedRating) return -1;
@@ -110,10 +138,10 @@ export default function PlayersPanel({
   });
 
   function statusFor(p: Player): { label: string; cls: string } {
-    if (bracketGenerated && !placedIds.has(p.id)) {
+    if (p.status === 'no_show_eliminated') return { label: 'no show', cls: PLAYER_STATUS_STYLE.no_show_eliminated };
+    if (missingFromBracket(p)) {
       return { label: '⚠ Not in bracket', cls: 'bg-amber-400 text-amber-950' };
     }
-    if (p.status === 'no_show_eliminated') return { label: 'no show', cls: PLAYER_STATUS_STYLE.no_show_eliminated };
     if (placedIds.has(p.id)) {
       return eliminatedIds.has(p.id)
         ? { label: 'Eliminated', cls: 'bg-slate-200 text-slate-600' }
@@ -192,14 +220,15 @@ export default function PlayersPanel({
                 <th className="px-4 py-3 text-left">Tier</th>
                 <th className="px-4 py-3 text-left">Status</th>
                 {showPayments && <th className="px-4 py-3 text-left">Payment</th>}
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {players.length === 0 && (
-                <tr><td colSpan={showPayments ? 9 : 8} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
+                <tr><td colSpan={showPayments ? 10 : 9} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
               )}
               {sorted.map((p, i) => {
-                const missing = bracketGenerated && !placedIds.has(p.id);
+                const missing = missingFromBracket(p);
                 const status = statusFor(p);
                 return (
                   <tr key={p.id} className={missing ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-slate-50'}>
@@ -254,6 +283,19 @@ export default function PlayersPanel({
                         )}
                       </td>
                     )}
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {p.status !== 'no_show_eliminated' ? (
+                        <button
+                          onClick={() => handleWithdraw(p)}
+                          disabled={withdrawingId === p.id}
+                          className="text-xs font-semibold text-red-500 hover:text-red-700 disabled:opacity-50"
+                        >
+                          {withdrawingId === p.id ? 'Withdrawing…' : 'Withdraw'}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-300">—</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
