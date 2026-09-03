@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { saveSeedRatings } from '@/lib/tournamentWrites';
-import type { Match, Player } from '@/types';
+import AwaitingPaymentTable from '@/components/AwaitingPaymentTable';
+import type { Match, PendingRegistration, Player } from '@/types';
 
 const PLAYER_STATUS_STYLE: Record<string, string> = {
   checked_in: 'bg-emerald-100 text-emerald-700',
@@ -32,12 +33,20 @@ export default function PlayersPanel({
   /** The tournament's entry fee — when 0, this is a free event and there's
    *  nothing to reconcile, so the Payment column is hidden entirely. */
   entranceFee = 0,
+  pendingRegistrations = [],
+  onViewPayment,
+  onDismissPending,
   onSaved,
 }: {
   players: Player[];
   matches: Match[];
   bracketGenerated: boolean;
   entranceFee?: number;
+  /** Registrations reserved before payment finished — see AwaitingPaymentTable. */
+  pendingRegistrations?: PendingRegistration[];
+  /** Jumps to the Payments tab, highlighting this payment. */
+  onViewPayment: (paymentIntentId: string) => void;
+  onDismissPending: (id: string) => Promise<void>;
   onSaved: () => void;
 }) {
   const showPayments = entranceFee > 0;
@@ -117,6 +126,14 @@ export default function PlayersPanel({
     <div className="space-y-4">
       {msg && <p className="text-sm bg-emerald-50 text-emerald-700 rounded-xl p-3">{msg}</p>}
       {err && <p className="text-sm bg-red-50 text-red-700 rounded-xl p-3">{err}</p>}
+
+      {showPayments && (
+        <AwaitingPaymentTable
+          pendingRegistrations={pendingRegistrations}
+          onViewPayment={onViewPayment}
+          onDismiss={onDismissPending}
+        />
+      )}
 
       {unpaidPlayers.length > 0 && (
         <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 flex items-start gap-3">
@@ -227,6 +244,14 @@ export default function PlayersPanel({
                         <span className={`px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${PAYMENT_STATUS_STYLE[p.paymentStatus ?? 'pending']}`}>
                           {PAYMENT_STATUS_LABEL[p.paymentStatus ?? 'pending']}
                         </span>
+                        {p.stripePaymentIntentId && (
+                          <button
+                            onClick={() => onViewPayment(p.stripePaymentIntentId!)}
+                            className="ml-2 text-xs font-semibold text-slate-400 hover:text-slate-600 underline underline-offset-2"
+                          >
+                            View →
+                          </button>
+                        )}
                       </td>
                     )}
                   </tr>
