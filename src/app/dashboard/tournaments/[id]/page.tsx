@@ -9,6 +9,7 @@ import SeedAssignmentPanel from '@/components/SeedAssignmentPanel';
 import DrawEditorPanel from '@/components/DrawEditorPanel';
 import LiveScoreboard from '@/components/LiveScoreboard';
 import RegistrationPanel from '@/components/RegistrationPanel';
+import PaymentsPanel from '@/components/PaymentsPanel';
 import NotesPanel from '@/components/NotesPanel';
 import AssetStudio from '@/components/AssetStudio';
 import TournamentUrlCard from '@/components/TournamentUrlCard';
@@ -58,7 +59,7 @@ function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; is
   );
 }
 
-type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'assets' | 'notes' | 'settings';
+type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'payments' | 'assets' | 'notes' | 'settings';
 
 const TAB_LABELS: Record<Tab, string> = {
   players: 'Players',
@@ -68,12 +69,13 @@ const TAB_LABELS: Record<Tab, string> = {
   bracket: 'Bracket',
   scoreboard: 'Scoreboard',
   registration: 'Registration',
+  payments: 'Payments',
   assets: 'Assets',
   notes: 'Notes',
   settings: 'Settings',
 };
 
-const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'assets', 'notes', 'settings'];
+const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'payments', 'assets', 'notes', 'settings'];
 
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
   const active = matches
@@ -637,6 +639,20 @@ export default function TournamentAdminPage() {
           onRegistered={load}
           onSaveSettings={(patch) => handleSaveSettings(patch)}
         />
+      )}
+
+      {/* Payments tab — Stripe against the registrations it should have created */}
+      {tab === 'payments' && (
+        <div className="space-y-4">
+          <div>
+            <h2 className="font-bold text-slate-800">Payments</h2>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Every card Stripe has charged for this tournament, checked against the registrations
+              and donations recorded here.
+            </p>
+          </div>
+          <PaymentsPanel tournamentId={id} onRecovered={load} />
+        </div>
       )}
 
       {/* Assets tab — branded flyer / Instagram post / story generator */}
