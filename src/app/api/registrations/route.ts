@@ -17,7 +17,6 @@ export async function POST(req: NextRequest) {
     utr?: string;
     age?: string;
     skillTier?: string;
-    stripePaymentIntentId?: string;
     /** Set by the director dashboard to add a player at the desk. Authorization
      *  is verified server-side below — the flag alone grants nothing. */
     directorEntry?: boolean;
@@ -26,7 +25,7 @@ export async function POST(req: NextRequest) {
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
-  const { tournamentId, fullName, email, gender, ntrp, utr, age, skillTier, stripePaymentIntentId } = body;
+  const { tournamentId, fullName, email, gender, ntrp, utr, age, skillTier } = body;
   if (!tournamentId || !fullName || !email) {
     return NextResponse.json({ error: 'tournamentId, fullName, and email are required' }, { status: 400 });
   }
@@ -60,57 +59,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Registration is not open' }, { status: 400 });
   }
 
-  // Verify payment when a fee applies
+  // A real card payment never reaches this route: it goes through
+  // /api/payments/create-intent, which reserves a pending_registrations row
+  // before the charge happens, and the payment is what promotes that row into
+  // players (see src/lib/paymentPromotion.ts). This route only ever creates a
+  // player with no payment behind it — a free tournament, or a director
+  // settling the fee offline — so it has no Stripe reference to verify.
   let paymentStatus: 'pending' | 'paid' = 'pending';
-  let verifiedPaymentIntentId: string | null = null;
-
-  // A card payment is verified the same way no matter who took it — a director
-  // collecting at the desk gets no shortcut around Stripe. Only a director
-  // submitting without a payment at all may settle the fee offline.
-  if (entranceFee > 0 && !stripePaymentIntentId) {
+  if (entranceFee > 0) {
     if (!isDirector) {
       return NextResponse.json({ error: 'Payment required for this tournament' }, { status: 402 });
     }
     paymentStatus = body.markPaid ? 'paid' : 'pending';
-  } else if (entranceFee <= 0) {
-    if (isDirector) paymentStatus = body.markPaid ? 'paid' : 'pending';
-  } else {
-
-    const stripeKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeKey) {
-      return NextResponse.json({ error: 'Payment processing not configured' }, { status: 500 });
-    }
-
-    // Verify the PaymentIntent server-side via Stripe API
-    const { createStripeClient } = await import('@/lib/stripe');
-    const stripe = await createStripeClient(stripeKey, '2025-04-30');
-
-    let pi;
-    try {
-      pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId!);
-    } catch {
-      return NextResponse.json({ error: 'Invalid payment reference' }, { status: 400 });
-    }
-
-    if (pi.status !== 'succeeded') {
-      return NextResponse.json({ error: 'Payment has not been completed' }, { status: 402 });
-    }
-
-    // Verify this PI was minted for this specific tournament (prevents cross-tournament reuse)
-    if (pi.metadata?.tournament_id !== tournamentId) {
-      return NextResponse.json({ error: 'Payment does not belong to this tournament' }, { status: 400 });
-    }
-
-    // Verify the amount matches the tournament fee (within 1 cent tolerance for rounding)
-    const platformFee = (settings?.systemTechFee as number) ?? 0;
-    const expectedCents = Math.round((entranceFee + platformFee) * 100);
-    if (Math.abs(pi.amount - expectedCents) > 1) {
-      console.error(`[registrations] PI amount mismatch: got ${pi.amount}, expected ${expectedCents}`);
-      return NextResponse.json({ error: 'Payment amount does not match tournament fee' }, { status: 400 });
-    }
-
-    paymentStatus = 'paid';
-    verifiedPaymentIntentId = stripePaymentIntentId!;
+  } else if (isDirector) {
+    paymentStatus = body.markPaid ? 'paid' : 'pending';
   }
 
   const admin = createAdminClient(
@@ -127,16 +89,6 @@ export async function POST(req: NextRequest) {
     .eq('email', email)
     .maybeSingle();
   if (existing) return NextResponse.json({ error: 'This email is already registered for this tournament.' }, { status: 409 });
-
-  // PI reuse check — prevent one payment from registering multiple accounts
-  if (verifiedPaymentIntentId) {
-    const { data: piUsed } = await admin
-      .from('players')
-      .select('id')
-      .eq('stripe_payment_intent_id', verifiedPaymentIntentId)
-      .maybeSingle();
-    if (piUsed) return NextResponse.json({ error: 'Payment has already been used for a registration.' }, { status: 409 });
-  }
 
   // Explicit cap check (service-role bypasses RLS)
   const playerCap = (settings?.playerRegistrationCap as number) ?? null;
@@ -163,7 +115,7 @@ export async function POST(req: NextRequest) {
     status: 'registered',
     user_id: user?.id ?? null,
     payment_status: paymentStatus,
-    stripe_payment_intent_id: verifiedPaymentIntentId,
+    stripe_payment_intent_id: null,
   }).select('id').single();
 
   if (insertErr) {

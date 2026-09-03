@@ -1,19 +1,37 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatCurrency } from '@/lib/pricing';
-import type { ReconciliationReport, StripePayment } from '@/lib/reconciliation';
+import type { AnnotatedPayment, ReconciliationReport, StripePayment } from '@/lib/reconciliation';
 
 type Report = ReconciliationReport & { tournamentName?: string };
 
+const MATCH_STATE_STYLE: Record<AnnotatedPayment['matchState'], string> = {
+  confirmed: 'bg-emerald-100 text-emerald-700',
+  stuck: 'bg-amber-100 text-amber-800',
+  stale: 'bg-amber-100 text-amber-800',
+  orphan: 'bg-red-100 text-red-700',
+};
+const MATCH_STATE_LABEL: Record<AnnotatedPayment['matchState'], string> = {
+  confirmed: 'Confirmed',
+  stuck: 'Needs promoting',
+  stale: 'Needs syncing',
+  orphan: 'No record',
+};
+
 /**
  * The money check: what Stripe took for this tournament, against what the app
- * recorded. Its job is to surface the case nobody notices otherwise — a card
- * charged with no registration behind it — and to let a director fix it on the
- * spot rather than reading a Stripe export by hand.
+ * recorded — every succeeded payment, tagged with whether it's a normal
+ * confirmed entry, a reservation that never got promoted, a stale legacy
+ * status, or a payment with no record at all. Its job is to surface the case
+ * nobody notices otherwise and let a director fix it on the spot rather than
+ * reading a Stripe export by hand.
  */
-export default function PaymentsPanel({ tournamentId, onRecovered }: {
+export default function PaymentsPanel({ tournamentId, focusPaymentIntentId, onRecovered }: {
   tournamentId: string;
+  /** Scrolls to and highlights this payment on load — set when a director
+   *  clicks through from a player row in the Players tab. */
+  focusPaymentIntentId?: string | null;
   onRecovered?: () => void;
 }) {
   const [report, setReport] = useState<Report | null>(null);
@@ -22,15 +40,14 @@ export default function PaymentsPanel({ tournamentId, onRecovered }: {
   const [edits, setEdits] = useState<Record<string, { fullName: string; email: string }>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const focusRef = useRef<HTMLElement | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
     try {
       const res = await fetch(`/api/payments/reconcile?tournamentId=${tournamentId}`);
       const json = await res.json();
       if (!res.ok) { setError(json.error ?? 'Could not load payments.'); setReport(null); }
-      else setReport(json as Report);
+      else { setReport(json as Report); setError(''); }
     } catch {
       setError('Could not reach the server.');
     }
@@ -39,28 +56,39 @@ export default function PaymentsPanel({ tournamentId, onRecovered }: {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (focusPaymentIntentId && report && focusRef.current) {
+      focusRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [focusPaymentIntentId, report]);
+
+  function recheck() {
+    setLoading(true);
+    setError('');
+    load();
+  }
+
   function detailsFor(p: StripePayment) {
     return edits[p.id] ?? { fullName: p.registrantName ?? '', email: p.registrantEmail ?? '' };
   }
 
-  async function recover(p: StripePayment) {
-    const { fullName, email } = detailsFor(p);
-    setBusy(p.id);
+  async function act(paymentIntentId: string, action: 'recover' | 'promote' | 'sync', extra?: { fullName: string; email: string }) {
+    setBusy(paymentIntentId);
     setNotice('');
     const res = await fetch('/api/payments/reconcile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tournamentId, paymentIntentId: p.id, fullName, email }),
+      body: JSON.stringify({ tournamentId, paymentIntentId, action, ...extra }),
     });
     const json = await res.json();
     setBusy(null);
-    if (!res.ok) { setError(json.error ?? 'Could not add this payment.'); return; }
+    if (!res.ok) { setError(json.error ?? 'Could not update this payment.'); return; }
     setNotice(
-      json.linkedExisting
-        ? 'Payment linked to the registration that already existed.'
-        : json.alreadyRecorded
-          ? 'That payment was already recorded.'
-          : p.kind === 'donation' ? 'Donation recorded.' : `${fullName} added to the tournament.`,
+      json.linkedExisting ? 'Payment linked to the registration that already existed.'
+        : json.alreadyRecorded ? 'That payment was already recorded.'
+        : action === 'promote' ? 'Moved into the tournament roster, paid.'
+        : action === 'sync' ? 'Marked as paid.'
+        : extra ? `${extra.fullName} added to the tournament.` : 'Donation recorded.',
     );
     await load();
     onRecovered?.();
@@ -73,7 +101,7 @@ export default function PaymentsPanel({ tournamentId, onRecovered }: {
       {error && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}{' '}
-          <button onClick={load} className="font-semibold underline underline-offset-2">Try again</button>
+          <button onClick={recheck} className="font-semibold underline underline-offset-2">Try again</button>
         </div>
       )}
       {notice && (
@@ -84,32 +112,62 @@ export default function PaymentsPanel({ tournamentId, onRecovered }: {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Stat label="Taken in Stripe" value={formatCurrency(report.stripeTotalCents / 100)} />
-            <Stat label="Recorded here" value={formatCurrency(report.recordedTotalCents / 100)} />
+            <Stat label="Confirmed" value={formatCurrency(report.confirmedCents / 100)} />
             <Stat
-              label="Unaccounted for"
-              value={formatCurrency((report.stripeTotalCents - report.recordedTotalCents) / 100)}
-              tone={report.orphans.length > 0 ? 'alert' : 'ok'}
+              label="Needs attention"
+              value={formatCurrency((report.stripeTotalCents - report.confirmedCents) / 100)}
+              tone={report.balanced ? 'ok' : 'alert'}
             />
           </div>
 
           {report.balanced ? (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
-              ✓ Every payment Stripe has taken for this tournament has a registration or donation
-              behind it{report.matchedCount > 0 ? ` — ${report.matchedCount} in total` : ''}.
+              ✓ Every payment Stripe has taken for this tournament is confirmed here
+              {report.matchedCount > 0 ? ` — ${report.matchedCount} in total` : ''}.
             </div>
           ) : (
             <div className="rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-              <strong>{report.orphans.length} payment{report.orphans.length === 1 ? '' : 's'} with nothing behind {report.orphans.length === 1 ? 'it' : 'them'}.</strong>{' '}
-              These cards were charged but the sign-up never landed — most likely the tournament
-              filled up, or the browser closed, between paying and being added. Add them below and
-              they keep the entry they paid for.
+              <strong>
+                {report.orphans.length + report.stuckReservations.length + report.staleStatus.length} payment
+                {report.orphans.length + report.stuckReservations.length + report.staleStatus.length === 1 ? '' : 's'} need attention below.
+              </strong>{' '}
+              Cards were charged but didn&apos;t end up correctly reflected in the roster — fix each one on the spot.
             </div>
           )}
+
+          {report.stuckReservations.map((r) => {
+            const p = report.payments.find((x) => x.id === r.paymentIntentId);
+            return (
+              <div
+                key={r.paymentIntentId}
+                ref={(el) => { if (r.paymentIntentId === focusPaymentIntentId) focusRef.current = el; }}
+                className={`rounded-2xl border p-5 flex items-center justify-between gap-4 flex-wrap ${r.paymentIntentId === focusPaymentIntentId ? 'border-purple-400 ring-2 ring-purple-200' : 'border-slate-200 bg-white'}`}
+              >
+                <div>
+                  <p className="font-bold text-slate-800">{r.label} · {p ? formatCurrency(p.amountCents / 100) : ''}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Paid in Stripe, still sitting as an open reservation. <span className="font-mono">{r.paymentIntentId}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => act(r.paymentIntentId, 'promote')}
+                  disabled={busy === r.paymentIntentId}
+                  className="btn-primary px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-60"
+                >
+                  {busy === r.paymentIntentId ? 'Moving…' : 'Move to roster'}
+                </button>
+              </div>
+            );
+          })}
 
           {report.orphans.map((p) => {
             const d = detailsFor(p);
             return (
-              <div key={p.id} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
+              <div
+                key={p.id}
+                ref={(el) => { if (p.id === focusPaymentIntentId) focusRef.current = el; }}
+                className={`rounded-2xl border p-5 space-y-3 ${p.id === focusPaymentIntentId ? 'border-purple-400 ring-2 ring-purple-200' : 'border-slate-200 bg-white'}`}
+              >
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div>
                     <p className="font-bold text-slate-800">
@@ -120,7 +178,7 @@ export default function PaymentsPanel({ tournamentId, onRecovered }: {
                     </p>
                   </div>
                   <button
-                    onClick={() => recover(p)}
+                    onClick={() => act(p.id, 'recover', p.kind === 'registration' ? d : undefined)}
                     disabled={busy === p.id || (p.kind === 'registration' && (!d.fullName.trim() || !d.email.trim()))}
                     className="btn-primary px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-60"
                   >
@@ -154,6 +212,29 @@ export default function PaymentsPanel({ tournamentId, onRecovered }: {
             );
           })}
 
+          {report.staleStatus.map((r) => (
+            <div
+              key={r.paymentIntentId}
+              ref={(el) => { if (r.paymentIntentId === focusPaymentIntentId) focusRef.current = el; }}
+              className={`rounded-2xl border p-5 flex items-center justify-between gap-4 flex-wrap ${r.paymentIntentId === focusPaymentIntentId ? 'border-purple-400 ring-2 ring-purple-200' : 'border-slate-200 bg-white'}`}
+            >
+              <div>
+                <p className="font-bold text-slate-800">{r.label}</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Stripe shows this paid, but the roster still says &ldquo;{r.storedStatus}&rdquo;.{' '}
+                  <span className="font-mono">{r.paymentIntentId}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => act(r.paymentIntentId, 'sync')}
+                disabled={busy === r.paymentIntentId}
+                className="btn-primary px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-60"
+              >
+                {busy === r.paymentIntentId ? 'Syncing…' : 'Mark as paid'}
+              </button>
+            </div>
+          ))}
+
           {report.unbackedRecords.length > 0 && (
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
               <h3 className="font-bold text-slate-800 text-sm">Recorded without a live payment</h3>
@@ -172,7 +253,48 @@ export default function PaymentsPanel({ tournamentId, onRecovered }: {
             </div>
           )}
 
-          <button onClick={load} className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2">
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800 text-sm">Every payment taken</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    <th className="px-4 py-2.5 text-left">When</th>
+                    <th className="px-4 py-2.5 text-left">Who</th>
+                    <th className="px-4 py-2.5 text-left">Amount</th>
+                    <th className="px-4 py-2.5 text-left">Status</th>
+                    <th className="px-4 py-2.5 text-left">Payment reference</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {report.payments.length === 0 && (
+                    <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">No payments yet</td></tr>
+                  )}
+                  {report.payments.map((p) => (
+                    <tr
+                      key={p.id}
+                      ref={(el) => { if (p.id === focusPaymentIntentId) focusRef.current = el; }}
+                      className={p.id === focusPaymentIntentId ? 'bg-purple-50' : 'hover:bg-slate-50'}
+                    >
+                      <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{new Date(p.createdAt).toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-slate-700">{p.record?.label ?? p.registrantName ?? '—'}</td>
+                      <td className="px-4 py-2.5 font-semibold text-slate-800">{formatCurrency(p.amountCents / 100)}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${MATCH_STATE_STYLE[p.matchState]}`}>
+                          {MATCH_STATE_LABEL[p.matchState]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-slate-400">{p.id}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <button onClick={recheck} className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2">
             Re-check Stripe
           </button>
         </>

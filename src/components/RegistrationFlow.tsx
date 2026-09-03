@@ -343,8 +343,11 @@ export default function RegistrationFlow({
     }
   }
 
-  // All player insertion goes through the server route which verifies payment server-side
-  async function insertPlayer(data: PlayerFormData, paymentIntentId: string | null): Promise<{ error?: string }> {
+  // For a free tournament, or the local-dev mock path where nothing was
+  // really charged — a real card payment never reaches this route; it is
+  // promoted straight from its reservation once Stripe confirms it (see
+  // handleRegister below and src/lib/paymentPromotion.ts).
+  async function insertPlayer(data: PlayerFormData): Promise<{ error?: string }> {
     const res = await fetch('/api/registrations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -357,25 +360,11 @@ export default function RegistrationFlow({
         utr: data.utr || null,
         age: data.age || null,
         skillTier: data.skillTier || null,
-        stripePaymentIntentId: paymentIntentId,
         ...(directorEntry ? { directorEntry: true } : {}),
       }),
     });
     const json = await res.json() as { playerId?: string; error?: string };
     if (!res.ok) {
-      // The card has already been charged by this point. "Please try again"
-      // would invite a second payment for the same entry, so say plainly that
-      // the money is taken and hand over the reference the director needs to
-      // find it — their Payments tab lists exactly these.
-      if (paymentIntentId) {
-        const reason = res.status === 409
-          ? 'that email is already registered for this tournament'
-          : (json.error ?? 'the sign-up could not be completed');
-        return {
-          error: `Your payment went through, but ${reason} — so please do not pay again. `
-            + `Send the tournament director this reference and they can finish adding you: ${paymentIntentId}`,
-        };
-      }
       if (res.status === 409) return { error: 'This email is already registered for this tournament.' };
       return { error: json.error ?? 'Registration failed. Please try again.' };
     }
@@ -398,6 +387,10 @@ export default function RegistrationFlow({
         return { error: 'Card payments are not available right now — the site is missing its Stripe configuration. Please contact the tournament director.' };
       }
 
+      // This reserves the entry — full details and the PaymentIntent about to
+      // charge them are written to pending_registrations before any card is
+      // charged, so a director sees them in the "Awaiting Payment" list from
+      // this moment, not only after the card succeeds.
       const res = await fetch('/api/payments/create-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -405,6 +398,11 @@ export default function RegistrationFlow({
           tournamentId,
           fullName: data.fullName,
           email: data.email,
+          gender: data.gender || null,
+          ntrp: data.ntrp || null,
+          utr: data.utr || null,
+          age: data.age || null,
+          skillTier: data.skillTier || null,
           ...(directorEntry ? { directorEntry: true } : {}),
         }),
       });
@@ -413,8 +411,9 @@ export default function RegistrationFlow({
 
       if (json.mock) {
         // Local dev only: no STRIPE_SECRET_KEY set, so the server mocked the
-        // intent — never happens in production (createPaymentIntent throws there).
-        return insertPlayer(data, null);
+        // intent and wrote no reservation — never happens in production
+        // (createPaymentIntent throws there instead of mocking).
+        return insertPlayer(data);
       }
 
       if (!json.clientSecret) return { error: 'Payment setup failed. Please try again.' };
@@ -422,11 +421,14 @@ export default function RegistrationFlow({
       setPendingPlayerData(data);
       setClientSecret(json.clientSecret);
       setStep('payment');
+      // The reservation already exists — a director watching the Players tab
+      // should see this entrant right away, not only once they've paid.
+      onRegistered?.();
       return {};
     }
 
     // No entry fee for this tournament
-    return insertPlayer(data, null);
+    return insertPlayer(data);
   }
 
   async function handleSavePassword() {
@@ -643,8 +645,23 @@ export default function RegistrationFlow({
               <StripeCheckoutForm
                 playerName={pendingPlayerData.fullName}
                 totalDollars={totalDollars}
-                onSuccess={async (paymentIntentId) => {
-                  await insertPlayer(pendingPlayerData, paymentIntentId);
+                onSuccess={(paymentIntentId) => {
+                  // Fast path only: this is what moves the reservation into
+                  // players within moments instead of waiting on webhook
+                  // delivery. The webhook (src/app/api/webhooks/stripe) is
+                  // what actually guarantees the move happens — Stripe has
+                  // already told this browser the charge succeeded, so the
+                  // payer's own success screen doesn't wait on this call.
+                  fetch('/api/payments/confirm-paid', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paymentIntentId }),
+                  }).catch(() => {});
+                  setRegisteredName(pendingPlayerData.fullName);
+                  setRegisteredEmail(pendingPlayerData.email);
+                  setWasGuest(!currentUser);
+                  setStep('success');
+                  onRegistered?.();
                 }}
                 onBack={() => {
                   setStep('form');

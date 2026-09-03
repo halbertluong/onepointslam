@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { verifyDirector } from '@/lib/registrationAccess';
 import { reconcile, toStripePayment, type RecordedPayment, type StripePayment } from '@/lib/reconciliation';
+import { promotePendingRegistration } from '@/lib/paymentPromotion';
 
 /** Stripe's search index lags new payments by up to a minute; listing doesn't. */
 const PAGE = 100;
@@ -73,12 +74,13 @@ async function fetchStripePayments(stripe: Awaited<ReturnType<typeof import('@/l
   return [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-/** What the database says it has taken for this tournament. */
+/** What the database says it has taken for this tournament — confirmed rows and open reservations alike. */
 async function fetchRecorded(tournamentId: string): Promise<RecordedPayment[]> {
   const db = admin();
-  const [{ data: players }, { data: donations }] = await Promise.all([
-    db.from('players').select('full_name, email, stripe_payment_intent_id').eq('tournament_id', tournamentId),
+  const [{ data: players }, { data: donations }, { data: pending }] = await Promise.all([
+    db.from('players').select('full_name, email, payment_status, stripe_payment_intent_id').eq('tournament_id', tournamentId),
     db.from('donations').select('amount, stripe_payment_intent_id').eq('tournament_id', tournamentId),
+    db.from('pending_registrations').select('full_name, email, stripe_payment_intent_id').eq('tournament_id', tournamentId),
   ]);
 
   const rows: RecordedPayment[] = [];
@@ -86,11 +88,25 @@ async function fetchRecorded(tournamentId: string): Promise<RecordedPayment[]> {
     // Offline and comped entries have no PaymentIntent — there is no Stripe
     // payment for them to match, so they are not part of this check.
     if (!p.stripe_payment_intent_id) continue;
-    rows.push({ paymentIntentId: p.stripe_payment_intent_id, kind: 'registration', label: p.full_name ?? p.email ?? 'Registrant' });
+    rows.push({
+      paymentIntentId: p.stripe_payment_intent_id,
+      kind: 'registration',
+      label: p.full_name ?? p.email ?? 'Registrant',
+      stage: 'confirmed',
+      storedStatus: p.payment_status ?? undefined,
+    });
   }
   for (const d of donations ?? []) {
     if (!d.stripe_payment_intent_id) continue;
-    rows.push({ paymentIntentId: d.stripe_payment_intent_id, kind: 'donation', label: `Donation of $${d.amount}` });
+    rows.push({ paymentIntentId: d.stripe_payment_intent_id, kind: 'donation', label: `Donation of $${d.amount}`, stage: 'confirmed' });
+  }
+  for (const r of pending ?? []) {
+    rows.push({
+      paymentIntentId: r.stripe_payment_intent_id,
+      kind: 'registration',
+      label: r.full_name ?? r.email ?? 'Registrant',
+      stage: 'reserved',
+    });
   }
   return rows;
 }
@@ -123,11 +139,18 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * POST /api/payments/reconcile — take an orphaned payment and give it the row
- * it never got, so the payer ends up in the tournament they paid for.
+ * POST /api/payments/reconcile — fix one payment the report flagged.
+ *
+ * action 'promote' (default when the report shows a stuck reservation):
+ * everything needed already lives in pending_registrations — no form, just
+ * finish the move the webhook and the fast-path ping were supposed to make.
+ *
+ * action 'recover' (default otherwise): a succeeded payment with no record at
+ * all — give it the row it never got, so the payer ends up in the tournament
+ * they paid for.
  */
 export async function POST(req: NextRequest) {
-  let body: { tournamentId?: string; paymentIntentId?: string; fullName?: string; email?: string };
+  let body: { tournamentId?: string; paymentIntentId?: string; fullName?: string; email?: string; action?: 'recover' | 'promote' | 'sync' };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
   const { tournamentId, paymentIntentId } = body;
@@ -160,6 +183,23 @@ export async function POST(req: NextRequest) {
   }
 
   const db = admin();
+
+  if (body.action === 'promote') {
+    const result = await promotePendingRegistration(db, paymentIntentId);
+    if (result.error) return NextResponse.json({ error: result.error }, { status: 500 });
+    return NextResponse.json({ playerId: result.playerId ?? null, promoted: result.promoted, alreadyRecorded: result.alreadyDone });
+  }
+
+  if (body.action === 'sync') {
+    // Only reachable for a player row created before promotion existed — every
+    // row created since is written 'paid' at the moment it's created.
+    const { data, error } = await db
+      .from('players').update({ payment_status: 'paid' })
+      .eq('stripe_payment_intent_id', paymentIntentId).select('id');
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ playerId: data?.[0]?.id ?? null, synced: (data?.length ?? 0) > 0 });
+  }
+
   const isDonation = pi.metadata?.kind === 'donation';
 
   if (isDonation) {
