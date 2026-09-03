@@ -1,4 +1,4 @@
-export const DEFAULT_PLATFORM_FEE = 5.0;
+export const DEFAULT_PLATFORM_FEE = 8.0;
 
 export interface GoalBasedResult {
   entranceFeePerPlayer: number;

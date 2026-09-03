@@ -17,7 +17,7 @@ import { releaseCourtToNextMatch } from '@/lib/courts';
 import { persistReversal } from '@/lib/tournamentWrites';
 import type { Tournament, Player, Match } from '@/types';
 import { mapPlayer, mapMatch } from '@/types';
-import { calcRaised, formatCurrency } from '@/lib/pricing';
+import { calcRaised, formatCurrency, DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
 import { toDateTimeLocalValue } from '@/lib/dates';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
@@ -364,7 +364,7 @@ export default function TournamentAdminPage() {
 
   const totalPricePerPlayer =
     (tournament.settings?.ticketPriceForFundraiser ?? 0) +
-    (tournament.settings?.systemTechFee ?? 5);
+    (tournament.settings?.systemTechFee ?? DEFAULT_PLATFORM_FEE);
 
   const canManageDraw =
     tournament.status === 'bracket_generated' || tournament.status === 'live_play';
@@ -478,7 +478,7 @@ export default function TournamentAdminPage() {
           { label: 'Players', value: players.length },
           { label: 'Ticket Price', value: formatCurrency(tournament.settings?.ticketPriceForFundraiser ?? 0) },
           { label: 'Total Raised', value: formatCurrency(calcRaised(players.length, tournament.settings?.ticketPriceForFundraiser ?? 0, donationTotal)) },
-          ...(isSuperAdmin ? [{ label: 'Platform Fees', value: formatCurrency((tournament.settings?.systemTechFee ?? 5) * players.length) }] : []),
+          ...(isSuperAdmin ? [{ label: 'Service Fees', value: formatCurrency((tournament.settings?.systemTechFee ?? DEFAULT_PLATFORM_FEE) * players.length) }] : []),
         ]) as { label: string; value: string | number }[]).map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-4">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{s.label}</p>

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { findTenant } from '@/lib/publicRoutes';
 import { tournamentPath } from '@/lib/slugs';
 import { formatStoredDateTime } from '@/lib/dates';
+import { DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
 import type { Tournament } from '@/types';
 
 interface Props {
@@ -101,7 +102,7 @@ export default async function TenantPage({ params }: Props) {
                           href={tournamentPath(tenant.slug, t.slug, 'register')}
                           className="btn-primary flex-1 py-3 rounded-xl font-bold text-sm text-center"
                         >
-                          Register — ${(t.settings?.ticketPriceForFundraiser ?? 0) + (t.settings?.systemTechFee ?? 5)}
+                          Register — ${(t.settings?.ticketPriceForFundraiser ?? 0) + (t.settings?.systemTechFee ?? DEFAULT_PLATFORM_FEE)}
                         </Link>
                       ) : (
                         <div className="flex-1 py-3 rounded-xl border-2 border-slate-200 text-slate-400 text-sm font-semibold text-center">

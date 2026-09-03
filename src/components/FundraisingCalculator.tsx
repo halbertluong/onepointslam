@@ -196,11 +196,11 @@ export default function FundraisingCalculator({ onChange }: FundraisingCalculato
         </div>
       )}
 
-      {/* Platform fee disclaimer */}
+      {/* Service fee disclaimer */}
       <div className="flex items-start gap-2.5 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
         <span className="text-slate-400 mt-0.5 shrink-0">ℹ️</span>
         <p className="text-xs text-slate-500 leading-relaxed">
-          A <strong className="text-slate-700">{formatCurrency(DEFAULT_PLATFORM_FEE)} platform fee per registrant</strong> is
+          A <strong className="text-slate-700">{formatCurrency(DEFAULT_PLATFORM_FEE)} service fee per registrant</strong> is
           charged separately at checkout and goes directly to One Point Bowl. This fee is not
           included in the calculations above.
         </p>

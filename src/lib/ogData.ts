@@ -82,7 +82,7 @@ function dateLabel(value: unknown): string | null {
   });
 }
 
-/** What a registrant actually pays: the program's fee plus the platform fee. */
+/** What a registrant actually pays: the program's fee plus the service fee. */
 export function entryTotal(settings: Record<string, unknown> | null): number {
   const ticket = (settings?.ticketPriceForFundraiser as number) ?? 0;
   const platform = (settings?.systemTechFee as number) ?? DEFAULT_PLATFORM_FEE;
