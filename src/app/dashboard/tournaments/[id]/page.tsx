@@ -648,6 +648,7 @@ export default function TournamentAdminPage() {
           primaryColor={tenantBranding.primaryColor}
           secondaryColor={tenantBranding.secondaryColor}
           logoUrl={tenantBranding.logoUrl}
+          onSaveDetails={(assetDetails) => handleSaveSettings({ assetDetails })}
         />
       )}
 
