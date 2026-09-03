@@ -1,10 +1,23 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { Fragment, useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { formatCurrency } from '@/lib/pricing';
 import { couponsEnabled } from '@/lib/coupons';
 import { mapCoupon, type Coupon, type Tournament } from '@/types';
+
+interface Redemption {
+  id: string;
+  fullName: string;
+  email: string;
+  createdAt: string;
+}
+
+function formatWhen(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 /**
  * Director-only tab: turns coupon codes on for this tournament and manages
@@ -32,6 +45,11 @@ export default function CouponCodesPanel({
   const [enabledSaving, setEnabledSaving] = useState(false);
 
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  // Which registrants redeemed each coupon, keyed by coupon id — fetched
+  // alongside the coupons themselves so expanding a row is instant rather than
+  // a fresh round trip every time.
+  const [redemptions, setRedemptions] = useState<Record<string, Redemption[]>>({});
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -41,16 +59,38 @@ export default function CouponCodesPanel({
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  async function fetchCouponsAndRedemptions(tid: string) {
     const supabase = createClient();
-    const { data, error: loadError } = await supabase
-      .from('coupons')
-      .select('*')
-      .eq('tournament_id', tournamentId)
-      .order('created_at', { ascending: false });
-    if (loadError) setError(loadError.message);
+    const [{ data: couponRows, error: couponError }, { data: playerRows, error: playerError }] = await Promise.all([
+      supabase.from('coupons').select('*').eq('tournament_id', tid).order('created_at', { ascending: false }),
+      supabase.from('players').select('id, full_name, email, created_at, coupon_id').eq('tournament_id', tid).not('coupon_id', 'is', null),
+    ]);
+    const loadError = couponError ?? playerError;
+    if (loadError) return { coupons: [] as Coupon[], redemptions: {} as Record<string, Redemption[]>, error: loadError.message };
+
+    const byCoupon: Record<string, Redemption[]> = {};
+    for (const row of (playerRows ?? []) as Record<string, unknown>[]) {
+      const couponId = row.coupon_id as string;
+      (byCoupon[couponId] ??= []).push({
+        id: row.id as string,
+        fullName: row.full_name as string,
+        email: row.email as string,
+        createdAt: row.created_at as string,
+      });
+    }
+    return {
+      coupons: (couponRows ?? []).map((row) => mapCoupon(row as Record<string, unknown>)),
+      redemptions: byCoupon,
+      error: undefined as string | undefined,
+    };
+  }
+
+  const load = useCallback(async () => {
+    const result = await fetchCouponsAndRedemptions(tournamentId);
+    if (result.error) setError(result.error);
     else {
-      setCoupons((data ?? []).map((row) => mapCoupon(row as Record<string, unknown>)));
+      setCoupons(result.coupons);
+      setRedemptions(result.redemptions);
       setError('');
     }
     setLoading(false);
@@ -62,22 +102,27 @@ export default function CouponCodesPanel({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const supabase = createClient();
-      const { data, error: loadError } = await supabase
-        .from('coupons')
-        .select('*')
-        .eq('tournament_id', tournamentId)
-        .order('created_at', { ascending: false });
+      const result = await fetchCouponsAndRedemptions(tournamentId);
       if (cancelled) return;
-      if (loadError) setError(loadError.message);
+      if (result.error) setError(result.error);
       else {
-        setCoupons((data ?? []).map((row) => mapCoupon(row as Record<string, unknown>)));
+        setCoupons(result.coupons);
+        setRedemptions(result.redemptions);
         setError('');
       }
       setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [tournamentId]);
+
+  function toggleExpanded(couponId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(couponId)) next.delete(couponId);
+      else next.add(couponId);
+      return next;
+    });
+  }
 
   async function toggleEnabled(next: boolean) {
     setEnabled(next);
@@ -254,30 +299,71 @@ export default function CouponCodesPanel({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {coupons.map((c) => (
-                      <tr key={c.id}>
-                        <td className="px-5 py-3 font-mono font-bold text-slate-800">{c.code}</td>
-                        <td className="px-5 py-3 text-emerald-600 font-semibold">{formatCurrency(c.discountCents / 100)}</td>
-                        <td className="px-5 py-3 text-slate-600">{c.usageLimit}</td>
-                        <td className="px-5 py-3 text-slate-600">
-                          {c.usedCount}
-                          {c.usedCount >= c.usageLimit && (
-                            <span className="ml-2 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold uppercase tracking-wide">
-                              Exhausted
-                            </span>
+                    {coupons.map((c) => {
+                      const isOpen = expanded.has(c.id);
+                      const users = redemptions[c.id] ?? [];
+                      return (
+                        <Fragment key={c.id}>
+                          <tr>
+                            <td className="px-5 py-3 font-mono font-bold text-slate-800">{c.code}</td>
+                            <td className="px-5 py-3 text-emerald-600 font-semibold">{formatCurrency(c.discountCents / 100)}</td>
+                            <td className="px-5 py-3 text-slate-600">{c.usageLimit}</td>
+                            <td className="px-5 py-3">
+                              <button
+                                type="button"
+                                onClick={() => toggleExpanded(c.id)}
+                                disabled={c.usedCount === 0}
+                                aria-expanded={isOpen}
+                                className="flex items-center gap-1.5 text-slate-600 font-semibold disabled:cursor-default group"
+                                title={c.usedCount === 0 ? 'No registrants have used this code yet' : isOpen ? 'Hide who used this code' : 'Show who used this code'}
+                              >
+                                {c.usedCount > 0 && (
+                                  <span className={`text-slate-400 text-[10px] transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                                )}
+                                <span className={c.usedCount > 0 ? 'underline decoration-dotted underline-offset-2 group-hover:text-slate-900' : ''}>
+                                  {c.usedCount}
+                                </span>
+                                {c.usedCount >= c.usageLimit && (
+                                  <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold uppercase tracking-wide">
+                                    Exhausted
+                                  </span>
+                                )}
+                              </button>
+                            </td>
+                            <td className="px-5 py-3 text-right">
+                              <button
+                                onClick={() => handleDelete(c.id)}
+                                disabled={deletingId === c.id}
+                                className="text-xs text-slate-300 hover:text-red-600 font-semibold transition-colors disabled:opacity-50"
+                              >
+                                {deletingId === c.id ? '…' : 'Delete'}
+                              </button>
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr>
+                              <td colSpan={5} className="px-5 py-3 bg-slate-50">
+                                {users.length === 0 ? (
+                                  <p className="text-xs text-slate-400">
+                                    Recorded as used, but no matching registrant found yet — it may still be finishing payment.
+                                  </p>
+                                ) : (
+                                  <ul className="divide-y divide-slate-200">
+                                    {users.map((u) => (
+                                      <li key={u.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                                        <span className="font-semibold text-slate-700">{u.fullName}</span>
+                                        <span className="text-slate-400 truncate">{u.email}</span>
+                                        <span className="text-xs text-slate-400 shrink-0">{formatWhen(u.createdAt)}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          <button
-                            onClick={() => handleDelete(c.id)}
-                            disabled={deletingId === c.id}
-                            className="text-xs text-slate-300 hover:text-red-600 font-semibold transition-colors disabled:opacity-50"
-                          >
-                            {deletingId === c.id ? '…' : 'Delete'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

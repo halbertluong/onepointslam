@@ -72,6 +72,7 @@ export async function promotePendingRegistration(
       payment_status: 'paid',
       stripe_payment_intent_id: paymentIntentId,
       user_id: pending.user_id,
+      coupon_id: pending.coupon_id ?? null,
     })
     .select('id')
     .single();
