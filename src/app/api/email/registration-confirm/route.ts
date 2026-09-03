@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { formatCurrency } from '@/lib/pricing';
 
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
   // Pull player + tournament + tenant names from DB — never trust caller-supplied display strings
   const { data: player } = await admin
     .from('players')
-    .select('id, full_name, last_confirmation_sent_at, tournaments(name, tenants(display_name))')
+    .select('id, full_name, last_confirmation_sent_at, payment_status, stripe_payment_intent_id, tournaments(name, tenants(display_name))')
     .eq('tournament_id', tournamentId)
     .eq('email', to.toLowerCase())
     .maybeSingle();
@@ -60,6 +61,24 @@ export async function POST(req: NextRequest) {
   const resolvedPlayerName = player.full_name ?? 'Player';
   const resolvedTournamentName = t?.name ?? 'the tournament';
   const resolvedOrgName = t?.tenants?.display_name ?? 'One Point Bowl';
+  const isPaid = player.payment_status === 'paid';
+
+  // payment_status is only ever 'paid' once Stripe itself reported the charge
+  // succeeded (see promotePendingRegistration / the director's markPaid entry),
+  // so it's already safe to confirm the payment here — retrieving the
+  // PaymentIntent is just to quote the exact amount. If that lookup fails,
+  // the paid confirmation still goes out, just without a dollar figure.
+  let amountPaid: string | null = null;
+  if (isPaid && player.stripe_payment_intent_id && process.env.STRIPE_SECRET_KEY) {
+    try {
+      const { createStripeClient } = await import('@/lib/stripe');
+      const stripe = await createStripeClient(process.env.STRIPE_SECRET_KEY);
+      const pi = await stripe.paymentIntents.retrieve(player.stripe_payment_intent_id);
+      amountPaid = formatCurrency(pi.amount / 100);
+    } catch (err) {
+      console.error('[registration-confirm] Could not retrieve payment amount:', err);
+    }
+  }
 
   const from = process.env.RESEND_FROM_EMAIL ?? 'noreply@onepointbowl.com';
   const orgName = resolvedOrgName;
@@ -71,6 +90,25 @@ export async function POST(req: NextRequest) {
   const safeTournamentName = escHtml(resolvedTournamentName);
   const safeOrgName = escHtml(orgName);
 
+  const subject = isPaid
+    ? `You're registered and paid for ${safeTournamentName}`
+    : `You're registered for ${safeTournamentName}`;
+
+  const paymentHtml = isPaid
+    ? `
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;margin-top:16px">
+              <p style="color:#166534;font-size:14px;font-weight:700;margin:0">
+                Payment received${amountPaid ? `: ${amountPaid}` : ''}
+              </p>
+              <p style="color:#166534;font-size:13px;margin:4px 0 0">
+                Your entry fee has been charged successfully. Consider this email your receipt.
+              </p>
+            </div>`
+    : '';
+  const paymentText = isPaid
+    ? `\n\nPayment received${amountPaid ? `: ${amountPaid}` : ''}. Your entry fee has been charged successfully. Consider this email your receipt.`
+    : '';
+
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -81,7 +119,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         from: `${orgName} via One Point Bowl <${from}>`,
         to: [to],
-        subject: `You're registered for ${safeTournamentName}`,
+        subject,
         html: `
           <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 16px">
             <h1 style="font-size:22px;font-weight:900;color:#1a2033;margin-bottom:8px">
@@ -90,7 +128,7 @@ export async function POST(req: NextRequest) {
             <p style="color:#6b7590;font-size:15px;line-height:1.6">
               Your registration for <strong style="color:#1a2033">${safeTournamentName}</strong>
               hosted by <strong style="color:#1a2033">${safeOrgName}</strong> is confirmed.
-            </p>
+            </p>${paymentHtml}
             <p style="color:#6b7590;font-size:15px;line-height:1.6;margin-top:16px">
               The organizer will be in touch with event details, court assignments, and schedule.
               Check back on the tournament page for live bracket updates on match day.
@@ -101,7 +139,7 @@ export async function POST(req: NextRequest) {
             </p>
           </div>
         `,
-        text: `Hi ${resolvedPlayerName},\n\nYour registration for ${resolvedTournamentName} hosted by ${orgName} is confirmed.\n\nThe organizer will be in touch with event details soon.\n\n—\nSent by ${orgName} via One Point Bowl`,
+        text: `Hi ${resolvedPlayerName},\n\nYour registration for ${resolvedTournamentName} hosted by ${orgName} is confirmed.${paymentText}\n\nThe organizer will be in touch with event details soon.\n\n—\nSent by ${orgName} via One Point Bowl`,
       }),
     });
 

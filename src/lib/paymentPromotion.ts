@@ -89,5 +89,19 @@ export async function promotePendingRegistration(
   }
 
   await admin.from('pending_registrations').delete().eq('id', pending.id);
+
+  // Fire-and-forget: this is the only path a real, paid registration is
+  // created from, so it's the single place to send the "you're in and
+  // charged" email — mirrors the same call /api/registrations makes for the
+  // free/offline-paid path, which never reaches here.
+  fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/api/email/registration-confirm`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-internal-secret': process.env.INTERNAL_API_SECRET ?? '',
+    },
+    body: JSON.stringify({ to: pending.email, playerId: inserted.id, tournamentId: pending.tournament_id }),
+  }).catch(() => {});
+
   return { promoted: true, alreadyDone: false, playerId: inserted.id };
 }
