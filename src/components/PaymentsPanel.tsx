@@ -23,14 +23,15 @@ export default function PaymentsPanel({ tournamentId, onRecovered }: {
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
 
+  // No state is set before the first await, so this is safe to call straight
+  // from an effect: the spinner starts from `loading`'s initial value, and
+  // callers that re-check (the buttons below) raise it themselves first.
   const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
     try {
       const res = await fetch(`/api/payments/reconcile?tournamentId=${tournamentId}`);
       const json = await res.json();
       if (!res.ok) { setError(json.error ?? 'Could not load payments.'); setReport(null); }
-      else setReport(json as Report);
+      else { setReport(json as Report); setError(''); }
     } catch {
       setError('Could not reach the server.');
     }
@@ -38,6 +39,12 @@ export default function PaymentsPanel({ tournamentId, onRecovered }: {
   }, [tournamentId]);
 
   useEffect(() => { load(); }, [load]);
+
+  function recheck() {
+    setLoading(true);
+    setError('');
+    load();
+  }
 
   function detailsFor(p: StripePayment) {
     return edits[p.id] ?? { fullName: p.registrantName ?? '', email: p.registrantEmail ?? '' };
@@ -73,7 +80,7 @@ export default function PaymentsPanel({ tournamentId, onRecovered }: {
       {error && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}{' '}
-          <button onClick={load} className="font-semibold underline underline-offset-2">Try again</button>
+          <button onClick={recheck} className="font-semibold underline underline-offset-2">Try again</button>
         </div>
       )}
       {notice && (
@@ -172,7 +179,7 @@ export default function PaymentsPanel({ tournamentId, onRecovered }: {
             </div>
           )}
 
-          <button onClick={load} className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2">
+          <button onClick={recheck} className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2">
             Re-check Stripe
           </button>
         </>

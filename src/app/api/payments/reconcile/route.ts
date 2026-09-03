@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
   if (!stripeKey) return NextResponse.json({ error: 'Payment processing not configured' }, { status: 500 });
 
   const { createStripeClient } = await import('@/lib/stripe');
-  const stripe = await createStripeClient(stripeKey, '2025-04-30');
+  const stripe = await createStripeClient(stripeKey);
 
   let stripePayments: StripePayment[];
   try {
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
   if (!stripeKey) return NextResponse.json({ error: 'Payment processing not configured' }, { status: 500 });
 
   const { createStripeClient } = await import('@/lib/stripe');
-  const stripe = await createStripeClient(stripeKey, '2025-04-30');
+  const stripe = await createStripeClient(stripeKey);
 
   // Re-verify against Stripe rather than trusting the report the browser saw:
   // this writes a paid registration, so it holds to the same bar as checkout.
