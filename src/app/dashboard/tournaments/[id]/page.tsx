@@ -16,8 +16,8 @@ import TournamentUrlCard from '@/components/TournamentUrlCard';
 import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 import { persistReversal } from '@/lib/tournamentWrites';
-import type { Tournament, Player, Match } from '@/types';
-import { mapPlayer, mapMatch } from '@/types';
+import type { Tournament, Player, Match, PendingRegistration } from '@/types';
+import { mapPlayer, mapMatch, mapPendingRegistration } from '@/types';
 import { calcRaised, formatCurrency, DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
 import { toDateTimeLocalValue } from '@/lib/dates';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
@@ -156,6 +156,8 @@ export default function TournamentAdminPage() {
   const { id } = useParams<{ id: string }>();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
+  const [pendingRegistrations, setPendingRegistrations] = useState<PendingRegistration[]>([]);
+  const [focusPaymentIntentId, setFocusPaymentIntentId] = useState<string | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -174,13 +176,20 @@ export default function TournamentAdminPage() {
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const [{ data: t }, { data: p }, { data: m }, { data: me }, { data: donations }] = await Promise.all([
+    const [{ data: t }, { data: p }, { data: m }, { data: me }, { data: donations }, pendingRes] = await Promise.all([
       supabase.from('tournaments').select('*, tenants(slug, display_name, primary_color, secondary_color, logo_url)').eq('id', id).single(),
       supabase.from('players').select('*').eq('tournament_id', id).order('created_at'),
       supabase.from('matches').select('*').eq('tournament_id', id).order('round_index').order('match_index'),
       supabase.from('users').select('role').eq('id', (await supabase.auth.getUser()).data.user?.id ?? '').single(),
       supabase.from('donations').select('amount').eq('tournament_id', id),
+      // pending_registrations has no client-readable RLS policy (it carries
+      // personal details of people who haven't completed registration) — a
+      // director-authorized API route is the only way to read it.
+      fetch(`/api/tournaments/${id}/pending-registrations`).then((r) => r.json()).catch(() => ({ pendingRegistrations: [] })),
     ]);
+    setPendingRegistrations(
+      ((pendingRes.pendingRegistrations ?? []) as Record<string, unknown>[]).map(mapPendingRegistration),
+    );
     if (t) {
       setTournament(t);
       const tenantRow = t.tenants as Record<string, unknown> | null;
@@ -200,6 +209,18 @@ export default function TournamentAdminPage() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  /** Jumps to the Payments tab with this payment highlighted — used from both
+   *  the confirmed roster and the Awaiting Payment sub-table. */
+  function handleViewPayment(paymentIntentId: string) {
+    setFocusPaymentIntentId(paymentIntentId);
+    setTab('payments');
+  }
+
+  async function handleDismissPending(pendingId: string) {
+    await fetch(`/api/tournaments/${id}/pending-registrations?pendingId=${pendingId}`, { method: 'DELETE' });
+    await load();
+  }
 
   async function handleForceClose() {
     setSaving(true);
@@ -501,7 +522,7 @@ export default function TournamentAdminPage() {
           return (
             <button
               key={t}
-              onClick={() => setTab(t)}
+              onClick={() => { setTab(t); if (t !== 'payments') setFocusPaymentIntentId(null); }}
               className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-colors whitespace-nowrap flex items-center gap-1.5 ${
                 tab === t
                   ? 'border-b-2 text-slate-900'
@@ -530,6 +551,9 @@ export default function TournamentAdminPage() {
           matches={matches}
           bracketGenerated={bracketGenerated}
           entranceFee={tournament.settings?.ticketPriceForFundraiser ?? 0}
+          pendingRegistrations={pendingRegistrations}
+          onViewPayment={handleViewPayment}
+          onDismissPending={handleDismissPending}
           onSaved={load}
         />
       )}
@@ -651,7 +675,7 @@ export default function TournamentAdminPage() {
               and donations recorded here.
             </p>
           </div>
-          <PaymentsPanel tournamentId={id} onRecovered={load} />
+          <PaymentsPanel tournamentId={id} focusPaymentIntentId={focusPaymentIntentId} onRecovered={load} />
         </div>
       )}
 
