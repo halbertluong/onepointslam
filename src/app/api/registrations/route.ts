@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { registrationIsOpen, verifyDirector } from '@/lib/registrationAccess';
+import { getSiteUrl } from '@/lib/siteUrl';
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -124,7 +125,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Fire-and-forget: send confirmation email
-  fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/api/email/registration-confirm`, {
+  fetch(`${getSiteUrl()}/api/email/registration-confirm`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

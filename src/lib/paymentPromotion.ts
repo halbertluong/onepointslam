@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getSiteUrl } from './siteUrl';
 
 /**
  * Moves a reservation from `pending_registrations` into `players` once its
@@ -94,7 +95,7 @@ export async function promotePendingRegistration(
   // created from, so it's the single place to send the "you're in and
   // charged" email — mirrors the same call /api/registrations makes for the
   // free/offline-paid path, which never reaches here.
-  fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/api/email/registration-confirm`, {
+  fetch(`${getSiteUrl()}/api/email/registration-confirm`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
