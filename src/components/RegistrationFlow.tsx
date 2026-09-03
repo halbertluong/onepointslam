@@ -252,6 +252,7 @@ export default function RegistrationFlow({
   const [donateCustom, setDonateCustom] = useState('');
   const [donating, setDonating] = useState(false);
   const [donationTotal, setDonationTotal] = useState(0);
+  const [donationRecordingError, setDonationRecordingError] = useState('');
 
   useEffect(() => {
     async function init() {
@@ -362,6 +363,19 @@ export default function RegistrationFlow({
     });
     const json = await res.json() as { playerId?: string; error?: string };
     if (!res.ok) {
+      // The card has already been charged by this point. "Please try again"
+      // would invite a second payment for the same entry, so say plainly that
+      // the money is taken and hand over the reference the director needs to
+      // find it — their Payments tab lists exactly these.
+      if (paymentIntentId) {
+        const reason = res.status === 409
+          ? 'that email is already registered for this tournament'
+          : (json.error ?? 'the sign-up could not be completed');
+        return {
+          error: `Your payment went through, but ${reason} — so please do not pay again. `
+            + `Send the tournament director this reference and they can finish adding you: ${paymentIntentId}`,
+        };
+      }
       if (res.status === 409) return { error: 'This email is already registered for this tournament.' };
       return { error: json.error ?? 'Registration failed. Please try again.' };
     }
@@ -443,12 +457,31 @@ export default function RegistrationFlow({
   }
 
   async function handleDonatePaymentSuccess(paymentIntentId: string, amountDollars: number) {
-    await fetch('/api/donations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tournamentId, stripePaymentIntentId: paymentIntentId, amountDollars }),
-    });
-    setDonationTotal((prev) => prev + amountDollars);
+    // The donation is already paid for; this call is what books it. Ignoring
+    // its result is how a donation ends up in Stripe and nowhere else, with a
+    // thank-you screen hiding the fact — so surface a failure to the donor and
+    // give the director the reference to recover it from.
+    let recorded = false;
+    try {
+      const res = await fetch('/api/donations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tournamentId, stripePaymentIntentId: paymentIntentId, amountDollars }),
+      });
+      recorded = res.ok;
+    } catch {
+      recorded = false;
+    }
+
+    if (recorded) {
+      setDonationTotal((prev) => prev + amountDollars);
+      setDonationRecordingError('');
+    } else {
+      setDonationRecordingError(
+        `Your donation was charged, but we couldn't add it to this tournament's total. `
+        + `Nothing more is owed — send the organizer this reference and they can record it: ${paymentIntentId}`,
+      );
+    }
     setStep('donate_success');
     onRegistered?.();
   }
@@ -733,6 +766,11 @@ export default function RegistrationFlow({
             Your donation of <strong>{formatCurrency(effectiveAmount)}</strong> to{' '}
             <strong>{tenantName || tournamentName}</strong> is appreciated.
           </p>
+          {donationRecordingError && (
+            <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-3 text-left">
+              {donationRecordingError}
+            </p>
+          )}
           <button
             onClick={() => setStep('form')}
             className="btn-primary w-full py-3 rounded-xl font-bold text-sm"

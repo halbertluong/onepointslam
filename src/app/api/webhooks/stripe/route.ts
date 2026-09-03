@@ -38,13 +38,27 @@ export async function POST(req: NextRequest) {
 
   if (event.type === 'payment_intent.succeeded') {
     const pi = event.data.object;
-    const { error } = await admin
+    const { data: updated, error } = await admin
       .from('players')
       .update({ payment_status: 'paid' })
-      .eq('stripe_payment_intent_id', pi.id);
+      .eq('stripe_payment_intent_id', pi.id)
+      .select('id');
     if (error) {
       console.error('[stripe-webhook] Failed to update payment_status paid:', error.message);
       return NextResponse.json({ error: 'DB update failed' }, { status: 500 });
+    }
+    // Updating by PaymentIntent id means a payment with no registration behind
+    // it matches no rows — and, before this, said nothing. That silence is the
+    // failure mode: money taken, nobody in the tournament. Log it loudly; the
+    // director's Payments tab reconciles the same gap and can recover it.
+    if ((updated?.length ?? 0) === 0 && pi.metadata?.kind !== 'donation') {
+      console.error(
+        '[stripe-webhook] UNRECONCILED: succeeded payment has no registration —',
+        `payment_intent=${pi.id}`,
+        `tournament_id=${pi.metadata?.tournament_id ?? 'unknown'}`,
+        `amount=${pi.amount}`,
+        `email=${pi.metadata?.registrant_email ?? 'unknown'}`,
+      );
     }
   }
 
