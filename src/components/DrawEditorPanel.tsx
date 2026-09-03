@@ -47,7 +47,12 @@ export default function DrawEditorPanel({
   const placedIds = new Set(
     round0.flatMap((m) => [m.player1Id, m.player2Id]).filter((id): id is string => !!id && id !== 'BYE'),
   );
-  const unplaced = players.filter((p) => !placedIds.has(p.id));
+  // A withdrawn player isn't a candidate for a slot — they were deliberately
+  // pulled, not left out. `players` itself stays unfiltered everywhere else
+  // here (passed to BracketView below) so a withdrawn player who already
+  // played rounds before withdrawing still shows their name, not "TBD".
+  const eligible = players.filter((p) => p.status !== 'no_show_eliminated');
+  const unplaced = eligible.filter((p) => !placedIds.has(p.id));
   const openSlots = round0.reduce(
     (n, m) => n + (m.player1Id ? 0 : 1) + (m.player2Id ? 0 : 1),
     0,
@@ -94,13 +99,13 @@ export default function DrawEditorPanel({
   async function handleRedistribute() {
     if (hasResults) return;
     setSaving(true);
-    // Everyone registered goes into the draw, seeded — including anyone who was
+    // Everyone eligible goes into the draw, seeded — including anyone who was
     // sitting outside it, so a director doesn't have to add them first.
-    const seatable = rankPlayersForSeeding(players).slice(0, bracketSize);
+    const seatable = rankPlayersForSeeding(eligible).slice(0, bracketSize);
     const { error } = await persistSeededRedistribution(createClient(), matches, seatable);
     setSaving(false);
     if (error) { setErr(`Could not redistribute the draw: ${error}`); return; }
-    const left = players.length - seatable.length;
+    const left = eligible.length - seatable.length;
     flash(
       left > 0
         ? `Draw redistributed by seeding. ${left} player${left === 1 ? '' : 's'} did not fit in ${bracketSize} slots — expand the bracket to include them.`
@@ -136,7 +141,7 @@ export default function DrawEditorPanel({
     const supabase = createClient();
     const prefix = idPrefix(matches, tournamentId);
 
-    const generated = generateBracket(players, { ...tournament.settings, maxPlayers: newSize }, prefix);
+    const generated = generateBracket(eligible, { ...tournament.settings, maxPlayers: newSize }, prefix);
 
     await supabase.from('matches').delete().eq('tournament_id', tournamentId);
     const { error } = await supabase.from('matches').insert(
