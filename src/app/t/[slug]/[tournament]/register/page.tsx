@@ -4,6 +4,7 @@ import RegistrationFlow from '@/components/RegistrationFlow';
 import { resolvePublicTournament, isCanonicalPath, searchSuffix } from '@/lib/publicRoutes';
 import { loadPreviewSource, previewDescription } from '@/lib/ogData';
 import { tournamentPath } from '@/lib/slugs';
+import { recordPageVisit } from '@/lib/pageVisits';
 
 interface Props {
   params: Promise<{ slug: string; tournament: string }>;
@@ -56,6 +57,13 @@ export default async function RegisterPage({ params, searchParams }: Props) {
   if (!isCanonicalPath(slug, tournamentRef, tenant.slug, tournament.slug)) {
     redirect(`${canonicalPath}${searchSuffix(await searchParams)}`);
   }
+
+  await recordPageVisit({
+    page: 'tournament_register',
+    path: canonicalPath,
+    tournamentId: tournament.id,
+    tenantId: tenant.id,
+  });
 
   return (
     <RegistrationFlow

@@ -9,6 +9,7 @@ import SeedAssignmentPanel from '@/components/SeedAssignmentPanel';
 import DrawEditorPanel from '@/components/DrawEditorPanel';
 import LiveScoreboard from '@/components/LiveScoreboard';
 import RegistrationPanel from '@/components/RegistrationPanel';
+import VisitsPanel from '@/components/VisitsPanel';
 import PaymentsPanel from '@/components/PaymentsPanel';
 import NotesPanel from '@/components/NotesPanel';
 import AssetStudio from '@/components/AssetStudio';
@@ -60,7 +61,7 @@ function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; is
   );
 }
 
-type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'payments' | 'coupons' | 'assets' | 'notes' | 'settings';
+type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'visits' | 'payments' | 'coupons' | 'assets' | 'notes' | 'settings';
 
 const TAB_LABELS: Record<Tab, string> = {
   players: 'Players',
@@ -70,6 +71,7 @@ const TAB_LABELS: Record<Tab, string> = {
   bracket: 'Bracket',
   scoreboard: 'Scoreboard',
   registration: 'Registration',
+  visits: 'Visits',
   payments: 'Payments',
   coupons: 'Coupon Codes',
   assets: 'Assets',
@@ -77,7 +79,7 @@ const TAB_LABELS: Record<Tab, string> = {
   settings: 'Settings',
 };
 
-const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'payments', 'coupons', 'assets', 'notes', 'settings'];
+const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'visits', 'payments', 'coupons', 'assets', 'notes', 'settings'];
 
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
   const active = matches
@@ -677,6 +679,9 @@ export default function TournamentAdminPage() {
           onSaveSettings={(patch) => handleSaveSettings(patch)}
         />
       )}
+
+      {/* Visits tab — how many people have landed on the public registration page */}
+      {tab === 'visits' && <VisitsPanel tournamentId={id} />}
 
       {/* Payments tab — Stripe against the registrations it should have created */}
       {tab === 'payments' && (
