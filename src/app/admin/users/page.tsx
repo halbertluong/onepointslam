@@ -54,6 +54,7 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('tenant');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [view, setView] = useState<'staff' | 'registrants'>('staff');
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -156,10 +157,15 @@ export default function AdminUsersPage() {
 
   const ROLE_ORDER: Record<string, number> = { super_admin: 0, tenant_admin: 1, referee: 2, player: 3 };
 
+  const scopedUsers = useMemo(
+    () => users.filter((u) => (view === 'registrants' ? u.role === 'player' : u.role !== 'player')),
+    [users, view]
+  );
+
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
     const result = q
-      ? users.filter((u) => {
+      ? scopedUsers.filter((u) => {
           const tName = tenantNames(u.assigned_tenant_ids).toLowerCase();
           return (
             u.email.toLowerCase().includes(q) ||
@@ -167,7 +173,7 @@ export default function AdminUsersPage() {
             ROLE_LABELS[u.role]?.toLowerCase().includes(q)
           );
         })
-      : [...users];
+      : [...scopedUsers];
 
     result.sort((a, b) => {
       let cmp = 0;
@@ -185,7 +191,7 @@ export default function AdminUsersPage() {
 
     return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [users, tenants, search, sortKey, sortDir]);
+  }, [scopedUsers, tenants, search, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -222,20 +228,47 @@ export default function AdminUsersPage() {
         <p className={`text-sm rounded-xl p-3 ${msgIsError ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{msg}</p>
       )}
 
+      {/* Tabs */}
+      <div className="flex gap-2">
+        {([
+          { key: 'staff' as const, label: 'Tenant Staff', count: users.filter((u) => u.role !== 'player').length },
+          { key: 'registrants' as const, label: 'Registrants', count: users.filter((u) => u.role === 'player').length },
+        ]).map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setView(tab.key)}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+              view === tab.key
+                ? 'bg-slate-900 text-white'
+                : 'bg-white border border-slate-200 text-slate-500 hover:border-slate-300'
+            }`}
+          >
+            {tab.label} ({tab.count})
+          </button>
+        ))}
+      </div>
+
       {/* Search + sort */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="px-4 py-4 border-b border-slate-100 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-slate-800">All Platform Users ({users.length})</h2>
-            {filteredUsers.length !== users.length && (
+            <h2 className="font-bold text-slate-800">
+              {view === 'registrants' ? 'Registrants' : 'Tenant Staff'} ({scopedUsers.length})
+            </h2>
+            {filteredUsers.length !== scopedUsers.length && (
               <span className="text-xs text-slate-400">{filteredUsers.length} shown</span>
             )}
           </div>
+          {view === 'registrants' && (
+            <p className="text-xs text-slate-400">
+              Tournament participants who self-registered and created a username/password.
+            </p>
+          )}
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search email, tenant, role…"
+            placeholder={view === 'registrants' ? 'Search email, tournament…' : 'Search email, tenant, role…'}
             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
           />
           <div className="flex gap-2 text-xs">
