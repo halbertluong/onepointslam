@@ -11,8 +11,17 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
   });
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname: reqPathname } = request.nextUrl;
+
+  // Server-to-server callbacks (Stripe, etc.) carry no session cookie and
+  // need no auth check. Routing them through the Supabase auth round-trip
+  // below means a slow or unreachable auth service fails the callback
+  // itself — e.g. Stripe reports the whole webhook delivery as errored even
+  // though the failure had nothing to do with the webhook's own logic.
+  if (reqPathname.startsWith('/api/webhooks/')) {
+    return NextResponse.next();
+  }
 
   if (ratelimit && request.method !== 'GET') {
     const rateLimitedPaths = [
