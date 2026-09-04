@@ -9,7 +9,6 @@ import SeedAssignmentPanel from '@/components/SeedAssignmentPanel';
 import DrawEditorPanel from '@/components/DrawEditorPanel';
 import LiveScoreboard from '@/components/LiveScoreboard';
 import RegistrationPanel from '@/components/RegistrationPanel';
-import VisitsPanel from '@/components/VisitsPanel';
 import PaymentsPanel from '@/components/PaymentsPanel';
 import NotesPanel from '@/components/NotesPanel';
 import AssetStudio from '@/components/AssetStudio';
@@ -61,7 +60,7 @@ function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; is
   );
 }
 
-type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'visits' | 'payments' | 'coupons' | 'assets' | 'notes' | 'settings';
+type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'payments' | 'assets' | 'notes' | 'settings';
 
 const TAB_LABELS: Record<Tab, string> = {
   players: 'Players',
@@ -71,15 +70,13 @@ const TAB_LABELS: Record<Tab, string> = {
   bracket: 'Bracket',
   scoreboard: 'Scoreboard',
   registration: 'Registration',
-  visits: 'Visits',
   payments: 'Payments',
-  coupons: 'Coupon Codes',
   assets: 'Assets',
   notes: 'Notes',
   settings: 'Settings',
 };
 
-const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'visits', 'payments', 'coupons', 'assets', 'notes', 'settings'];
+const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'payments', 'assets', 'notes', 'settings'];
 
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
   const active = matches
@@ -680,30 +677,29 @@ export default function TournamentAdminPage() {
         />
       )}
 
-      {/* Visits tab — how many people have landed on the public registration page */}
-      {tab === 'visits' && <VisitsPanel tournamentId={id} />}
-
-      {/* Payments tab — Stripe against the registrations it should have created */}
+      {/* Payments tab — Stripe against the registrations it should have created, plus
+          coupon codes underneath since both are about what a registrant pays */}
       {tab === 'payments' && (
-        <div className="space-y-4">
-          <div>
-            <h2 className="font-bold text-slate-800">Payments</h2>
-            <p className="text-sm text-slate-500 mt-0.5">
-              Every card Stripe has charged for this tournament, checked against the registrations
-              and donations recorded here.
-            </p>
+        <div className="space-y-10">
+          <div className="space-y-4">
+            <div>
+              <h2 className="font-bold text-slate-800">Payments</h2>
+              <p className="text-sm text-slate-500 mt-0.5">
+                Every card Stripe has charged for this tournament, checked against the registrations
+                and donations recorded here.
+              </p>
+            </div>
+            <PaymentsPanel tournamentId={id} focusPaymentIntentId={focusPaymentIntentId} onRecovered={load} />
           </div>
-          <PaymentsPanel tournamentId={id} focusPaymentIntentId={focusPaymentIntentId} onRecovered={load} />
-        </div>
-      )}
 
-      {/* Coupon Codes tab */}
-      {tab === 'coupons' && (
-        <CouponCodesPanel
-          tournament={tournament}
-          tournamentId={id}
-          onSaveSettings={(patch) => handleSaveSettings(patch)}
-        />
+          <div className="pt-6 border-t border-slate-200">
+            <CouponCodesPanel
+              tournament={tournament}
+              tournamentId={id}
+              onSaveSettings={(patch) => handleSaveSettings(patch)}
+            />
+          </div>
+        </div>
       )}
 
       {/* Assets tab — branded flyer / Instagram post / story generator */}
