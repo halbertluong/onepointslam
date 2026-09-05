@@ -77,6 +77,10 @@ export interface TournamentSettings {
   /** Saved Asset Studio copy. Absent until a director saves, in which case
    *  every field falls back to the value computed from the tournament. */
   assetDetails?: AssetDetails;
+  /** Whether directors can create discount codes that registrants redeem on
+   * the registration page before paying. Opt-in: unlike allowDonations, this
+   * feature never existed before, so only an explicit `true` turns it on. */
+  couponCodesEnabled?: boolean;
 }
 
 export type TournamentStatus =
@@ -100,6 +104,30 @@ export interface Tournament {
   createdAt: string;
 }
 
+/** A discount code a director created for a tournament, entered by
+ * registrants on the registration page before paying. */
+export interface Coupon {
+  id: string;
+  tournamentId: string;
+  code: string;
+  discountCents: number;
+  usageLimit: number;
+  usedCount: number;
+  createdAt: string;
+}
+
+export function mapCoupon(row: Record<string, unknown>): Coupon {
+  return {
+    id: row.id as string,
+    tournamentId: (row.tournament_id ?? row.tournamentId) as string,
+    code: row.code as string,
+    discountCents: (row.discount_cents ?? row.discountCents) as number,
+    usageLimit: (row.usage_limit ?? row.usageLimit) as number,
+    usedCount: (row.used_count ?? row.usedCount) as number,
+    createdAt: (row.created_at ?? row.createdAt) as string,
+  };
+}
+
 export type PlayerStatus = 'registered' | 'checked_in' | 'no_show_eliminated';
 
 export interface Player {
@@ -117,6 +145,8 @@ export interface Player {
   paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded';
   stripePaymentIntentId?: string;
   createdAt?: string;
+  /** The coupon this player redeemed at registration, if any. */
+  couponId?: string | null;
 }
 
 export function mapPlayer(row: Record<string, unknown>): Player {
@@ -135,6 +165,7 @@ export function mapPlayer(row: Record<string, unknown>): Player {
     paymentStatus: (row.payment_status ?? row.paymentStatus) as 'pending' | 'paid' | 'failed' | 'refunded' | undefined,
     stripePaymentIntentId: (row.stripe_payment_intent_id ?? row.stripePaymentIntentId) as string | undefined,
     createdAt: (row.created_at ?? row.createdAt) as string | undefined,
+    couponId: (row.coupon_id ?? row.couponId) as string | null | undefined,
   };
 }
 

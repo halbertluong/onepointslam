@@ -1032,6 +1032,7 @@ function SignupView({
       <div className="max-w-md mx-auto">
         <PlayerRegistrationForm
           tournamentName={config.name}
+          tournamentId="demo"
           entranceFee={config.entryFee}
           platformFee={0}
           playerCount={playerCount}

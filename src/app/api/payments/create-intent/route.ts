@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { registrationIsOpen, verifyDirector } from '@/lib/registrationAccess';
+import { couponsEnabled, releasePendingCoupon } from '@/lib/coupons';
+
+// Stripe requires a minimum charge (~$0.50 USD) for a PaymentIntent. A coupon
+// that would otherwise zero out (or nearly zero out) the total still goes
+// through Stripe rather than becoming a free registration — clamping here
+// keeps the payment flow's existing free-vs-paid branch (decided up front from
+// the tournament's entrance fee, before any coupon is known) untouched.
+const STRIPE_MIN_CHARGE_CENTS = 50;
 
 function admin() {
   return createAdminClient(
@@ -21,6 +29,7 @@ export async function POST(req: NextRequest) {
     tournamentId?: string; directorEntry?: boolean;
     fullName?: string; email?: string;
     gender?: string; ntrp?: string; utr?: string; age?: string; skillTier?: string;
+    couponCode?: string;
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
@@ -92,8 +101,31 @@ export async function POST(req: NextRequest) {
 
   const tenantRaw = tournament.tenants as { display_name?: string; platform_fee?: number } | null;
   const platformFee = (settings?.systemTechFee as number) ?? tenantRaw?.platform_fee ?? 0;
-  const totalCents = Math.round((entranceFee + platformFee) * 100);
   const tenantId = (tournament as Record<string, unknown>).tenant_id as string;
+
+  // Reserve the coupon's use now, right before it determines the amount to
+  // charge — a single atomic UPDATE (see redeem_coupon), so two concurrent
+  // registrants can't both be quoted a discount only one of them can actually
+  // have. Reserved even though this attempt might still fail below; every
+  // failure path after this point releases it again.
+  let couponId: string | undefined;
+  let discountCents = 0;
+  if (body.couponCode?.trim() && couponsEnabled(settings)) {
+    const { data: redeemed, error: redeemErr } = await db.rpc('redeem_coupon', {
+      p_tournament_id: tournamentId,
+      p_code: body.couponCode.trim(),
+    });
+    if (redeemErr) return NextResponse.json({ error: 'Could not apply this coupon code. Please try again.' }, { status: 500 });
+    const row = (redeemed as { id: string; discount_cents: number }[] | null)?.[0];
+    if (!row) return NextResponse.json({ error: 'This coupon code is invalid or has been fully redeemed.' }, { status: 400 });
+    couponId = row.id;
+    discountCents = row.discount_cents;
+  }
+
+  const totalCents = Math.max(
+    Math.round((entranceFee + platformFee) * 100) - discountCents,
+    STRIPE_MIN_CHARGE_CENTS,
+  );
 
   const { createPaymentIntent, createStripeClient } = await import('@/lib/stripe');
 
@@ -112,6 +144,7 @@ export async function POST(req: NextRequest) {
       ...(isDirector ? { director_entry: 'true' } : {}),
     });
   } catch (err) {
+    if (couponId) await db.rpc('release_coupon', { p_coupon_id: couponId });
     const message = err instanceof Error ? err.message : 'Payment setup failed';
     console.error('[create-intent]', message);
     return NextResponse.json({ error: message }, { status: 500 });
@@ -119,8 +152,11 @@ export async function POST(req: NextRequest) {
 
   // Local dev only: no STRIPE_SECRET_KEY, so nothing was really charged and
   // there's no reservation to write. Never happens in production —
-  // createPaymentIntent throws there instead of mocking.
-  if (result.mock) return NextResponse.json(result);
+  // createPaymentIntent throws there instead of mocking. The reserved coupon
+  // use (if any) is left spent — there's no pending_registrations row for it
+  // to hang a later release off, same asymmetry as everywhere else this mock
+  // path is documented.
+  if (result.mock) return NextResponse.json({ ...result, amountCents: totalCents, discountCents });
 
   // A retry by the same person reuses this row (unique on tournament+email).
   // If an earlier attempt is still sitting here pointing at a different
@@ -128,7 +164,7 @@ export async function POST(req: NextRequest) {
   // attempt could still be paid later (a saved card, a second tab) and
   // double-charge them for the same entry.
   const { data: existingPending } = await db
-    .from('pending_registrations').select('stripe_payment_intent_id')
+    .from('pending_registrations').select('id, stripe_payment_intent_id')
     .eq('tournament_id', tournamentId).eq('email', email).maybeSingle();
   if (existingPending && existingPending.stripe_payment_intent_id !== result.paymentIntentId) {
     try {
@@ -138,6 +174,9 @@ export async function POST(req: NextRequest) {
       // Already paid, already canceled, or too far along to cancel — none of
       // that should block writing the new reservation below.
     }
+    // That abandoned attempt may have reserved a coupon use of its own —
+    // it's being replaced by this new reservation, so give it back.
+    await releasePendingCoupon(db, { id: existingPending.id });
   }
 
   const { error: upsertErr } = await db.from('pending_registrations').upsert({
@@ -152,6 +191,9 @@ export async function POST(req: NextRequest) {
     stripe_payment_intent_id: result.paymentIntentId,
     user_id: user?.id ?? null,
     last_stripe_status: null,
+    coupon_id: couponId ?? null,
+    discount_cents: couponId ? discountCents : null,
+    coupon_released: false,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'tournament_id,email' });
 
@@ -162,9 +204,10 @@ export async function POST(req: NextRequest) {
       const stripe = await createStripeClient(process.env.STRIPE_SECRET_KEY!);
       await stripe.paymentIntents.cancel(result.paymentIntentId);
     } catch { /* best effort */ }
+    if (couponId) await db.rpc('release_coupon', { p_coupon_id: couponId });
     console.error('[create-intent] Failed to reserve pending registration:', upsertErr.message);
     return NextResponse.json({ error: 'Could not start registration. Please try again.' }, { status: 500 });
   }
 
-  return NextResponse.json(result);
+  return NextResponse.json({ ...result, amountCents: totalCents, discountCents });
 }

@@ -12,6 +12,7 @@ import RegistrationPanel from '@/components/RegistrationPanel';
 import PaymentsPanel from '@/components/PaymentsPanel';
 import NotesPanel from '@/components/NotesPanel';
 import AssetStudio from '@/components/AssetStudio';
+import CouponCodesPanel from '@/components/CouponCodesPanel';
 import TournamentUrlCard from '@/components/TournamentUrlCard';
 import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
@@ -59,7 +60,7 @@ function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; is
   );
 }
 
-type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'payments' | 'assets' | 'notes' | 'settings';
+type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'assets' | 'notes' | 'settings';
 
 const TAB_LABELS: Record<Tab, string> = {
   players: 'Players',
@@ -69,13 +70,16 @@ const TAB_LABELS: Record<Tab, string> = {
   bracket: 'Bracket',
   scoreboard: 'Scoreboard',
   registration: 'Registration',
-  payments: 'Payments',
   assets: 'Assets',
   notes: 'Notes',
   settings: 'Settings',
 };
 
-const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'payments', 'assets', 'notes', 'settings'];
+const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'scoreboard', 'registration', 'assets', 'notes', 'settings'];
+
+/** Sub-view within the Players tab — the roster itself, or Stripe payments
+ *  (with coupon codes underneath) for what registrants paid. */
+type PlayersMode = 'roster' | 'payments';
 
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
   const active = matches
@@ -163,6 +167,7 @@ export default function TournamentAdminPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [tab, setTab] = useState<Tab>('players');
+  const [playersMode, setPlayersMode] = useState<PlayersMode>('roster');
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [tenantSlug, setTenantSlug] = useState('');
   const [tenantBranding, setTenantBranding] = useState({ displayName: '', primaryColor: '#1d4ed8', secondaryColor: '#7c3aed', logoUrl: undefined as string | undefined });
@@ -210,11 +215,12 @@ export default function TournamentAdminPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  /** Jumps to the Payments tab with this payment highlighted — used from both
-   *  the confirmed roster and the Awaiting Payment sub-table. */
+  /** Jumps to the Players tab's Payments sub-view with this payment highlighted
+   *  — used from both the confirmed roster and the Awaiting Payment sub-table. */
   function handleViewPayment(paymentIntentId: string) {
     setFocusPaymentIntentId(paymentIntentId);
-    setTab('payments');
+    setTab('players');
+    setPlayersMode('payments');
   }
 
   async function handleDismissPending(pendingId: string): Promise<{ error?: string }> {
@@ -531,7 +537,7 @@ export default function TournamentAdminPage() {
           return (
             <button
               key={t}
-              onClick={() => { setTab(t); if (t !== 'payments') setFocusPaymentIntentId(null); }}
+              onClick={() => { setTab(t); if (t !== 'players') setFocusPaymentIntentId(null); }}
               className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-colors whitespace-nowrap flex items-center gap-1.5 ${
                 tab === t
                   ? 'border-b-2 text-slate-900'
@@ -553,20 +559,62 @@ export default function TournamentAdminPage() {
         })}
       </div>
 
-      {/* Players tab */}
+      {/* Players tab — the roster, or Payments (with Coupon Codes underneath) as a sub-view */}
       {tab === 'players' && (
-        <PlayersPanel
-          players={players}
-          matches={matches}
-          bracketGenerated={bracketGenerated}
-          tournamentId={id}
-          maxPlayers={tournament.settings?.maxPlayers ?? 8}
-          entranceFee={tournament.settings?.ticketPriceForFundraiser ?? 0}
-          pendingRegistrations={pendingRegistrations}
-          onViewPayment={handleViewPayment}
-          onDismissPending={handleDismissPending}
-          onSaved={load}
-        />
+        <div className="space-y-4">
+          <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1 w-fit">
+            {([
+              ['roster', '👥 Players'],
+              ['payments', '💳 Payments'],
+            ] as const).map(([m, label]) => (
+              <button
+                key={m}
+                onClick={() => setPlayersMode(m)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                  playersMode === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {playersMode === 'roster' ? (
+            <PlayersPanel
+              players={players}
+              matches={matches}
+              bracketGenerated={bracketGenerated}
+              tournamentId={id}
+              maxPlayers={tournament.settings?.maxPlayers ?? 8}
+              entranceFee={tournament.settings?.ticketPriceForFundraiser ?? 0}
+              pendingRegistrations={pendingRegistrations}
+              onViewPayment={handleViewPayment}
+              onDismissPending={handleDismissPending}
+              onSaved={load}
+            />
+          ) : (
+            <div className="space-y-10">
+              <div className="space-y-4">
+                <div>
+                  <h2 className="font-bold text-slate-800">Payments</h2>
+                  <p className="text-sm text-slate-500 mt-0.5">
+                    Every card Stripe has charged for this tournament, checked against the registrations
+                    and donations recorded here.
+                  </p>
+                </div>
+                <PaymentsPanel tournamentId={id} focusPaymentIntentId={focusPaymentIntentId} onRecovered={load} />
+              </div>
+
+              <div className="pt-6 border-t border-slate-200">
+                <CouponCodesPanel
+                  tournament={tournament}
+                  tournamentId={id}
+                  onSaveSettings={(patch) => handleSaveSettings(patch)}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Seed Assignment tab */}
@@ -674,20 +722,6 @@ export default function TournamentAdminPage() {
           onRegistered={load}
           onSaveSettings={(patch) => handleSaveSettings(patch)}
         />
-      )}
-
-      {/* Payments tab — Stripe against the registrations it should have created */}
-      {tab === 'payments' && (
-        <div className="space-y-4">
-          <div>
-            <h2 className="font-bold text-slate-800">Payments</h2>
-            <p className="text-sm text-slate-500 mt-0.5">
-              Every card Stripe has charged for this tournament, checked against the registrations
-              and donations recorded here.
-            </p>
-          </div>
-          <PaymentsPanel tournamentId={id} focusPaymentIntentId={focusPaymentIntentId} onRecovered={load} />
-        </div>
       )}
 
       {/* Assets tab — branded flyer / Instagram post / story generator */}

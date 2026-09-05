@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createStripeClient } from '@/lib/stripe';
 import { promotePendingRegistration } from '@/lib/paymentPromotion';
+import { releasePendingCoupon } from '@/lib/coupons';
 
 async function getStripe() {
   return createStripeClient(process.env.STRIPE_SECRET_KEY ?? '');
@@ -103,6 +104,9 @@ export async function POST(req: NextRequest) {
       .from('pending_registrations')
       .update({ last_stripe_status: 'payment_failed', updated_at: new Date().toISOString() })
       .eq('stripe_payment_intent_id', pi.id);
+    // The declined charge means any coupon use reserved for it never actually
+    // paid off — give it back so someone else can use it.
+    await releasePendingCoupon(admin, { stripePaymentIntentId: pi.id });
   }
 
   if (event.type === 'payment_intent.canceled') {
@@ -119,6 +123,7 @@ export async function POST(req: NextRequest) {
       .from('pending_registrations')
       .update({ last_stripe_status: 'canceled', updated_at: new Date().toISOString() })
       .eq('stripe_payment_intent_id', pi.id);
+    await releasePendingCoupon(admin, { stripePaymentIntentId: pi.id });
   }
 
   if (event.type === 'charge.refunded') {

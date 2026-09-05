@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/browser';
 import { formatCurrency, DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
+import VisitsStatsPanel from '@/components/VisitsStatsPanel';
 
 interface TenantRow {
   id: string;
@@ -48,6 +49,7 @@ export default function AdminOverviewPage() {
   const [savingTenant, setSavingTenant] = useState<string | null>(null);
   const [savedTenant, setSavedTenant] = useState<string | null>(null);
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
+  const [visitStats, setVisitStats] = useState<Parameters<typeof VisitsStatsPanel>[0]['stats'] | null>(null);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -103,6 +105,13 @@ export default function AdminOverviewPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    fetch('/api/admin/account-register-visits')
+      .then((res) => res.json())
+      .then((data) => { if (!data.error) setVisitStats(data); })
+      .catch(() => {});
+  }, []);
 
   async function saveTenantFee(tenantId: string) {
     setSavingTenant(tenantId);
@@ -321,6 +330,17 @@ export default function AdminOverviewPage() {
             );
           })}
         </div>
+      </div>
+
+      {/* Account sign-up page visits — site-wide, unlike the per-tournament
+          Visits tab which only covers that tournament's own registration link. */}
+      <div>
+        <h2 className="font-bold text-slate-800 mb-3">Account Sign-Up Page Visits</h2>
+        {visitStats ? (
+          <VisitsStatsPanel stats={visitStats} emptyHint="No visits recorded yet." />
+        ) : (
+          <p className="text-sm text-slate-400 py-8 text-center">Loading…</p>
+        )}
       </div>
     </div>
   );

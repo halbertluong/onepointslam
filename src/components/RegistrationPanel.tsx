@@ -3,12 +3,13 @@
 import { useState } from 'react';
 import PlayerRegistrationForm, { type PlayerFormData } from '@/components/PlayerRegistrationForm';
 import RegistrationFlow from '@/components/RegistrationFlow';
+import VisitsPanel from '@/components/VisitsPanel';
 import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
 import { donationsAllowed } from '@/lib/donations';
 import { tournamentPath } from '@/lib/slugs';
 import type { Tournament } from '@/types';
 
-type Mode = 'flow' | 'offline';
+type Mode = 'flow' | 'offline' | 'visits';
 
 /**
  * The director's registration desk.
@@ -186,6 +187,7 @@ export default function RegistrationPanel({
         {([
           ['flow', '💳 Take Registration'],
           ['offline', '💵 Record Offline Entry'],
+          ['visits', '📊 Visits'],
         ] as const).map(([m, label]) => (
           <button
             key={m}
@@ -211,7 +213,9 @@ export default function RegistrationPanel({
         </div>
       )}
 
-      {!canRegister ? (
+      {mode === 'visits' ? (
+        <VisitsPanel tournamentId={tournamentId} />
+      ) : !canRegister ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-5 py-10 text-center">
           <p className="text-sm text-slate-400">
             This tournament is completed — no further registrations can be taken.
@@ -295,6 +299,7 @@ export default function RegistrationPanel({
               <PlayerRegistrationForm
                 key={formKey}
                 tournamentName={tournament.name}
+                tournamentId={tournamentId}
                 hideHeader
                 entranceFee={entranceFee}
                 platformFee={platformFee}
