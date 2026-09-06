@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Outfit, Inter } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/next';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
@@ -37,6 +37,11 @@ export const metadata: Metadata = {
     // rather than the small square thumbnail 'summary' gives.
     card: 'summary_large_image',
   },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
