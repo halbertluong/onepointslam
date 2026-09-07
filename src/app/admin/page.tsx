@@ -24,6 +24,10 @@ interface TournamentRow {
   player_count?: number;
 }
 
+// "One Point Bowl Demo" is our own sandbox tenant, not a real customer — keep it
+// out of platform-wide stats and listings on the admin dashboard.
+const HIDDEN_TENANT_SLUGS = ['onepointbowl'];
+
 const STATUS_STYLES: Record<string, string> = {
   registration_open: 'bg-emerald-100 text-emerald-700',
   registration_closed: 'bg-amber-100 text-amber-700',
@@ -53,11 +57,14 @@ export default function AdminOverviewPage() {
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const [{ data: t }, { data: tm }, { count }] = await Promise.all([
+    const [{ data: tRaw }, { data: tmRaw }, { count }] = await Promise.all([
       supabase.from('tenants').select('*').order('display_name'),
       supabase.from('tournaments').select('id, tenant_id, name, status, settings').order('created_at', { ascending: false }),
       supabase.from('players').select('id', { count: 'exact', head: true }),
     ]);
+    const t = (tRaw ?? []).filter((ten) => !HIDDEN_TENANT_SLUGS.includes(ten.slug));
+    const hiddenTenantIds = new Set((tRaw ?? []).filter((ten) => HIDDEN_TENANT_SLUGS.includes(ten.slug)).map((ten) => ten.id));
+    const tm = (tmRaw ?? []).filter((tour) => !hiddenTenantIds.has(tour.tenant_id));
 
     // Fetch player counts per tournament, plus payment_status so we can flag
     // registrants who got through without paying — one shared Stripe account
