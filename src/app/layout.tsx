@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Outfit, Inter } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/next';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
@@ -25,6 +25,17 @@ export const metadata: Metadata = {
   description: 'Run high-energy single-elimination tennis tournaments that grow your donor base. Built for D1 collegiate tennis programs.',
   icons: {
     icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎾</text></svg>",
+    // A plain static file referenced straight from metadata, rather than
+    // Next's icon/apple-icon route convention: that convention renders its
+    // <link> into <body> and relies on a client-side script to hoist it
+    // into <head> after hydration (see REINSERT_ICON_SCRIPT in Next's
+    // create-server-inserted-metadata.js) — invisible to iOS's "Add to
+    // Home Screen" icon lookup, which reads only the initial HTML and
+    // never runs that script, silently falling back to a generated tile.
+    apple: '/apple-touch-icon.png',
+  },
+  appleWebApp: {
+    title: 'One Point Bowl',
   },
   openGraph: {
     title: 'One Point Bowl',
@@ -37,6 +48,11 @@ export const metadata: Metadata = {
     // rather than the small square thumbnail 'summary' gives.
     card: 'summary_large_image',
   },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

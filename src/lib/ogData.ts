@@ -89,6 +89,11 @@ export function entryTotal(settings: Record<string, unknown> | null): number {
   return ticket + platform;
 }
 
+/** The program's entry fee alone, excluding the service fee — what share cards display. */
+export function entryFee(settings: Record<string, unknown> | null): number {
+  return (settings?.ticketPriceForFundraiser as number) ?? 0;
+}
+
 export function toCardData(source: PreviewSource, leaf: 'register' | 'bracket'): OgCardData {
   const s = source.settings;
   const facts: string[] = [];
@@ -97,8 +102,8 @@ export function toCardData(source: PreviewSource, leaf: 'register' | 'bracket'):
   if (date) facts.push(date);
 
   if (leaf === 'register') {
-    const total = entryTotal(s);
-    facts.push(total > 0 ? `${formatCurrency(total)} entry` : 'Free entry');
+    const fee = entryFee(s);
+    facts.push(fee > 0 ? `${formatCurrency(fee)} entry` : 'Free entry');
     const draw = s?.maxPlayers as number | undefined;
     if (draw) facts.push(`${draw}-player draw`);
   } else if (source.status === 'live_play') {
@@ -123,8 +128,8 @@ export function previewDescription(source: PreviewSource, leaf: 'register' | 'br
       ? `Live bracket and scores for ${source.name}, hosted by ${source.tenantName}.`
       : `Bracket and results for ${source.name}, hosted by ${source.tenantName}.`;
   }
-  const total = entryTotal(source.settings);
-  const price = total > 0 ? `${formatCurrency(total)} to enter` : 'Free to enter';
+  const fee = entryFee(source.settings);
+  const price = fee > 0 ? `${formatCurrency(fee)} to enter` : 'Free to enter';
   const date = dateLabel(source.settings?.tournamentDate);
   return [
     `Sign up for ${source.name}, hosted by ${source.tenantName}.`,
