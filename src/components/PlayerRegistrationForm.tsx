@@ -441,7 +441,7 @@ export default function PlayerRegistrationForm({
             : submitLabel
             ? submitLabel
             : totalPrice > 0
-            ? `Donate ${formatCurrency(totalPrice)} & Register`
+            ? 'Donate and Register'
             : 'Register Free'}
         </button>
 

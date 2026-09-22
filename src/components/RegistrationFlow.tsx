@@ -85,7 +85,7 @@ function StripeCheckoutForm({
         disabled={loading || !stripe || !elements}
         className="btn-primary w-full py-3 rounded-xl font-bold text-base disabled:opacity-50 transition-all"
       >
-        {loading ? 'Processing…' : `Donate ${formatCurrency(totalDollars)} & Register`}
+        {loading ? 'Processing…' : 'Donate and Register'}
       </button>
       <button type="button" onClick={onBack} className="w-full text-sm text-slate-500 hover:text-slate-700 transition-colors">
         ← Back to registration form
