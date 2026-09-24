@@ -1,11 +1,30 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 import BracketView from '@/components/BracketView';
 import { mapMatch, mapPlayer } from '@/types';
 import type { Match, Player } from '@/types';
+
+/** Safari (incl. older iPadOS) only exposes the webkit-prefixed fullscreen API. */
+type FullscreenDoc = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void>;
+};
+type FullscreenEl = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+
+function FullscreenIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      {active ? (
+        <path d="M9 3v4a2 2 0 0 1-2 2H3M21 8h-4a2 2 0 0 1-2-2V3M3 16h4a2 2 0 0 1 2 2v4M16 21v-4a2 2 0 0 1 2-2h4" />
+      ) : (
+        <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
+      )}
+    </svg>
+  );
+}
 
 interface LiveMatch {
   id: string;
@@ -48,6 +67,8 @@ export default function LiveScoreboard({
   const [bracketMatches, setBracketMatches] = useState<Match[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -125,6 +146,58 @@ export default function LiveScoreboard({
     return () => { supabase.removeChannel(channel); };
   }, [load, tournamentId]);
 
+  // Fullscreen — a TV kiosk browser is usually launched fullscreen already,
+  // but this covers the common case of opening the link in an ordinary
+  // browser tab and wanting the chrome out of the way.
+  useEffect(() => {
+    if (embedded) return;
+    const doc = document as FullscreenDoc;
+    const onChange = () => setIsFullscreen(!!(document.fullscreenElement ?? doc.webkitFullscreenElement));
+    document.addEventListener('fullscreenchange', onChange);
+    document.addEventListener('webkitfullscreenchange', onChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('webkitfullscreenchange', onChange);
+    };
+  }, [embedded]);
+
+  const toggleFullscreen = useCallback(() => {
+    const doc = document as FullscreenDoc;
+    if (document.fullscreenElement ?? doc.webkitFullscreenElement) {
+      (document.exitFullscreen ?? doc.webkitExitFullscreen)?.call(document);
+      return;
+    }
+    const el = rootRef.current as FullscreenEl | null;
+    (el?.requestFullscreen ?? el?.webkitRequestFullscreen)?.call(el);
+  }, []);
+
+  // Wake lock — this page is meant to sit unattended on a TV for the length
+  // of the tournament, so the display shouldn't dim or sleep. The lock is
+  // released automatically whenever the tab goes out of view (screen off,
+  // tab switch), so it's re-acquired on every return to visibility.
+  useEffect(() => {
+    if (embedded || typeof navigator === 'undefined' || !('wakeLock' in navigator)) return;
+    let sentinel: WakeLockSentinel | null = null;
+    let cancelled = false;
+    const acquire = async () => {
+      try {
+        const s = await navigator.wakeLock.request('screen');
+        if (cancelled) { s.release().catch(() => {}); return; }
+        sentinel = s;
+      } catch {
+        // Denied, unsupported, or the document isn't visible yet — nothing to do.
+      }
+    };
+    acquire();
+    const onVisibility = () => { if (document.visibilityState === 'visible' && !sentinel) acquire(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      sentinel?.release().catch(() => {});
+    };
+  }, [embedded]);
+
   const safeHex = (c: string | undefined) => /^#[0-9a-fA-F]{6}$/.test(c ?? '') ? c! : '#3b82f6';
   const primary = safeHex(tournament?.tenant.primary_color);
   const secondary = safeHex(tournament?.tenant.secondary_color);
@@ -142,10 +215,17 @@ export default function LiveScoreboard({
   const finishedMatches = matches.filter((m) => m.status === 'finalized' || m.status === 'walkover').length;
   const pct = totalMatches > 0 ? Math.round((finishedMatches / totalMatches) * 100) : 0;
 
+  // Whether there's a bracket to show at all — independent of `status`, since
+  // a director can record results (via the referee console or the dashboard)
+  // before ever flipping the tournament to 'live_play'. Gating the whole
+  // layout on that status left this page blank while matches were already
+  // being played; it now only affects the "LIVE" badge.
+  const hasMatches = totalMatches > 0;
   const isLive = tournament?.status === 'live_play';
 
   return (
     <div
+      ref={rootRef}
       className={`bg-white text-slate-900 flex flex-col ${embedded ? 'h-[75vh] rounded-2xl overflow-hidden border border-slate-200' : 'h-screen overflow-hidden'}`}
       style={{ fontFamily: 'system-ui, sans-serif' }}
     >
@@ -165,15 +245,27 @@ export default function LiveScoreboard({
             <p className="text-slate-500 text-xs">{tournament?.tenant.display_name}</p>
           </div>
         </div>
-        <div className="text-right">
-          {isLive ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold animate-pulse" style={{ backgroundColor: `${primary}1a`, color: primary }}>
-              ● LIVE
-            </span>
-          ) : (
-            <span className="text-slate-400 text-sm">{tournament?.status?.replace(/_/g, ' ')}</span>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            {isLive ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold animate-pulse" style={{ backgroundColor: `${primary}1a`, color: primary }}>
+                ● LIVE
+              </span>
+            ) : (
+              <span className="text-slate-400 text-sm">{tournament?.status?.replace(/_/g, ' ')}</span>
+            )}
+            <p className="text-slate-400 text-xs mt-1">Updated {lastUpdate.toLocaleTimeString()}</p>
+          </div>
+          {!embedded && (
+            <button
+              onClick={toggleFullscreen}
+              title={isFullscreen ? 'Exit full screen' : 'Enter full screen'}
+              aria-label={isFullscreen ? 'Exit full screen' : 'Enter full screen'}
+              className="shrink-0 p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors"
+            >
+              <FullscreenIcon active={isFullscreen} />
+            </button>
           )}
-          <p className="text-slate-400 text-xs mt-1">Updated {lastUpdate.toLocaleTimeString()}</p>
         </div>
       </div>
 
@@ -190,7 +282,7 @@ export default function LiveScoreboard({
         </div>
       )}
 
-      {!isLive && (
+      {!hasMatches && (
         <div className="flex-1 flex items-center justify-center text-center text-slate-400">
           <div>
             <p className="text-4xl mb-3">🎾</p>
@@ -201,7 +293,7 @@ export default function LiveScoreboard({
       )}
 
       {/* Bracket (left) + matches (right) */}
-      {isLive && (
+      {hasMatches && (
         <div className="flex-1 flex gap-4 p-4 min-h-0 overflow-hidden">
           {/* Bracket — 60% */}
           <div className="w-[60%] shrink-0 flex flex-col min-h-0 rounded-2xl border border-slate-200 bg-white overflow-hidden">
