@@ -36,7 +36,12 @@ export default function DrawEditorPanel({
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
-  const round0 = matches.filter((m) => m.roundIndex === 0).sort((a, b) => a.matchIndex - b.matchIndex);
+  // The draw is the main bracket only. Consolation / losers / grand-final rows
+  // also carry roundIndex 0 but start empty and fill from results — counting
+  // them here inflated the slot count (a 32 draw read as 48) and mixed their
+  // cards into the main draw's columns.
+  const mainMatches = matches.filter((m) => m.bracket === 'main');
+  const round0 = mainMatches.filter((m) => m.roundIndex === 0).sort((a, b) => a.matchIndex - b.matchIndex);
   const bracketSize = round0.length * 2;
 
   // A recorded result is the line we won't cross automatically: reshuffling the
@@ -69,8 +74,8 @@ export default function DrawEditorPanel({
     if (aMatchId === bMatchId && aSlot === bSlot) return;
     // Any round — dragging in round 2+ used to look up round 0 only and silently
     // do nothing.
-    const ma = matches.find((m) => m.id === aMatchId);
-    const mb = matches.find((m) => m.id === bMatchId);
+    const ma = mainMatches.find((m) => m.id === aMatchId);
+    const mb = mainMatches.find((m) => m.id === bMatchId);
     if (!ma || !mb) return;
     const aId = aSlot === 'p1' ? ma.player1Id : ma.player2Id;
     const bId = bSlot === 'p1' ? mb.player1Id : mb.player2Id;
@@ -152,8 +157,11 @@ export default function DrawEditorPanel({
         match_index: m.matchIndex,
         player1_id: m.player1Id,
         player2_id: m.player2Id,
+        server_player_id: m.serverPlayerId,
         winner_id: m.winnerId,
+        loser_id: m.loserId ?? null,
         status: m.status,
+        bracket: m.bracket,
         court_number: m.courtNumber ?? null,
       })),
     );
@@ -279,7 +287,7 @@ export default function DrawEditorPanel({
         ) : (
           <div className="p-4 overflow-x-auto">
             <BracketView
-              initialMatches={matches}
+              initialMatches={mainMatches}
               players={players}
               maxPlayers={bracketSize}
               liveUpdates={false}
