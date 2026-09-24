@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import TenantThemeProvider from '@/components/TenantThemeProvider';
 import SlugField from '@/components/SlugField';
+import RefereesPanel from '@/components/RefereesPanel';
 import type { Tenant } from '@/types';
 import { ALL_SCHOOLS, SUGGEST_CORRECTION_URL } from '@/lib/schools';
 import { slugify, validateTenantSlug } from '@/lib/slugs';
@@ -401,6 +402,8 @@ export default function SettingsPage() {
             {saving ? 'Saving…' : 'Save Settings'}
           </button>
         </form>
+
+        {tenant && <RefereesPanel />}
       </div>
     </TenantThemeProvider>
   );
