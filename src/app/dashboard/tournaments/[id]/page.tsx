@@ -60,6 +60,45 @@ function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; is
   );
 }
 
+function ResetBracketSection({ matches, saving, onReset }: { matches: Match[]; saving: boolean; onReset: () => Promise<void> }) {
+  const decided = matches.filter((m) => (m.status === 'finalized' || m.status === 'walkover') && m.player1Id !== 'BYE' && m.player2Id !== 'BYE').length;
+
+  async function handleClick() {
+    const warning = decided > 0
+      ? `\n\n${decided} match result${decided !== 1 ? 's have' : ' has'} already been recorded and will be lost.`
+      : '';
+    if (!window.confirm(
+      `Reset the bracket?\n\nAll matches, court assignments and draw edits will be deleted and the tournament returns to registration. Players and their seeds are kept.${warning}\n\nThis cannot be undone.`,
+    )) return;
+    await onReset();
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-red-200 p-6 space-y-4">
+      <div>
+        <h2 className="font-bold text-slate-800">Reset Bracket</h2>
+        <p className="text-sm text-slate-500 mt-0.5">
+          Deletes the generated draw so you can change the draw size or bracket format, then
+          generate it again. Players, seeds and payments are not affected.
+        </p>
+        {decided > 0 && (
+          <p className="text-sm text-red-600 mt-2">
+            {decided} match result{decided !== 1 ? 's' : ''} already recorded will be lost.
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={saving}
+        className="px-5 py-2.5 rounded-xl text-sm font-bold border-2 border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+      >
+        {saving ? '…' : '↺ Reset bracket'}
+      </button>
+    </div>
+  );
+}
+
 type Tab = 'players' | 'seeds' | 'draw' | 'referee' | 'bracket' | 'scoreboard' | 'registration' | 'assets' | 'notes' | 'settings';
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -280,6 +319,35 @@ export default function TournamentAdminPage() {
     } else {
       setMessage(error.message);
     }
+    setSaving(false);
+  }
+
+  /**
+   * Undo bracket generation: drop every match and return the tournament to the
+   * registration state it was generated from, so draw size and bracket format
+   * can be edited and the draw generated again.
+   */
+  async function handleResetBracket() {
+    setSaving(true);
+    const supabase = createClient();
+    const { error, count } = await supabase.from('matches').delete({ count: 'exact' }).eq('tournament_id', id);
+    // RLS filters a disallowed delete to zero rows rather than raising an error.
+    if (error || (count === 0 && matches.length > 0)) {
+      setMessage(`Could not reset the bracket: ${error?.message ?? 'permission denied'}`);
+      setSaving(false);
+      return;
+    }
+    // Generated straight from open registration → reopen it; otherwise it had
+    // been closed (manually, by deadline or by cap) and stays closed.
+    const closeReason = (tournament as unknown as Record<string, unknown> | null)?.registration_close_reason;
+    const { error: statusError } = await supabase
+      .from('tournaments')
+      .update({ status: closeReason ? 'registration_closed' : 'registration_open' })
+      .eq('id', id);
+    setMessage(statusError
+      ? `Matches deleted, but the status could not be updated: ${statusError.message}`
+      : 'Bracket reset. Update the draw size or format, then generate the bracket again.');
+    await load();
     setSaving(false);
   }
 
@@ -757,6 +825,10 @@ export default function TournamentAdminPage() {
             bracketGenerated={bracketGenerated}
             onSave={(patch, newName) => handleSaveSettings(patch, newName)}
           />
+
+          {bracketGenerated && (
+            <ResetBracketSection matches={matches} saving={saving} onReset={handleResetBracket} />
+          )}
 
           {/* Archive / Danger Zone */}
           <ArchiveSection tournamentId={id} isArchived={!!((tournament as unknown as Record<string, unknown>)?.archived_at)} />
