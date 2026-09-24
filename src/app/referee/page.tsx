@@ -16,18 +16,27 @@ export default async function RefereeQueuePage() {
   const tenantIds: string[] = appUser?.assigned_tenant_ids ?? [];
   const isSuperAdmin = appUser?.role === 'super_admin';
 
-  const tournamentsQuery = supabase
-    .from('tournaments')
-    .select('id, name, tenant_id, settings, tenants(display_name, primary_color)')
-    .in('status', ['live_play', 'bracket_generated']);
+  const { data: nonDemoTenants } = await supabase
+    .from('tenants')
+    .select('id')
+    .eq('is_demo', false);
+  const nonDemoTenantIds = new Set((nonDemoTenants ?? []).map((t) => t.id));
 
-  if (!isSuperAdmin && tenantIds.length > 0) {
-    tournamentsQuery.in('tenant_id', tenantIds);
-  } else if (!isSuperAdmin) {
-    return <EmptyQueue reason="Your account is not linked to a tenant yet. Contact your tournament director." />;
+  const allowedTenantIds = isSuperAdmin
+    ? [...nonDemoTenantIds]
+    : tenantIds.filter((id) => nonDemoTenantIds.has(id));
+
+  if (allowedTenantIds.length === 0) {
+    return <EmptyQueue reason={isSuperAdmin || tenantIds.length > 0
+      ? 'No live tournaments in your organization right now.'
+      : 'Your account is not linked to a tenant yet. Contact your tournament director.'} />;
   }
 
-  const { data: tournaments } = await tournamentsQuery;
+  const { data: tournaments } = await supabase
+    .from('tournaments')
+    .select('id, name, tenant_id, settings, tenants(display_name, primary_color)')
+    .in('status', ['live_play', 'bracket_generated'])
+    .in('tenant_id', allowedTenantIds);
   const tournamentIds = (tournaments ?? []).map((t) => t.id);
 
   if (tournamentIds.length === 0) {
