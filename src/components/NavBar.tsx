@@ -24,6 +24,11 @@ export default function NavBar({ role, tenantSlug, displayName, logoUrl }: NavBa
     router.refresh();
   }
 
+  // The public live scoreboard is built for a TV display with no scrolling —
+  // the nav bar (and its sign-in prompt, irrelevant to a spectator screen)
+  // would eat into that fixed viewport, so it's dropped on that route only.
+  if (pathname?.endsWith('/live')) return null;
+
   return (
     <nav
       className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur"
