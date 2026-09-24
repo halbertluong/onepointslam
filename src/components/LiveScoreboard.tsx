@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 import BracketView from '@/components/BracketView';
@@ -68,7 +68,6 @@ export default function LiveScoreboard({
   const [players, setPlayers] = useState<Player[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -164,11 +163,17 @@ export default function LiveScoreboard({
   const toggleFullscreen = useCallback(() => {
     const doc = document as FullscreenDoc;
     if (document.fullscreenElement ?? doc.webkitFullscreenElement) {
-      (document.exitFullscreen ?? doc.webkitExitFullscreen)?.call(document);
+      const exit = document.exitFullscreen ?? doc.webkitExitFullscreen;
+      exit?.call(document)?.catch(() => {});
       return;
     }
-    const el = rootRef.current as FullscreenEl | null;
-    (el?.requestFullscreen ?? el?.webkitRequestFullscreen)?.call(el);
+    // Fullscreening the whole page (rather than just this component's own
+    // container) is the more broadly-supported target — some browsers are
+    // picky about which elements are allowed to become the fullscreen
+    // element.
+    const el = document.documentElement as FullscreenEl;
+    const request = el.requestFullscreen ?? el.webkitRequestFullscreen;
+    request?.call(el)?.catch(() => {});
   }, []);
 
   // Wake lock — this page is meant to sit unattended on a TV for the length
@@ -202,9 +207,17 @@ export default function LiveScoreboard({
   const primary = safeHex(tournament?.tenant.primary_color);
   const secondary = safeHex(tournament?.tenant.secondary_color);
 
-  const activeMatches = matches
-    .filter((m) => ['playing', 'court_assigned', 'warmup'].includes(m.status))
-    .sort((a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9) || (a.court_number ?? 99) - (b.court_number ?? 99));
+  // The current match(es) plus everything still queued behind them, in the
+  // order they'll be called — replaces a court-only view so spectators can
+  // see what's coming even before it's assigned a court.
+  const upcomingMatches = matches
+    .filter((m) => m.status !== 'finalized' && m.status !== 'walkover')
+    .sort((a, b) =>
+      (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9) ||
+      (a.court_number ?? 99) - (b.court_number ?? 99) ||
+      a.round_index - b.round_index ||
+      a.match_index - b.match_index
+    );
 
   const recentlyFinished = matches
     .filter((m) => m.status === 'finalized' || m.status === 'walkover')
@@ -225,7 +238,6 @@ export default function LiveScoreboard({
 
   return (
     <div
-      ref={rootRef}
       className={`bg-white text-slate-900 flex flex-col ${embedded ? 'h-[75vh] rounded-2xl overflow-hidden border border-slate-200' : 'h-screen overflow-hidden'}`}
       style={{ fontFamily: 'system-ui, sans-serif' }}
     >
@@ -313,21 +325,23 @@ export default function LiveScoreboard({
 
           {/* Matches — 40% */}
           <div className="w-[40%] flex flex-col min-h-0 gap-4 overflow-hidden">
-            {/* On court now */}
-            <div className="flex flex-col min-h-0 rounded-2xl border border-slate-200 bg-white" style={{ flex: activeMatches.length > 0 ? '1 1 auto' : '0 0 auto' }}>
-              <h2 className="px-4 pt-3 pb-2 text-xs font-bold uppercase tracking-widest text-slate-400 shrink-0">On Court Now</h2>
+            {/* Up next — the current match(es) plus everything queued behind them */}
+            <div className="flex flex-col min-h-0 rounded-2xl border border-slate-200 bg-white" style={{ flex: upcomingMatches.length > 0 ? '1 1 auto' : '0 0 auto' }}>
+              <h2 className="px-4 pt-3 pb-2 text-xs font-bold uppercase tracking-widest text-slate-400 shrink-0">Up Next</h2>
               <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-3 space-y-2.5">
-                {activeMatches.length === 0 ? (
-                  <p className="text-slate-400 text-sm py-4 text-center">No matches currently active</p>
-                ) : activeMatches.map((m) => {
+                {upcomingMatches.length === 0 ? (
+                  <p className="text-slate-400 text-sm py-4 text-center">All matches complete 🎉</p>
+                ) : upcomingMatches.map((m) => {
                   const isPlaying = m.status === 'playing';
+                  const isQueued = m.status === 'scheduled';
                   return (
                     <div
                       key={m.id}
                       className="rounded-xl border p-3"
                       style={{
                         borderColor: isPlaying ? primary : '#e2e8f0',
-                        backgroundColor: isPlaying ? `${primary}0d` : '#f8fafc',
+                        backgroundColor: isPlaying ? `${primary}0d` : isQueued ? '#fff' : '#f8fafc',
+                        opacity: isQueued ? 0.7 : 1,
                       }}
                     >
                       <div className="flex items-center justify-between mb-2">
@@ -361,6 +375,12 @@ export default function LiveScoreboard({
                       )}
                       {m.status === 'court_assigned' && (
                         <div className="mt-2 text-[11px] text-slate-400">Head to court →</div>
+                      )}
+                      {m.status === 'warmup' && (
+                        <div className="mt-2 text-[11px] text-slate-400">Warming up</div>
+                      )}
+                      {isQueued && (
+                        <div className="mt-2 text-[11px] text-slate-300">Up next</div>
                       )}
                     </div>
                   );
