@@ -218,6 +218,11 @@ export default function LiveScoreboard({
       a.round_index - b.round_index ||
       a.match_index - b.match_index
     );
+  // Split into two visually distinct groups: matches already out on a court
+  // (primary-colored, urgent) versus matches still waiting their turn
+  // (secondary-colored, numbered by queue position).
+  const onCourtMatches = upcomingMatches.filter((m) => m.status !== 'scheduled');
+  const queuedMatches = upcomingMatches.filter((m) => m.status === 'scheduled');
 
   const recentlyFinished = matches
     .filter((m) => m.status === 'finalized' || m.status === 'walkover')
@@ -252,7 +257,7 @@ export default function LiveScoreboard({
       <style>{`:root { --tenant-primary: ${primary}; --tenant-secondary: ${secondary}; }`}</style>
 
       {/* Top bar */}
-      <div className="px-6 py-3 flex items-center justify-between border-b border-slate-200 shrink-0" style={{ background: `linear-gradient(135deg, ${primary}0d, transparent)` }}>
+      <div className="px-6 py-3 flex items-center justify-between border-b-2 shrink-0" style={{ background: `linear-gradient(135deg, ${primary}1f, ${secondary}0d, transparent)`, borderBottomColor: `${primary}33` }}>
         <div className="flex items-center gap-3">
           {tournament?.tenant.logo_url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -262,19 +267,19 @@ export default function LiveScoreboard({
           )}
           <div>
             <p className="font-black text-lg leading-tight text-slate-900">{tournament?.name ?? '…'}</p>
-            <p className="text-slate-500 text-xs">{tournament?.tenant.display_name}</p>
+            <p className="text-sm font-semibold" style={{ color: secondary }}>{tournament?.tenant.display_name}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <div className="text-right">
             {isLive ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold animate-pulse" style={{ backgroundColor: `${primary}1a`, color: primary }}>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold animate-pulse" style={{ backgroundColor: primary, color: '#fff' }}>
                 ● LIVE
               </span>
             ) : (
-              <span className="text-slate-400 text-sm">{tournament?.status?.replace(/_/g, ' ')}</span>
+              <span className="text-slate-500 text-sm font-medium">{tournament?.status?.replace(/_/g, ' ')}</span>
             )}
-            <p className="text-slate-400 text-xs mt-1">Updated {lastUpdate.toLocaleTimeString()}</p>
+            <p className="text-slate-500 text-xs mt-1">Updated {lastUpdate.toLocaleTimeString()}</p>
           </div>
           {!embedded && (
             <button
@@ -291,13 +296,13 @@ export default function LiveScoreboard({
 
       {/* Progress bar */}
       {totalMatches > 0 && (
-        <div className="px-6 py-2.5 border-b border-slate-100 shrink-0">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
+        <div className="px-6 py-2.5 border-b border-slate-200 shrink-0">
+          <div className="flex items-center justify-between text-xs font-semibold text-slate-600 mb-1.5">
             <span>{finishedMatches} of {totalMatches} matches complete</span>
             <span>{pct}%</span>
           </div>
-          <div className="bg-slate-100 rounded-full h-1.5">
-            <div className="h-1.5 rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
+          <div className="bg-slate-200 rounded-full h-2">
+            <div className="h-2 rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
           </div>
         </div>
       )}
@@ -316,8 +321,11 @@ export default function LiveScoreboard({
       {hasMatches && (
         <div className="flex-1 flex gap-4 p-4 min-h-0 overflow-hidden">
           {/* Bracket — 60% */}
-          <div className="w-[60%] shrink-0 flex flex-col min-h-0 rounded-2xl border border-slate-200 bg-white overflow-hidden">
-            <h2 className="px-4 pt-3 pb-2 text-xs font-bold uppercase tracking-widest text-slate-400 shrink-0">Bracket</h2>
+          <div className="w-[60%] shrink-0 flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-sm">
+            <div className="px-4 pt-3 pb-2 shrink-0">
+              <h2 className="text-xs font-black uppercase tracking-widest text-slate-600">Bracket</h2>
+              <div className="h-1 w-10 rounded-full mt-1.5" style={{ background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
+            </div>
             <div className="flex-1 min-h-0 overflow-auto px-4 pb-4">
               {bracketMatches.length > 0 ? (
                 <BracketView
@@ -335,83 +343,124 @@ export default function LiveScoreboard({
 
           {/* Matches — 40% */}
           <div className="w-[40%] flex flex-col min-h-0 gap-4 overflow-hidden">
-            {/* Up next — the current match(es) plus everything queued behind them */}
-            <div className="flex flex-col min-h-0 rounded-2xl border border-slate-200 bg-white" style={{ flex: upcomingMatches.length > 0 ? '1 1 auto' : '0 0 auto' }}>
-              <h2 className="px-4 pt-3 pb-2 text-xs font-bold uppercase tracking-widest text-slate-400 shrink-0">Up Next</h2>
-              <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-3 space-y-2.5">
+            {/* On court + up next, grouped and color-coded so it's obvious at a glance */}
+            <div className="flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white shadow-sm" style={{ flex: upcomingMatches.length > 0 ? '1 1 auto' : '0 0 auto' }}>
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-3 pb-3 space-y-4">
                 {upcomingMatches.length === 0 ? (
                   <p className="text-slate-400 text-sm py-4 text-center">All matches complete 🎉</p>
-                ) : upcomingMatches.map((m) => {
-                  const isPlaying = m.status === 'playing';
-                  const isQueued = m.status === 'scheduled';
-                  return (
-                    <div
-                      key={m.id}
-                      className="rounded-xl border p-3"
-                      style={{
-                        borderColor: isPlaying ? primary : '#e2e8f0',
-                        backgroundColor: isPlaying ? `${primary}0d` : isQueued ? '#fff' : '#f8fafc',
-                        opacity: isQueued ? 0.7 : 1,
-                      }}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        {m.court_number ? (
-                          <span className="text-[11px] font-black uppercase tracking-widest px-2 py-0.5 rounded-lg" style={{ backgroundColor: primary, color: '#fff' }}>
-                            Court {m.court_number}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-slate-400">No court</span>
-                        )}
-                        <span className="text-[11px] text-slate-400">R{m.round_index + 1} · M{m.match_index + 1}</span>
-                      </div>
-                      <div className="space-y-1">
+                ) : (
+                  <>
+                    {onCourtMatches.length > 0 && (
+                      <div className="space-y-2.5">
                         <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: isPlaying ? primary : '#cbd5e1' }} />
-                          <span className="font-bold text-sm text-slate-900 truncate">{m.player1_name ?? 'TBD'}</span>
-                          {m.server_player_id && m.server_player_id === m.player1_id && (
-                            <span className="text-xs font-bold shrink-0" style={{ color: primary }}>🎾</span>
-                          )}
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: primary }} />
+                          <h2 className="text-xs font-black uppercase tracking-widest" style={{ color: primary }}>On Court</h2>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: isPlaying ? primary : '#cbd5e1' }} />
-                          <span className="font-bold text-sm text-slate-900 truncate">{m.player2_name ?? 'TBD'}</span>
-                          {m.server_player_id && m.server_player_id === m.player2_id && (
-                            <span className="text-xs font-bold shrink-0" style={{ color: primary }}>🎾</span>
-                          )}
-                        </div>
+                        {onCourtMatches.map((m) => {
+                          const isPlaying = m.status === 'playing';
+                          return (
+                            <div
+                              key={m.id}
+                              className="rounded-xl border-2 p-3 flex gap-3"
+                              style={{
+                                borderColor: primary,
+                                backgroundColor: isPlaying ? `${primary}17` : `${primary}0a`,
+                              }}
+                            >
+                              <div
+                                className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-black text-base text-white shadow"
+                                style={{ backgroundColor: primary }}
+                                title={m.court_number ? `Court ${m.court_number}` : 'No court assigned'}
+                              >
+                                {m.court_number ?? '–'}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-sm text-slate-900 truncate">{m.player1_name ?? 'TBD'}</span>
+                                    {m.server_player_id && m.server_player_id === m.player1_id && (
+                                      <span className="text-sm shrink-0">🎾</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-sm text-slate-900 truncate">{m.player2_name ?? 'TBD'}</span>
+                                    {m.server_player_id && m.server_player_id === m.player2_id && (
+                                      <span className="text-sm shrink-0">🎾</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center justify-between mt-2">
+                                  <span className="text-[11px] font-bold" style={{ color: primary }}>
+                                    {isPlaying ? '● Playing now' : m.status === 'court_assigned' ? 'Head to court →' : 'Warming up'}
+                                  </span>
+                                  <span className="text-[11px] text-slate-500 shrink-0">R{m.round_index + 1} · M{m.match_index + 1}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      {isPlaying && (
-                        <div className="mt-2 text-[11px] font-bold animate-pulse" style={{ color: primary }}>● Playing now</div>
-                      )}
-                      {m.status === 'court_assigned' && (
-                        <div className="mt-2 text-[11px] text-slate-400">Head to court →</div>
-                      )}
-                      {m.status === 'warmup' && (
-                        <div className="mt-2 text-[11px] text-slate-400">Warming up</div>
-                      )}
-                      {isQueued && (
-                        <div className="mt-2 text-[11px] text-slate-300">Up next</div>
-                      )}
-                    </div>
-                  );
-                })}
+                    )}
+
+                    {queuedMatches.length > 0 && (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: secondary }} />
+                          <h2 className="text-xs font-black uppercase tracking-widest" style={{ color: secondary }}>Up Next</h2>
+                        </div>
+                        {queuedMatches.map((m, i) => (
+                          <div
+                            key={m.id}
+                            className="rounded-xl border p-3 flex gap-3"
+                            style={{ borderColor: `${secondary}66`, backgroundColor: `${secondary}0d` }}
+                          >
+                            <div
+                              className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-black text-sm text-white"
+                              style={{ backgroundColor: secondary }}
+                              title={`#${i + 1} in the queue`}
+                            >
+                              #{i + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-sm text-slate-800 truncate">{m.player1_name ?? 'TBD'}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-sm text-slate-800 truncate">{m.player2_name ?? 'TBD'}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between mt-2">
+                                <span className="text-[11px] font-bold" style={{ color: secondary }}>Up next</span>
+                                <span className="text-[11px] text-slate-500 shrink-0">R{m.round_index + 1} · M{m.match_index + 1}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
             {/* Recent results */}
-            <div className="flex flex-col min-h-0 rounded-2xl border border-slate-200 bg-white flex-1">
-              <h2 className="px-4 pt-3 pb-2 text-xs font-bold uppercase tracking-widest text-slate-400 shrink-0">Recent Results</h2>
+            <div className="flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white flex-1 shadow-sm">
+              <div className="px-4 pt-3 pb-2 shrink-0">
+                <h2 className="text-xs font-black uppercase tracking-widest text-slate-600">Recent Results</h2>
+                <div className="h-1 w-10 rounded-full mt-1.5" style={{ background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
+              </div>
               <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-3 space-y-2">
                 {recentlyFinished.length === 0 ? (
                   <p className="text-slate-400 text-sm py-4 text-center">No results yet</p>
                 ) : recentlyFinished.map((m) => (
-                  <div key={m.id} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 border border-slate-100">
-                    <span className="text-[11px] text-slate-400 shrink-0">R{m.round_index + 1} · {m.court_number ? `Court ${m.court_number}` : `M${m.match_index + 1}`}</span>
+                  <div key={m.id} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 border border-slate-200">
+                    <span className="text-[11px] text-slate-500 shrink-0">R{m.round_index + 1} · {m.court_number ? `Court ${m.court_number}` : `M${m.match_index + 1}`}</span>
                     <div className="flex items-center gap-1.5 text-sm min-w-0 justify-end">
                       <span className="text-slate-400 line-through text-xs truncate">
                         {m.player1_name === m.winner_name ? m.player2_name : m.player1_name}
                       </span>
-                      <span className="text-slate-300 text-xs shrink-0">→</span>
+                      <span className="text-slate-400 text-xs shrink-0">→</span>
                       <span className="font-bold shrink-0" style={{ color: primary }}>{m.winner_name}</span>
                     </div>
                   </div>
@@ -423,7 +472,7 @@ export default function LiveScoreboard({
       )}
 
       {/* Footer */}
-      <div className="px-6 py-2 border-t border-slate-100 text-center text-xs text-slate-300 shrink-0">
+      <div className="px-6 py-2 border-t border-slate-200 text-center text-xs text-slate-400 shrink-0">
         One Point Bowl · Live Scoreboard · Updates automatically
       </div>
     </div>
