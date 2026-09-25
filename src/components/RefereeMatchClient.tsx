@@ -87,6 +87,12 @@ export default function RefereeMatchClient({
   }
 
   async function handleDeclareWinner(winnerId: string) {
+    // The confirm dialog closes (clearing `confirming`) as soon as this fires,
+    // re-exposing the "Wins" buttons underneath before the write resolves —
+    // without this guard a fast second tap re-opens the dialog and calls this
+    // again while the first call is still in flight, submitting the same
+    // match result (and its bracket-advancement writes) twice concurrently.
+    if (saving) return;
     setSaving(true);
     await onDeclareWinner(winnerId);
     setSaving(false);
@@ -352,7 +358,8 @@ export default function RefereeMatchClient({
                   <button
                     key={player.id}
                     onClick={() => setConfirming(player.id)}
-                    className="tap-target w-full rounded-2xl transition-all active:scale-95 font-black text-2xl tracking-tight"
+                    disabled={saving}
+                    className="tap-target w-full rounded-2xl transition-all active:scale-95 font-black text-2xl tracking-tight disabled:opacity-60"
                     style={{
                       background: 'linear-gradient(135deg, var(--tenant-primary), var(--tenant-secondary, var(--tenant-primary)))',
                       minHeight: '100px',

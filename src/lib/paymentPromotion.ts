@@ -91,6 +91,32 @@ export async function promotePendingRegistration(
 
   await admin.from('pending_registrations').delete().eq('id', pending.id);
 
+  // Mirrors the inline cap-close in /api/registrations (the free/offline-paid
+  // path): a paid signup can just as easily be the one that fills the cap,
+  // and this is the only place a paid registration turns into a real players
+  // row. Without this, a capped paid tournament's status never flips —
+  // create-intent keeps rejecting new signups once full, but the director's
+  // dashboard goes on reading "Registration Open" indefinitely.
+  const { data: capTournament } = await admin
+    .from('tournaments')
+    .select('settings, status')
+    .eq('id', pending.tournament_id)
+    .maybeSingle();
+  const cap = (capTournament?.settings as Record<string, unknown> | null)?.playerRegistrationCap as number | undefined;
+  if (cap && capTournament?.status === 'registration_open') {
+    const { count } = await admin
+      .from('players')
+      .select('id', { count: 'exact', head: true })
+      .eq('tournament_id', pending.tournament_id)
+      .neq('status', 'no_show_eliminated');
+    if ((count ?? 0) >= cap) {
+      await admin
+        .from('tournaments')
+        .update({ status: 'registration_closed', registration_close_reason: 'cap_reached' })
+        .eq('id', pending.tournament_id);
+    }
+  }
+
   // Fire-and-forget: this is the only path a real, paid registration is
   // created from, so it's the single place to send the "you're in and
   // charged" email — mirrors the same call /api/registrations makes for the

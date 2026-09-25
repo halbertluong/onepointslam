@@ -88,10 +88,17 @@ export async function POST(req: NextRequest) {
 
   if (event.type === 'payment_intent.payment_failed') {
     const pi = event.data.object;
+    // A PaymentIntent can be retried with a new payment method after a failed
+    // attempt, so `succeeded` and `payment_failed` can both fire for the same
+    // pi.id — guarded the same way as `succeeded` above so a `payment_failed`
+    // event delivered late (out of order, after the retry already succeeded
+    // and promoted this registrant) can't flip an already-paid player back to
+    // "failed" in the director's dashboard.
     const { error } = await admin
       .from('players')
       .update({ payment_status: 'failed' })
-      .eq('stripe_payment_intent_id', pi.id);
+      .eq('stripe_payment_intent_id', pi.id)
+      .neq('payment_status', 'paid');
     if (error) {
       console.error('[stripe-webhook] Failed to update payment_status failed:', error.message);
       return NextResponse.json({ error: 'DB update failed' }, { status: 500 });
@@ -111,10 +118,12 @@ export async function POST(req: NextRequest) {
 
   if (event.type === 'payment_intent.canceled') {
     const pi = event.data.object;
+    // Same out-of-order concern as payment_failed above.
     const { error } = await admin
       .from('players')
       .update({ payment_status: 'failed' })
-      .eq('stripe_payment_intent_id', pi.id);
+      .eq('stripe_payment_intent_id', pi.id)
+      .neq('payment_status', 'paid');
     if (error) {
       console.error('[stripe-webhook] Failed to update payment_status canceled:', error.message);
       return NextResponse.json({ error: 'DB update failed' }, { status: 500 });
