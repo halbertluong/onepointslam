@@ -14,7 +14,7 @@ import NotesPanel from '@/components/NotesPanel';
 import AssetStudio from '@/components/AssetStudio';
 import CouponCodesPanel from '@/components/CouponCodesPanel';
 import TournamentUrlCard from '@/components/TournamentUrlCard';
-import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount } from '@/lib/bracket';
+import { generateBracket, resolveAdvancement, matchUpdatesToColumns, actualWinnersRounds, getLosersRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 import { persistReversal } from '@/lib/tournamentWrites';
 import type { Tournament, Player, Match, PendingRegistration } from '@/types';
@@ -378,7 +378,7 @@ export default function TournamentAdminPage() {
     const wasAlreadyDecided = match.status === 'finalized' || match.status === 'walkover';
     const supabase = createClient();
     const loserId = winnerId === match.player1Id ? match.player2Id : match.player1Id;
-    const winnersRounds = getRoundsCount(tournament?.settings?.maxPlayers ?? 8);
+    const winnersRounds = actualWinnersRounds(matches);
     const advancement = resolveAdvancement(matches, match, winnerId, loserId ?? null, winnersRounds);
 
     for (const { matchId: mid, updates } of advancement) {
@@ -401,7 +401,7 @@ export default function TournamentAdminPage() {
    */
   async function handleReverseWinner(matchId: string) {
     setSaving(true);
-    const winnersRounds = getRoundsCount(tournament?.settings?.maxPlayers ?? 8);
+    const winnersRounds = actualWinnersRounds(matches);
     const { error } = await persistReversal(createClient(), matches, matchId, winnersRounds);
     setSaving(false);
     if (error) {
@@ -623,7 +623,6 @@ export default function TournamentAdminPage() {
               matches={matches}
               bracketGenerated={bracketGenerated}
               tournamentId={id}
-              maxPlayers={tournament.settings?.maxPlayers ?? 8}
               entranceFee={tournament.settings?.ticketPriceForFundraiser ?? 0}
               pendingRegistrations={pendingRegistrations}
               onViewPayment={handleViewPayment}
@@ -678,9 +677,15 @@ export default function TournamentAdminPage() {
 
       {/* Bracket tab */}
       {tab === 'bracket' && (() => {
-        const maxPlayers = tournament.settings?.maxPlayers ?? 32;
         const format = tournament.settings?.bracketFormat ?? 'single_elimination';
         const mainMatches = matches.filter((m) => m.bracket === 'main');
+        // The real generated draw size, not the configured setting: a field
+        // that outgrew settings.maxPlayers gets a bigger bracket at
+        // generation time (see generateBracket / actualWinnersRounds), and
+        // trusting the stale setting here would render one column too few —
+        // silently dropping the later rounds' matches from the view.
+        const round0Count = mainMatches.filter((m) => m.roundIndex === 0).length;
+        const maxPlayers = round0Count > 0 ? round0Count * 2 : (tournament.settings?.maxPlayers ?? 32);
         const sharedProps = {
           players,
           tournamentId: id,

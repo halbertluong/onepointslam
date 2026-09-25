@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { registrationIsOpen, verifyDirector } from '@/lib/registrationAccess';
-import { couponsEnabled, releasePendingCoupon } from '@/lib/coupons';
+import { couponsEnabled } from '@/lib/coupons';
 
 // Stripe requires a minimum charge (~$0.50 USD) for a PaymentIntent. A coupon
 // that would otherwise zero out (or nearly zero out) the total still goes
@@ -80,19 +80,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'This email is already registered for this tournament.' }, { status: 409 });
   }
 
-  // Cap counts seated players and payments already in flight together, so a
-  // full tournament can't hand out more payment intents than it has room for
-  // — closing the gap where someone used to be able to pay first and only
-  // then discover, at the old insert-after-payment step, that the cap beat
-  // them to it. A retrying payer's own still-open attempt doesn't count
-  // against themselves.
+  // A cheap early check only — not what actually enforces the cap (that's the
+  // atomic reserve_capacity_for_payment call below, right before the write).
+  // This just fast-fails an obviously-full tournament before spending a
+  // coupon redemption and a Stripe API call on a request that's going to be
+  // rejected anyway; it does nothing to close the race between two people
+  // registering for the same last spot.
   const playerCap = (settings?.playerRegistrationCap as number) ?? null;
   if (playerCap !== null) {
     const [{ count: seated }, { count: inFlight }] = await Promise.all([
       db.from('players').select('id', { count: 'exact', head: true })
         .eq('tournament_id', tournamentId).neq('status', 'no_show_eliminated'),
+      // `is null` rather than `not in (payment_failed, canceled)`: in
+      // Postgres, `col NOT IN (...)` excludes NULL rows too (NULL comparisons
+      // are never true), which would undercount every still-genuinely-in-
+      // flight reservation. A row whose last known Stripe status is a
+      // terminal failure isn't in flight any more either way.
       db.from('pending_registrations').select('id', { count: 'exact', head: true })
-        .eq('tournament_id', tournamentId).neq('email', email),
+        .eq('tournament_id', tournamentId).neq('email', email)
+        .is('last_stripe_status', null),
     ]);
     if ((seated ?? 0) + (inFlight ?? 0) >= playerCap) {
       return NextResponse.json({ error: 'Registration is full' }, { status: 409 });
@@ -158,54 +164,57 @@ export async function POST(req: NextRequest) {
   // path is documented.
   if (result.mock) return NextResponse.json({ ...result, amountCents: totalCents, discountCents });
 
-  // A retry by the same person reuses this row (unique on tournament+email).
-  // If an earlier attempt is still sitting here pointing at a different
-  // PaymentIntent, cancel that one first — otherwise an abandoned first
-  // attempt could still be paid later (a saved card, a second tab) and
-  // double-charge them for the same entry.
-  const { data: existingPending } = await db
-    .from('pending_registrations').select('id, stripe_payment_intent_id')
-    .eq('tournament_id', tournamentId).eq('email', email).maybeSingle();
-  if (existingPending && existingPending.stripe_payment_intent_id !== result.paymentIntentId) {
-    try {
-      const stripe = await createStripeClient(process.env.STRIPE_SECRET_KEY!);
-      await stripe.paymentIntents.cancel(existingPending.stripe_payment_intent_id);
-    } catch {
-      // Already paid, already canceled, or too far along to cancel — none of
-      // that should block writing the new reservation below.
-    }
-    // That abandoned attempt may have reserved a coupon use of its own —
-    // it's being replaced by this new reservation, so give it back.
-    await releasePendingCoupon(db, { id: existingPending.id });
-  }
+  // The real cap enforcement (see migration 034's reserve_capacity_for_payment):
+  // checks capacity and writes the reservation atomically, so two requests
+  // racing for the same tournament's last open spot can't both pass the count
+  // and both write a row — one blocks on the other's row lock and re-counts
+  // after it commits. A retry by the same person reuses this row (unique on
+  // tournament+email); the function returns what it OVERWROTE so an earlier
+  // attempt's PaymentIntent (if it's pointing somewhere different — a saved
+  // card, a second tab) and reserved coupon use can still be cleaned up below,
+  // exactly as they were before this was a single atomic call.
+  const { data: rows, error: reserveErr } = await db.rpc('reserve_capacity_for_payment', {
+    p_tournament_id: tournamentId,
+    p_full_name: fullName,
+    p_email: email,
+    p_gender: body.gender || null,
+    p_ntrp_rating: body.ntrp ? parseFloat(body.ntrp) : null,
+    p_utr_rating: body.utr ? parseFloat(body.utr) : null,
+    p_age: body.age ? parseInt(body.age) : null,
+    p_user_id: user?.id ?? null,
+    p_stripe_payment_intent_id: result.paymentIntentId,
+    p_coupon_id: couponId ?? null,
+    p_discount_cents: couponId ? discountCents : null,
+  });
 
-  const { error: upsertErr } = await db.from('pending_registrations').upsert({
-    tournament_id: tournamentId,
-    full_name: fullName,
-    email,
-    gender: body.gender || null,
-    ntrp_rating: body.ntrp ? parseFloat(body.ntrp) : null,
-    utr_rating: body.utr ? parseFloat(body.utr) : null,
-    age: body.age ? parseInt(body.age) : null,
-    stripe_payment_intent_id: result.paymentIntentId,
-    user_id: user?.id ?? null,
-    last_stripe_status: null,
-    coupon_id: couponId ?? null,
-    discount_cents: couponId ? discountCents : null,
-    coupon_released: false,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'tournament_id,email' });
-
-  if (upsertErr) {
-    // The reservation didn't stick — cancel the intent rather than leave a
-    // payable PaymentIntent with nothing behind it if the payer proceeds anyway.
+  if (reserveErr) {
+    // The reservation didn't stick (cap filled in the meantime, or a genuine
+    // failure) — cancel the intent rather than leave a payable PaymentIntent
+    // with nothing behind it if the payer proceeds anyway.
     try {
       const stripe = await createStripeClient(process.env.STRIPE_SECRET_KEY!);
       await stripe.paymentIntents.cancel(result.paymentIntentId);
     } catch { /* best effort */ }
     if (couponId) await db.rpc('release_coupon', { p_coupon_id: couponId });
-    console.error('[create-intent] Failed to reserve pending registration:', upsertErr.message);
+    if (reserveErr.message?.includes('CAP_REACHED')) {
+      return NextResponse.json({ error: 'Registration is full' }, { status: 409 });
+    }
+    console.error('[create-intent] Failed to reserve pending registration:', reserveErr.message);
     return NextResponse.json({ error: 'Could not start registration. Please try again.' }, { status: 500 });
+  }
+
+  const prior = rows?.[0] as { prior_stripe_payment_intent_id: string | null; prior_coupon_id: string | null } | undefined;
+  if (prior?.prior_stripe_payment_intent_id && prior.prior_stripe_payment_intent_id !== result.paymentIntentId) {
+    try {
+      const stripe = await createStripeClient(process.env.STRIPE_SECRET_KEY!);
+      await stripe.paymentIntents.cancel(prior.prior_stripe_payment_intent_id);
+    } catch {
+      // Already paid, already canceled, or too far along to cancel — none of
+      // that should matter now; the new reservation is already written.
+    }
+    // That earlier attempt may have reserved a coupon use of its own — it's
+    // been replaced by this new reservation, so give it back.
+    if (prior.prior_coupon_id) await db.rpc('release_coupon', { p_coupon_id: prior.prior_coupon_id });
   }
 
   return NextResponse.json({ ...result, amountCents: totalCents, discountCents });

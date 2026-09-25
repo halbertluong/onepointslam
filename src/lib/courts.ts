@@ -6,6 +6,14 @@ import type { Match } from '@/types';
  * the next queued, ready match (both players decided, no court assigned
  * yet) so at most `numberOfCourts` matches are ever in play at once, instead
  * of pre-assigning every first-round match up front.
+ *
+ * Goes through the claim_next_court() RPC (see migration 034) rather than a
+ * select-then-update from here: two matches finishing on different courts at
+ * the same instant could otherwise both read the same "next" match before
+ * either write commits, and the second update would silently overwrite the
+ * first — one freed court loses the race and sits idle while the match that
+ * should have gone to it flips to the other court instead. The RPC locks the
+ * candidate row as part of selecting it, so that can't happen.
  */
 export async function releaseCourtToNextMatch(
   supabase: SupabaseClient,
@@ -13,26 +21,7 @@ export async function releaseCourtToNextMatch(
   freedCourtNumber: number | null | undefined,
 ): Promise<void> {
   if (!freedCourtNumber) return;
-
-  const { data: next } = await supabase
-    .from('matches')
-    .select('id')
-    .eq('tournament_id', tournamentId)
-    .eq('status', 'scheduled')
-    .is('court_number', null)
-    .not('player1_id', 'is', null)
-    .not('player2_id', 'is', null)
-    .order('round_index', { ascending: true })
-    .order('match_index', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (next) {
-    await supabase
-      .from('matches')
-      .update({ court_number: freedCourtNumber, status: 'court_assigned' })
-      .eq('id', next.id);
-  }
+  await supabase.rpc('claim_next_court', { p_tournament_id: tournamentId, p_court_number: freedCourtNumber });
 }
 
 /**

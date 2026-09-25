@@ -8,7 +8,7 @@ import SoccerMatchClient from '@/components/SoccerMatchClient';
 import BasketballMatchClient from '@/components/BasketballMatchClient';
 import type { Match, Player, Tournament, KickOutcome, PossessionOutcome } from '@/types';
 import { mapPlayer } from '@/types';
-import { determineOneGoalBowlWinner, determineOnePointBowlWinner, resolveAdvancement, matchUpdatesToColumns, getRoundsCount } from '@/lib/bracket';
+import { determineOneGoalBowlWinner, determineOnePointBowlWinner, resolveAdvancement, matchUpdatesToColumns, actualWinnersRounds } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 
 export default function RefereeMatchPage() {
@@ -90,17 +90,28 @@ export default function RefereeMatchPage() {
 
   async function handleServerDetermined(tossWinnerId: string | null, serverPlayerId: string) {
     const supabase = createClient();
-    await supabase
+    const { error } = await supabase
       .from('matches')
       .update({ toss_winner_id: tossWinnerId, server_player_id: serverPlayerId })
       .eq('id', matchId);
+    // Non-fatal to scoring (the referee already knows who's serving and can
+    // keep going from memory), but worth surfacing — otherwise a failed write
+    // here just quietly leaves no server/toss badge for anyone checking the
+    // scoreboard or bracket later, with nothing telling the referee that
+    // happened.
+    if (error) setSaveError(`Could not record the server: ${error.message}`);
   }
 
   async function applyAdvancement(winnerId: string, extraFields?: Record<string, unknown>): Promise<boolean> {
     if (!match || !tournament) return false;
+    // Belt-and-suspenders against a double submission: RefereeMatchClient
+    // already guards its own re-entry, but this also blocks a stale second
+    // call (e.g. a slow first write that resolves after the caller already
+    // moved on) from re-advancing a match that's already been decided.
+    if (match.status === 'finalized' || match.status === 'walkover') return false;
     const supabase = createClient();
     const loserId = winnerId === player1?.id ? (player2?.id ?? null) : (player1?.id ?? null);
-    const winnersRounds = getRoundsCount(tournament.settings?.maxPlayers ?? 8);
+    const winnersRounds = actualWinnersRounds(allMatches);
     const advancement = resolveAdvancement(allMatches, match, winnerId, loserId, winnersRounds);
     const [first, ...rest] = advancement;
     const { error } = await supabase
@@ -108,11 +119,30 @@ export default function RefereeMatchPage() {
       .update({ ...matchUpdatesToColumns(first.updates), ...extraFields })
       .eq('id', first.matchId);
     if (error) { setSaveError(`Could not save result: ${error.message}`); return false; }
-    setSaveError('');
+    // Reflected locally right away — before the downstream writes below, which
+    // can still fail — so the status guard above catches a second call
+    // instead of re-resolving advancement from stale, already-superseded data.
+    setMatch({ ...match, ...(first.updates as Partial<Match>) });
+
+    const failures: string[] = [];
     for (const { matchId: id, updates } of rest) {
-      await supabase.from('matches').update(matchUpdatesToColumns(updates)).eq('id', id);
+      const { error: stepError } = await supabase.from('matches').update(matchUpdatesToColumns(updates)).eq('id', id);
+      if (stepError) failures.push(stepError.message);
     }
     await releaseCourtToNextMatch(supabase, match.tournamentId, match.courtNumber);
+
+    if (failures.length > 0) {
+      // The current match is finalized either way — surface this as a bracket
+      // problem the director needs to fix, not a failed submission the
+      // referee should retry (retrying would resolveAdvancement again from a
+      // match that's already finalized and get blocked by the guard above).
+      setSaveError(
+        `Match saved, but ${failures.length} downstream bracket update${failures.length === 1 ? '' : 's'} failed — ` +
+        `tell the tournament director to check the bracket. (${failures[0]})`,
+      );
+      return false;
+    }
+    setSaveError('');
     return true;
   }
 

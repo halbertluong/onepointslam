@@ -81,7 +81,10 @@ export async function POST(req: NextRequest) {
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
-  // Duplicate check (before cap check — returning registrant gets accurate error)
+  // Duplicate check (before the insert — returning registrant gets an
+  // accurate, friendly error instead of a raw constraint-violation message).
+  // The DB's players_tournament_email_unique constraint is still the real
+  // backstop against two concurrent submissions for the same email.
   const { data: existing } = await admin
     .from('players')
     .select('id')
@@ -90,37 +93,32 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   if (existing) return NextResponse.json({ error: 'This email is already registered for this tournament.' }, { status: 409 });
 
-  // Explicit cap check (service-role bypasses RLS)
+  // Cap check and insert happen atomically in one DB statement (see migration
+  // 034's register_player_if_room) — a plain "count, then insert" from here
+  // would let two concurrent registrations for the tournament's last open
+  // spot both pass the count check before either write lands, seating one
+  // over the cap.
   const playerCap = (settings?.playerRegistrationCap as number) ?? null;
-  if (playerCap !== null) {
-    const { count } = await admin
-      .from('players')
-      .select('id', { count: 'exact', head: true })
-      .eq('tournament_id', tournamentId)
-      .neq('status', 'no_show_eliminated');
-    if ((count ?? 0) >= playerCap) {
-      return NextResponse.json({ error: 'Registration is full' }, { status: 409 });
-    }
-  }
-
-  const { data: inserted, error: insertErr } = await admin.from('players').insert({
-    tournament_id: tournamentId,
-    full_name: fullName,
-    email,
-    gender: gender || null,
-    ntrp_rating: ntrp ? parseFloat(ntrp) : null,
-    utr_rating: utr ? parseFloat(utr) : null,
-    age: age ? parseInt(age) : null,
-    status: 'registered',
-    user_id: user?.id ?? null,
-    payment_status: paymentStatus,
-    stripe_payment_intent_id: null,
-  }).select('id').single();
+  const { data: rows, error: insertErr } = await admin.rpc('register_player_if_room', {
+    p_tournament_id: tournamentId,
+    p_full_name: fullName,
+    p_email: email,
+    p_gender: gender || null,
+    p_ntrp_rating: ntrp ? parseFloat(ntrp) : null,
+    p_utr_rating: utr ? parseFloat(utr) : null,
+    p_age: age ? parseInt(age) : null,
+    p_user_id: user?.id ?? null,
+    p_payment_status: paymentStatus,
+  });
 
   if (insertErr) {
+    if (insertErr.message?.includes('CAP_REACHED')) {
+      return NextResponse.json({ error: 'Registration is full' }, { status: 409 });
+    }
     if (insertErr.code === '23505') return NextResponse.json({ error: 'This email is already registered.' }, { status: 409 });
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
+  const inserted = rows?.[0];
 
   // Fire-and-forget: send confirmation email
   fetch(`${getSiteUrl()}/api/email/registration-confirm`, {

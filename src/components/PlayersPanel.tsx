@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { saveSeedRatings, withdrawPlayer } from '@/lib/tournamentWrites';
-import { getRoundsCount } from '@/lib/bracket';
+import { actualWinnersRounds } from '@/lib/bracket';
 import AwaitingPaymentTable from '@/components/AwaitingPaymentTable';
 import PlayerDetailModal from '@/components/PlayerDetailModal';
 import type { Match, PendingRegistration, Player } from '@/types';
@@ -59,8 +59,6 @@ export default function PlayersPanel({
   matches,
   bracketGenerated,
   tournamentId,
-  /** Draw size, for computing how many rounds a withdrawal's walkover needs to advance through. */
-  maxPlayers = 8,
   /** The tournament's entry fee — when 0, this is a free event and there's
    *  nothing to reconcile, so the Payment column is hidden entirely. */
   entranceFee = 0,
@@ -73,7 +71,6 @@ export default function PlayersPanel({
   matches: Match[];
   bracketGenerated: boolean;
   tournamentId: string;
-  maxPlayers?: number;
   entranceFee?: number;
   /** Registrations reserved before payment finished — see AwaitingPaymentTable. */
   pendingRegistrations?: PendingRegistration[];
@@ -134,7 +131,7 @@ export default function PlayersPanel({
       'their opponent will be awarded a walkover.',
     )) return;
     setWithdrawingId(p.id);
-    const { error } = await withdrawPlayer(createClient(), matches, tournamentId, p.id, getRoundsCount(maxPlayers));
+    const { error } = await withdrawPlayer(createClient(), matches, tournamentId, p.id, actualWinnersRounds(matches));
     setWithdrawingId(null);
     if (error) { setErr(`Could not withdraw ${p.fullName}: ${error}`); return; }
     setErr('');

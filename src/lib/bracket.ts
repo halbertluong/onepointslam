@@ -562,6 +562,27 @@ export function getLosersRoundsCount(maxPlayers: number): number {
   return 2 * (getRoundsCount(maxPlayers) - 1);
 }
 
+/**
+ * The winners-bracket round count actually built into a generated draw, read
+ * from its real round-0 main-bracket match count rather than trusted from
+ * settings.maxPlayers.
+ *
+ * generateBracket floors the draw size at settings.maxPlayers but happily
+ * grows past it — "never smaller than the field actually needs" — so a
+ * field that outgrew the configured draw size (more entrants than the
+ * director's Draw Size setting, or an already-power-of-2 setting like 32
+ * with a 33rd late addition) gets a bigger bracket than settings.maxPlayers
+ * implies. resolveAdvancement/reverseWinner need the real round count for
+ * double-elimination's winners-bracket-final / grand-final / losers-bracket
+ * routing, or that routing miscounts which round is really the WB final —
+ * see wbLoserDestination, which silently drops losers past the round it
+ * believes is the cutoff. Returns 0 for an empty draw (nothing generated yet).
+ */
+export function actualWinnersRounds(matches: Match[]): number {
+  const round0Count = matches.filter((m) => m.bracket === 'main' && m.roundIndex === 0).length;
+  return round0Count > 0 ? getRoundsCount(round0Count * 2) : 0;
+}
+
 /** Translates a partial Match (camelCase) into the matches table's snake_case columns, for persisting `resolveAdvancement` results. */
 export function matchUpdatesToColumns(updates: Partial<Match>): Record<string, unknown> {
   const out: Record<string, unknown> = {};

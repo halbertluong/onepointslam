@@ -530,6 +530,14 @@ export default function BracketView({
   useEffect(() => {
     if (!liveUpdates || !tournamentId) return;
 
+    // If the effect is cleaned up (deps changed, unmounted) before the dynamic
+    // import + subscribe below finishes, there'd be no channel yet for the
+    // returned cleanup to remove — it would just no-op, and the channel that
+    // finishes subscribing moments later would never get torn down. Fast
+    // tab-switching (the dashboard mounts/unmounts this per tab) could
+    // accumulate orphaned realtime subscriptions over a long event day. This
+    // flag lets `setup` itself remove the channel if that race happens.
+    let cancelled = false;
     let cleanup: (() => void) | undefined;
     const setup = async () => {
       const { createClient } = await import('@/lib/supabase/browser');
@@ -553,11 +561,12 @@ export default function BracketView({
           },
         )
         .subscribe();
+      if (cancelled) { supabase.removeChannel(channel); return; }
       return () => supabase.removeChannel(channel);
     };
 
     setup().then((fn) => { cleanup = fn; });
-    return () => { cleanup?.(); };
+    return () => { cancelled = true; cleanup?.(); };
   }, [liveUpdates, tournamentId]);
 
   const handleDrop = useCallback((to: { matchId: string; slot: 'p1' | 'p2' }) => {
