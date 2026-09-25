@@ -49,7 +49,6 @@ function toPlayerType(p: Record<string, unknown>): Player {
     fullName: (p.full_name ?? '') as string,
     email: (p.email ?? '') as string,
     seedRating: p.seed_rating as number | undefined,
-    skillTier: p.skill_tier as string | undefined,
     gender: p.gender as string | undefined,
     ntrpRating: p.ntrp_rating as number | undefined,
     utrRating: p.utr_rating as number | undefined,

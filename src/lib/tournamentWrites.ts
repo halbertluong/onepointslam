@@ -80,13 +80,16 @@ export async function persistReversal(
   return {};
 }
 
-/** Update a single player's self-reported skill tier, e.g. after a director re-assesses them. */
-export async function updatePlayerTier(
+/** Fix a registrant's name or ratings, e.g. after a typo or a re-assessment. */
+export async function updatePlayerInfo(
   supabase: SupabaseClient,
   playerId: string,
-  tier: string | null,
+  info: { fullName: string; ntrpRating: number | null; utrRating: number | null },
 ): Promise<WriteResult> {
-  const { error } = await supabase.from('players').update({ skill_tier: tier }).eq('id', playerId);
+  const { error } = await supabase
+    .from('players')
+    .update({ full_name: info.fullName, ntrp_rating: info.ntrpRating, utr_rating: info.utrRating })
+    .eq('id', playerId);
   return error ? { error: error.message } : {};
 }
 

@@ -82,7 +82,7 @@ export default async function RefereeQueuePage() {
   const { data: players } = playerIds.length > 0
     ? await supabase
         .from('players')
-        .select('id, full_name, ntrp_rating, utr_rating, seed_rating, gender, age, skill_tier, tournament_id, email, status')
+        .select('id, full_name, ntrp_rating, utr_rating, seed_rating, gender, age, tournament_id, email, status')
         .in('id', playerIds)
     : { data: [] };
 

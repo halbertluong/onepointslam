@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { formatCurrency } from '@/lib/pricing';
 
-export const SKILL_TIERS = ['Beginner', 'Intermediate', 'Advanced'];
 const GENDERS = [
   { value: 'male', label: '♂ Male' },
   { value: 'female', label: '♀ Female' },
@@ -18,7 +17,6 @@ export interface PlayerFormData {
   ntrp: string;
   utr: string;
   age: string;
-  skillTier: string;
   /** The coupon code applied and confirmed valid, if any — carried through to
    *  create-intent, which redeems and prices it server-side. */
   couponCode?: string;
@@ -92,7 +90,6 @@ export default function PlayerRegistrationForm({
   const [ntrp, setNtrp] = useState('');
   const [utr, setUtr] = useState('');
   const [age, setAge] = useState('');
-  const [skillTier, setSkillTier] = useState('Intermediate');
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -145,7 +142,7 @@ export default function PlayerRegistrationForm({
     e.preventDefault();
     setSubmitting(true);
     setFormError('');
-    const result = await onSubmit({ fullName, email, gender, ntrp, utr, age, skillTier, couponCode: couponApplied?.code });
+    const result = await onSubmit({ fullName, email, gender, ntrp, utr, age, couponCode: couponApplied?.code });
     if (result?.error) {
       setFormError(result.error);
       setSubmitting(false);
@@ -309,33 +306,6 @@ export default function PlayerRegistrationForm({
                   }
                 >
                   {g.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Skill Level
-            </label>
-            <div className="flex gap-2">
-              {SKILL_TIERS.map((tier) => (
-                <button
-                  key={tier}
-                  type="button"
-                  onClick={() => setSkillTier(tier)}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                    skillTier === tier
-                      ? 'text-white border-transparent'
-                      : 'border-slate-200 text-slate-500 bg-white hover:bg-slate-50'
-                  }`}
-                  style={
-                    skillTier === tier
-                      ? { backgroundColor: 'var(--tenant-primary)', borderColor: 'var(--tenant-primary)' }
-                      : {}
-                  }
-                >
-                  {tier}
                 </button>
               ))}
             </div>
