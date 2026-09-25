@@ -137,3 +137,69 @@ input:focus, select:focus, textarea:focus {
   border-color: #e2e8f0;
   opacity: 0.5;
 }
+
+/* ── "Up next" call-out + result/toss/serve animations ─────────────────────
+ * Shared by the bracket view's own highlight ring and the live scoreboard's
+ * match cards, so a spectator sees the same tenant-colored cue in both
+ * places. Every animation is skipped under prefers-reduced-motion, falling
+ * back to the plain static state it settles into. */
+.bracket-match-highlight {
+  border-color: var(--tenant-primary) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tenant-primary) 30%, transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .bracket-match-highlight {
+    animation: highlight-pulse 2s ease-in-out infinite;
+  }
+}
+
+@keyframes highlight-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--tenant-primary) 30%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--tenant-primary) 15%, transparent); }
+}
+
+.court-badge {
+  background-color: var(--tenant-primary);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .court-badge {
+    animation: badge-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
+  .toss-badge {
+    display: inline-block;
+    animation: badge-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
+  .serve-badge {
+    display: inline-block;
+    animation: badge-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both, serve-bounce 1s ease-in-out 0.35s infinite;
+  }
+
+  .win-badge {
+    display: inline-block;
+    animation: badge-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
+  .win-row {
+    animation: win-flash 1.2s ease-out both;
+  }
+}
+
+@keyframes badge-pop {
+  0% { transform: scale(0) rotate(-15deg); opacity: 0; }
+  60% { transform: scale(1.35) rotate(6deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes serve-bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2px) scale(1.12); }
+}
+
+@keyframes win-flash {
+  0% { background-color: color-mix(in srgb, #10b981 45%, transparent); }
+  100% { background-color: #ecfdf5; }
+}

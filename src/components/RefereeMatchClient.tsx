@@ -106,7 +106,13 @@ export default function RefereeMatchClient({
           </p>
           <p className="text-sm font-bold text-white/70">{tournamentName}</p>
         </div>
-        <div className="w-12" />
+        <div className="min-w-12 flex justify-end">
+          {match.courtNumber ? (
+            <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-white/10 text-white/60 whitespace-nowrap">
+              Court {match.courtNumber}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       <div className="flex-1 flex flex-col px-4 py-6 max-w-lg mx-auto w-full space-y-6">

@@ -6,7 +6,7 @@ import BracketPanel from '@/components/BracketPanel';
 import type { Player } from '@/types';
 import { mapMatch } from '@/types';
 import { getLosersRoundsCount } from '@/lib/bracket';
-import { MATCH_STATUS_ORDER, MATCH_STATUS_LABEL } from '@/lib/matchStatus';
+import { MATCH_STATUS_LABEL } from '@/lib/matchStatus';
 
 interface MatchRow {
   id: string;
@@ -62,8 +62,8 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
 
   const tournamentMap = Object.fromEntries(tournaments.map((t) => [t.id, t]));
 
-  const activeMatches = matches.sort((a, b) =>
-    (MATCH_STATUS_ORDER[a.status] ?? 9) - (MATCH_STATUS_ORDER[b.status] ?? 9)
+  const activeMatches = [...matches].sort((a, b) =>
+    a.round_index - b.round_index || a.match_index - b.match_index
   );
 
   const grouped = activeMatches.reduce<Record<string, MatchRow[]>>((acc, m) => {
