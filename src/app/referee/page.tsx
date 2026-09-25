@@ -18,9 +18,11 @@ export default async function RefereeQueuePage() {
 
   // Super admins see every tenant, demo included — they need the demo tenant
   // for QA/testing. Everyone else only sees their assigned non-demo tenants,
-  // so a referee accidentally assigned to the demo tenant (or a leftover demo
-  // tournament sitting in a live-looking status) never gets mistaken for the
-  // real draw.
+  // so a referee accidentally assigned to both a real and the demo tenant (or
+  // a leftover demo tournament sitting in a live-looking status) never gets
+  // mistaken for the real draw. An account assigned ONLY to demo tenants is
+  // itself a QA/test account, though — excluding demo there would leave it
+  // with nothing to see, so it keeps its demo access.
   let allowedTenantIds: string[] | null = null;
 
   if (!isSuperAdmin) {
@@ -29,7 +31,8 @@ export default async function RefereeQueuePage() {
       .select('id')
       .eq('is_demo', false);
     const nonDemoTenantIds = new Set((nonDemoTenants ?? []).map((t) => t.id));
-    allowedTenantIds = tenantIds.filter((id) => nonDemoTenantIds.has(id));
+    const nonDemoAssigned = tenantIds.filter((id) => nonDemoTenantIds.has(id));
+    allowedTenantIds = nonDemoAssigned.length > 0 ? nonDemoAssigned : tenantIds;
 
     if (allowedTenantIds.length === 0) {
       return <EmptyQueue reason={tenantIds.length > 0
