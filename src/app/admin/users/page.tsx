@@ -54,6 +54,7 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('tenant');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [tab, setTab] = useState<'platform' | 'players'>('platform');
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -156,10 +157,14 @@ export default function AdminUsersPage() {
 
   const ROLE_ORDER: Record<string, number> = { super_admin: 0, tenant_admin: 1, referee: 2, player: 3 };
 
+  const platformUsers = useMemo(() => users.filter((u) => u.role !== 'player'), [users]);
+  const playerUsers = useMemo(() => users.filter((u) => u.role === 'player'), [users]);
+  const tabUsers = tab === 'platform' ? platformUsers : playerUsers;
+
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
     const result = q
-      ? users.filter((u) => {
+      ? tabUsers.filter((u) => {
           const tName = tenantNames(u.assigned_tenant_ids).toLowerCase();
           return (
             u.email.toLowerCase().includes(q) ||
@@ -167,7 +172,7 @@ export default function AdminUsersPage() {
             ROLE_LABELS[u.role]?.toLowerCase().includes(q)
           );
         })
-      : [...users];
+      : [...tabUsers];
 
     result.sort((a, b) => {
       let cmp = 0;
@@ -185,7 +190,7 @@ export default function AdminUsersPage() {
 
     return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [users, tenants, search, sortKey, sortDir]);
+  }, [tabUsers, tenants, search, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -222,12 +227,34 @@ export default function AdminUsersPage() {
         <p className={`text-sm rounded-xl p-3 ${msgIsError ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{msg}</p>
       )}
 
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-slate-200">
+        {([
+          { key: 'platform' as const, label: 'Platform Users', count: platformUsers.length },
+          { key: 'players' as const, label: 'Players / Spectators', count: playerUsers.length },
+        ]).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2.5 text-sm font-bold border-b-2 -mb-px transition-colors ${
+              tab === t.key
+                ? 'border-slate-900 text-slate-900'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            {t.label} ({t.count})
+          </button>
+        ))}
+      </div>
+
       {/* Search + sort */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="px-4 py-4 border-b border-slate-100 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-slate-800">All Platform Users ({users.length})</h2>
-            {filteredUsers.length !== users.length && (
+            <h2 className="font-bold text-slate-800">
+              {tab === 'platform' ? 'Platform Users' : 'Players / Spectators'} ({tabUsers.length})
+            </h2>
+            {filteredUsers.length !== tabUsers.length && (
               <span className="text-xs text-slate-400">{filteredUsers.length} shown</span>
             )}
           </div>
