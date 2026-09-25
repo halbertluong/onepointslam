@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import type { Match, Player } from '@/types';
 import { mapMatch } from '@/types';
 import { getRoundName, getRoundsCount } from '@/lib/bracket';
+import { CoinTossIcon } from '@/components/icons/CoinTossIcon';
 
 // ── Layout constants ───────────────────────────────────────────────────────────
 const CARD_H  = 80;  // px — height of one match card (two player rows)
@@ -82,7 +83,7 @@ function hideGhost() {
 // ── Player slot ───────────────────────────────────────────────────────────────
 function PlayerSlot({
   id, players, isWinner, isBye, matchId, slot, isSource, onDragStart, onDrop, editable, onSetWinner,
-  wonToss, isServer, reserveRightGutter,
+  wonToss, isServer, reserveRightGutter, reserveLeftGutter,
 }: {
   id: string | null | undefined;
   players: PlayerIndex;
@@ -103,6 +104,8 @@ function PlayerSlot({
   isServer?: boolean;
   /** Leave room on the right for the card's overlaid control (undo / edit hint). */
   reserveRightGutter?: boolean;
+  /** Leave room on the left for the card's court badge. */
+  reserveLeftGutter?: boolean;
 }) {
   const name = getPlayerName(id, players, isBye);
   const p    = id ? players.get(id) ?? null : null;
@@ -148,7 +151,8 @@ function PlayerSlot({
       style={{ height: CARD_H / 2 }}
       className={[
         'w-full flex items-center justify-between gap-1 border-b border-slate-100 overflow-hidden transition-colors select-none text-left',
-        reserveRightGutter ? 'pl-3 pr-8' : 'px-3',
+        reserveLeftGutter ? 'pl-8' : 'pl-3',
+        reserveRightGutter ? 'pr-8' : 'pr-3',
         isWinner ? 'bg-emerald-50 win-row' : '',
         isSource  ? 'opacity-40 bg-blue-50' : '',
         isDraggable ? 'cursor-grab active:cursor-grabbing hover:bg-slate-50' : '',
@@ -171,7 +175,7 @@ function PlayerSlot({
         )}
       </div>
       <span className="flex items-center gap-0.5 shrink-0">
-        {wonToss && <span key="toss" className="toss-badge text-sm leading-none" title="Won the coin toss">🪙</span>}
+        {wonToss && <span key="toss" className="toss-badge leading-none" title="Won the coin toss"><CoinTossIcon /></span>}
         {isServer && <span key="serve" className="serve-badge text-sm leading-none" title="Served">🎾</span>}
         {isWinner && <span key="win" className="win-badge text-emerald-500 text-xs font-black">WIN</span>}
         {/*
@@ -252,6 +256,14 @@ function MatchCardInner({
   const showUndo = !!onReverseMatch && !!match.winnerId && match.status !== 'walkover';
   const hasOverlay = showUndo || (isResultEditable && !match.winnerId);
 
+  // The court badge is only meaningful while the match hasn't been played yet
+  // — a finished match keeps its old court_number (nothing clears it once the
+  // court moves on to the next match), so showing it here as well as on
+  // whichever match now actually holds that court reads as the court being
+  // stuck in two places at once.
+  const showCourtBadge = typeof match.courtNumber === 'number'
+    && match.status !== 'finalized' && match.status !== 'walkover';
+
   return (
     <div
       id={`bracket-match-${match.id}`}
@@ -275,7 +287,7 @@ function MatchCardInner({
       {match.status === 'playing' && (
         <div className="h-0.5 w-full" style={{ backgroundColor: 'var(--tenant-primary, #1d4ed8)' }} />
       )}
-      {typeof match.courtNumber === 'number' && (
+      {showCourtBadge && (
         <span
           className="court-badge absolute top-1 left-1 z-10 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black text-white leading-none"
           title={`Court ${match.courtNumber}`}
@@ -304,6 +316,7 @@ function MatchCardInner({
         wonToss={!!tossWinnerId && tossWinnerId === match.player1Id}
         isServer={!!servedId && servedId === match.player1Id}
         reserveRightGutter={hasOverlay}
+        reserveLeftGutter={showCourtBadge}
       />
       <PlayerSlot
         id={match.player2Id} players={players} isWinner={isP2Winner}
