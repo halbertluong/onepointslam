@@ -31,6 +31,10 @@ interface BracketViewProps {
   onMatchClick?: (matchId: string) => void;
   /** When provided, finalized matches show a reset button to undo the result */
   onReverseMatch?: (matchId: string) => void;
+  /** Match ids to call out as "up next" — ringed in the tenant's primary color, the same treatment a live scoreboard gives its own upcoming-matches list. */
+  highlightMatchIds?: string[];
+  /** When set, the view scrolls to bring this match into view whenever the id changes — used to keep a live scoreboard tracking the current match as the tournament moves. */
+  followMatchId?: string | null;
 }
 
 type DragKey = { matchId: string; slot: 'p1' | 'p2' } | null;
@@ -145,7 +149,7 @@ function PlayerSlot({
       className={[
         'w-full flex items-center justify-between gap-1 border-b border-slate-100 overflow-hidden transition-colors select-none text-left',
         reserveRightGutter ? 'pl-3 pr-8' : 'px-3',
-        isWinner ? 'bg-emerald-50' : '',
+        isWinner ? 'bg-emerald-50 win-row' : '',
         isSource  ? 'opacity-40 bg-blue-50' : '',
         isDraggable ? 'cursor-grab active:cursor-grabbing hover:bg-slate-50' : '',
         isClickable ? 'cursor-pointer hover:bg-blue-50' : '',
@@ -167,9 +171,9 @@ function PlayerSlot({
         )}
       </div>
       <span className="flex items-center gap-0.5 shrink-0">
-        {wonToss && <span className="text-[10px] leading-none" title="Won the coin toss">🪙</span>}
-        {isServer && <span className="text-[10px] leading-none" title="Served">🎾</span>}
-        {isWinner && <span className="text-emerald-500 text-xs font-bold">WIN</span>}
+        {wonToss && <span key="toss" className="toss-badge text-sm leading-none" title="Won the coin toss">🪙</span>}
+        {isServer && <span key="serve" className="serve-badge text-sm leading-none" title="Served">🎾</span>}
+        {isWinner && <span key="win" className="win-badge text-emerald-500 text-xs font-black">WIN</span>}
         {/*
           Touch dragging happens from this grip alone. A finger can only either
           pan or drag, and the browser decides which at the moment it lands — so
@@ -211,10 +215,12 @@ interface MatchCardProps {
   onSetWinner?: (match: Match, winnerId: string) => void | Promise<void>;
   onMatchClick?: (matchId: string) => void;
   onReverseMatch?: (matchId: string) => void;
+  /** Called out as "up next" — see `BracketViewProps.highlightMatchIds`. */
+  highlighted?: boolean;
 }
 
 function MatchCardInner({
-  match, players, topPx, editable, draggingSlot, onDragStart, onDrop, resultEditable, onSetWinner, onMatchClick, onReverseMatch,
+  match, players, topPx, editable, draggingSlot, onDragStart, onDrop, resultEditable, onSetWinner, onMatchClick, onReverseMatch, highlighted,
 }: MatchCardProps) {
   // A match with no winner has none — without the first test, an undecided
   // later-round match marked both of its empty slots as the winner, because a
@@ -248,7 +254,9 @@ function MatchCardInner({
 
   return (
     <div
-      className={`absolute bracket-match ${statusClass} overflow-hidden ${isResultEditable ? 'ring-1 ring-blue-200' : ''} ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-blue-400 hover:ring-offset-1 transition-shadow' : ''}`}
+      id={`bracket-match-${match.id}`}
+      data-match-id={match.id}
+      className={`absolute bracket-match ${statusClass} ${highlighted ? 'bracket-match-highlight' : ''} overflow-hidden ${isResultEditable ? 'ring-1 ring-blue-200' : ''} ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-blue-400 hover:ring-offset-1 transition-shadow' : ''}`}
       // A full 256 draw stands 10,000px tall, nearly all of it offscreen. Every
       // card is a fixed size, so the browser can be told to skip laying out and
       // painting the ones out of view — which is most of the work of showing a
@@ -266,6 +274,14 @@ function MatchCardInner({
     >
       {match.status === 'playing' && (
         <div className="h-0.5 w-full" style={{ backgroundColor: 'var(--tenant-primary, #1d4ed8)' }} />
+      )}
+      {typeof match.courtNumber === 'number' && (
+        <span
+          className="court-badge absolute top-1 left-1 z-10 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black text-white leading-none"
+          title={`Court ${match.courtNumber}`}
+        >
+          {match.courtNumber}
+        </span>
       )}
       {isResultEditable && !match.winnerId && (
         <span className="absolute top-1 right-1 text-[10px] leading-none z-10" title="Click a player to set the winner">✏️</span>
@@ -321,11 +337,13 @@ const MatchCard = memo(MatchCardInner, (a, b) =>
   a.onSetWinner === b.onSetWinner &&
   a.onMatchClick === b.onMatchClick &&
   a.onReverseMatch === b.onReverseMatch &&
+  a.highlighted === b.highlighted &&
   a.match.id === b.match.id &&
   a.match.player1Id === b.match.player1Id &&
   a.match.player2Id === b.match.player2Id &&
   a.match.winnerId === b.match.winnerId &&
   a.match.status === b.match.status &&
+  a.match.courtNumber === b.match.courtNumber &&
   a.match.tossWinnerId === b.match.tossWinnerId &&
   a.match.coinFlipWinnerId === b.match.coinFlipWinnerId &&
   a.match.serverPlayerId === b.match.serverPlayerId &&
@@ -402,6 +420,8 @@ export default function BracketView({
   onSetWinner,
   onMatchClick,
   onReverseMatch,
+  highlightMatchIds,
+  followMatchId,
 }: BracketViewProps) {
   const [matches,  setMatches]  = useState<Match[]>(initialMatches);
   const [dragging, setDragging] = useState<DragKey>(null);
@@ -410,6 +430,8 @@ export default function BracketView({
     () => new Map(players.map((p) => [p.id, p])) as PlayerIndex,
     [players],
   );
+
+  const highlightSet = useMemo(() => new Set(highlightMatchIds ?? []), [highlightMatchIds]);
 
   // Callers define these inline, so they are a different function on every one
   // of the parent's renders. Held in refs and re-exposed as stable wrappers,
@@ -480,6 +502,17 @@ export default function BracketView({
       box?.removeEventListener('scroll', onScroll);
     };
   }, []);
+
+  // Keeps the view tracking the tournament: whenever the match to follow
+  // changes (the current one finishes, the next one starts), scroll it into
+  // view — both this box's own horizontal scroll and any scrollable ancestor
+  // (e.g. the live scoreboard's vertical panel) via the browser's native
+  // multi-container scrollIntoView walk.
+  useEffect(() => {
+    if (!followMatchId) return;
+    const el = scrollBox.current?.querySelector<HTMLElement>(`[data-match-id="${CSS.escape(followMatchId)}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+  }, [followMatchId]);
 
   const setWinner = useCallback(
     (match: Match, winnerId: string) => latest.current.onSetWinner?.(match, winnerId),
@@ -601,6 +634,7 @@ export default function BracketView({
                     onSetWinner={onSetWinner ? setWinner : undefined}
                     onMatchClick={onMatchClick ? matchClick : undefined}
                     onReverseMatch={onReverseMatch ? reverseMatch : undefined}
+                    highlighted={highlightSet.has(match.id)}
                   />
                   );
                 })}
