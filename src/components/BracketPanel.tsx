@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import BracketView from './BracketView';
+import { CoinTossIcon } from '@/components/icons/CoinTossIcon';
 import type { Match, Player } from '@/types';
 
 interface Props {
@@ -48,7 +49,7 @@ export default function BracketPanel({
         <h3 className="font-bold text-slate-800 text-sm">{title}</h3>
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-xs text-slate-400 flex items-center gap-2">
-            <span title="Won the coin toss">🪙 won toss</span>
+            <span title="Won the coin toss" className="inline-flex items-center gap-1"><CoinTossIcon /> won toss</span>
             <span title="Served / put the ball in play">🎾 served</span>
           </span>
           {onSetWinner && (

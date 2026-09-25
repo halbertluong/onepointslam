@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import type { Match, Player } from '@/types';
 import { mapMatch } from '@/types';
 import { getRoundName, getRoundsCount } from '@/lib/bracket';
+import { CoinTossIcon } from '@/components/icons/CoinTossIcon';
 
 // ── Layout constants ───────────────────────────────────────────────────────────
 const CARD_H  = 80;  // px — height of one match card (two player rows)
@@ -174,7 +175,7 @@ function PlayerSlot({
         )}
       </div>
       <span className="flex items-center gap-0.5 shrink-0">
-        {wonToss && <span key="toss" className="toss-badge text-sm leading-none" title="Won the coin toss">🪙</span>}
+        {wonToss && <span key="toss" className="toss-badge leading-none" title="Won the coin toss"><CoinTossIcon /></span>}
         {isServer && <span key="serve" className="serve-badge text-sm leading-none" title="Served">🎾</span>}
         {isWinner && <span key="win" className="win-badge text-emerald-500 text-xs font-black">WIN</span>}
         {/*
