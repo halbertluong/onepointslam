@@ -929,6 +929,8 @@ function RefereeView({
     winner_id: m.winnerId,
     status: m.status,
     court_number: m.courtNumber ?? null,
+    bracket: m.bracket,
+    server_player_id: m.serverPlayerId,
   });
 
   // Active matches for the queue list; all matches for the bracket view
