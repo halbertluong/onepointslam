@@ -16,27 +16,36 @@ export default async function RefereeQueuePage() {
   const tenantIds: string[] = appUser?.assigned_tenant_ids ?? [];
   const isSuperAdmin = appUser?.role === 'super_admin';
 
-  const { data: nonDemoTenants } = await supabase
-    .from('tenants')
-    .select('id')
-    .eq('is_demo', false);
-  const nonDemoTenantIds = new Set((nonDemoTenants ?? []).map((t) => t.id));
+  // Super admins see every tenant, demo included — they need the demo tenant
+  // for QA/testing. Everyone else only sees their assigned non-demo tenants,
+  // so a referee accidentally assigned to the demo tenant (or a leftover demo
+  // tournament sitting in a live-looking status) never gets mistaken for the
+  // real draw.
+  let allowedTenantIds: string[] | null = null;
 
-  const allowedTenantIds = isSuperAdmin
-    ? [...nonDemoTenantIds]
-    : tenantIds.filter((id) => nonDemoTenantIds.has(id));
+  if (!isSuperAdmin) {
+    const { data: nonDemoTenants } = await supabase
+      .from('tenants')
+      .select('id')
+      .eq('is_demo', false);
+    const nonDemoTenantIds = new Set((nonDemoTenants ?? []).map((t) => t.id));
+    allowedTenantIds = tenantIds.filter((id) => nonDemoTenantIds.has(id));
 
-  if (allowedTenantIds.length === 0) {
-    return <EmptyQueue reason={isSuperAdmin || tenantIds.length > 0
-      ? 'No live tournaments in your organization right now.'
-      : 'Your account is not linked to a tenant yet. Contact your tournament director.'} />;
+    if (allowedTenantIds.length === 0) {
+      return <EmptyQueue reason={tenantIds.length > 0
+        ? 'No live tournaments in your organization right now.'
+        : 'Your account is not linked to a tenant yet. Contact your tournament director.'} />;
+    }
   }
 
-  const { data: tournaments } = await supabase
+  let tournamentsQuery = supabase
     .from('tournaments')
     .select('id, name, tenant_id, settings, tenants(display_name, primary_color)')
-    .in('status', ['live_play', 'bracket_generated'])
-    .in('tenant_id', allowedTenantIds);
+    .in('status', ['live_play', 'bracket_generated']);
+  if (allowedTenantIds) {
+    tournamentsQuery = tournamentsQuery.in('tenant_id', allowedTenantIds);
+  }
+  const { data: tournaments } = await tournamentsQuery;
   const tournamentIds = (tournaments ?? []).map((t) => t.id);
 
   if (tournamentIds.length === 0) {
