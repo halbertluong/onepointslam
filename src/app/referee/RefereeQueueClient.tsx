@@ -19,6 +19,7 @@ interface MatchRow {
   status: string;
   court_number: number | null;
   bracket: string;
+  server_player_id: string | null;
 }
 
 interface TournamentRow {
@@ -151,6 +152,15 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
                         ) : (
                           <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-white/5 text-white/25 italic">
                             Unassigned
+                          </span>
+                        )}
+                        {m.server_player_id && m.status !== 'playing' && (
+                          <span
+                            className="px-1.5 py-0.5 rounded text-xs font-bold"
+                            style={{ backgroundColor: `${tenantColor}22`, color: tenantColor }}
+                            title="Coin toss done — ready to score"
+                          >
+                            🪙 Ready to score
                           </span>
                         )}
                       </div>
