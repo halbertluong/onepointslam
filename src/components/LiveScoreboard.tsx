@@ -224,6 +224,14 @@ export default function LiveScoreboard({
     .slice(-8)
     .reverse();
 
+  // The bracket only renders the main bracket, so the "follow" target has to
+  // be narrowed to matches that actually have a card there — a current match
+  // in a consolation/losers bracket has nothing to highlight or scroll to.
+  const mainMatchIds = new Set(bracketMatches.map((m) => m.id));
+  const upcomingInMainBracket = upcomingMatches.filter((m) => mainMatchIds.has(m.id));
+  const highlightMatchIds = upcomingInMainBracket.slice(0, 2).map((m) => m.id);
+  const followMatchId = upcomingInMainBracket[0]?.id ?? null;
+
   const totalMatches = matches.length;
   const finishedMatches = matches.filter((m) => m.status === 'finalized' || m.status === 'walkover').length;
   const pct = totalMatches > 0 ? Math.round((finishedMatches / totalMatches) * 100) : 0;
@@ -316,6 +324,8 @@ export default function LiveScoreboard({
                   initialMatches={bracketMatches}
                   players={players}
                   maxPlayers={tournament?.maxPlayers ?? 32}
+                  highlightMatchIds={highlightMatchIds}
+                  followMatchId={followMatchId}
                 />
               ) : (
                 <p className="text-slate-400 text-center py-8">No bracket yet.</p>
