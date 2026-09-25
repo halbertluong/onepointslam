@@ -50,6 +50,8 @@ export default function PlayerDetailModal({
   onSaved: () => void;
 }) {
   const [fullName, setFullName] = useState(player.fullName);
+  const [gender, setGender] = useState(player.gender ?? '');
+  const [age, setAge] = useState(player.age != null ? String(player.age) : '');
   const [ntrp, setNtrp] = useState(player.ntrpRating != null ? String(player.ntrpRating) : '');
   const [utr, setUtr] = useState(player.utrRating != null ? String(player.utrRating) : '');
   const [saving, setSaving] = useState(false);
@@ -57,6 +59,8 @@ export default function PlayerDetailModal({
 
   const dirty =
     fullName !== player.fullName ||
+    gender !== (player.gender ?? '') ||
+    age !== (player.age != null ? String(player.age) : '') ||
     ntrp !== (player.ntrpRating != null ? String(player.ntrpRating) : '') ||
     utr !== (player.utrRating != null ? String(player.utrRating) : '');
 
@@ -65,6 +69,8 @@ export default function PlayerDetailModal({
     setSaving(true);
     const { error } = await updatePlayerInfo(createClient(), player.id, {
       fullName: fullName.trim(),
+      gender: gender || null,
+      age: age.trim() ? parseInt(age) : null,
       ntrpRating: ntrp.trim() ? parseFloat(ntrp) : null,
       utrRating: utr.trim() ? parseFloat(utr) : null,
     });
@@ -128,8 +134,33 @@ export default function PlayerDetailModal({
                 label="Registered"
                 value={registeredOn ?? '—'}
               />
-              <Field label="Gender" value={player.gender ? (GENDER_LABEL[player.gender] ?? player.gender) : '—'} />
-              <Field label="Age" value={player.age ?? '—'} />
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Gender</p>
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  aria-label="Gender"
+                  className="mt-0.5 w-full border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-slate-400"
+                >
+                  <option value="">—</option>
+                  {Object.entries(GENDER_LABEL).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Age</p>
+                <input
+                  type="number"
+                  min="5"
+                  max="99"
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  placeholder="—"
+                  aria-label="Age"
+                  className="mt-0.5 w-full border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-slate-400"
+                />
+              </div>
               <div>
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">NTRP Rating</p>
                 <input

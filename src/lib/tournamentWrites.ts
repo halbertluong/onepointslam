@@ -80,15 +80,21 @@ export async function persistReversal(
   return {};
 }
 
-/** Fix a registrant's name or ratings, e.g. after a typo or a re-assessment. */
+/** Fix a registrant's name, gender, age, or ratings, e.g. after a typo or a re-assessment. */
 export async function updatePlayerInfo(
   supabase: SupabaseClient,
   playerId: string,
-  info: { fullName: string; ntrpRating: number | null; utrRating: number | null },
+  info: { fullName: string; gender: string | null; age: number | null; ntrpRating: number | null; utrRating: number | null },
 ): Promise<WriteResult> {
   const { error } = await supabase
     .from('players')
-    .update({ full_name: info.fullName, ntrp_rating: info.ntrpRating, utr_rating: info.utrRating })
+    .update({
+      full_name: info.fullName,
+      gender: info.gender,
+      age: info.age,
+      ntrp_rating: info.ntrpRating,
+      utr_rating: info.utrRating,
+    })
     .eq('id', playerId);
   return error ? { error: error.message } : {};
 }
