@@ -91,7 +91,6 @@ export default function RegistrationPanel({
         ntrp: data.ntrp || null,
         utr: data.utr || null,
         age: data.age || null,
-        skillTier: data.skillTier || null,
         directorEntry: true,
         markPaid,
       }),

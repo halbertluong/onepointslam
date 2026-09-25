@@ -500,13 +500,12 @@ function DirectorPlayersTab({ players }: { players: DemoPlayer[] }) {
             <th className="px-4 py-3 text-left">NTRP</th>
             <th className="px-4 py-3 text-left">UTR</th>
             <th className="px-4 py-3 text-left">Seed</th>
-            <th className="px-4 py-3 text-left">Tier</th>
             <th className="px-4 py-3 text-left">Status</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {players.length === 0 && (
-            <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
+            <tr><td colSpan={7} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
           )}
           {players
             .sort((a, b) => {
@@ -536,7 +535,6 @@ function DirectorPlayersTab({ players }: { players: DemoPlayer[] }) {
                   ) : '—'}
                 </td>
                 <td className="px-4 py-3 text-slate-500">{p.seedRating ?? '—'}</td>
-                <td className="px-4 py-3 text-slate-500">{p.skillTier ?? '—'}</td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
                     p.status === 'checked_in' ? 'bg-emerald-100 text-emerald-700' :
@@ -945,7 +943,7 @@ function RefereeView({
       id: p.id, full_name: p.fullName, email: p.email,
       seed_rating: p.seedRating, ntrp_rating: p.ntrpRating,
       utr_rating: p.utrRating, gender: p.gender, age: p.age,
-      tournament_id: p.tournamentId, status: p.status, skill_tier: p.skillTier,
+      tournament_id: p.tournamentId, status: p.status,
     }]),
   );
 

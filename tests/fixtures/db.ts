@@ -90,7 +90,6 @@ export async function registerPlayer(tournamentId: string, overrides: Record<str
       full_name: `Test Player ${ts}`,
       email: `testplayer${ts}@example.com`,
       seed_rating: null,
-      skill_tier: 'intermediate',
       gender: 'any',
       ntrp_rating: 3.5,
       status: 'registered',

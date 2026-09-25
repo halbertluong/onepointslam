@@ -95,7 +95,7 @@ export default function RefereeView({ tenantIds }: { tenantIds: string[] }) {
     if (playerIds.length > 0) {
       const { data: playerData } = await supabase
         .from('players')
-        .select('id, full_name, ntrp_rating, utr_rating, seed_rating, gender, age, skill_tier, tournament_id, email, status')
+        .select('id, full_name, ntrp_rating, utr_rating, seed_rating, gender, age, tournament_id, email, status')
         .in('id', playerIds);
       setPlayers(Object.fromEntries((playerData ?? []).map((p) => [p.id, p as Record<string, unknown>])));
     }

@@ -66,7 +66,6 @@ export default async function PublicBracketPage({ params, searchParams }: Props)
     fullName: p.full_name,
     email: p.email,
     seedRating: p.seed_rating,
-    skillTier: p.skill_tier,
     status: p.status,
   }));
 

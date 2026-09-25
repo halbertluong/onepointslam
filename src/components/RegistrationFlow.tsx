@@ -366,7 +366,6 @@ export default function RegistrationFlow({
         ntrp: data.ntrp || null,
         utr: data.utr || null,
         age: data.age || null,
-        skillTier: data.skillTier || null,
         ...(directorEntry ? { directorEntry: true } : {}),
       }),
     });
@@ -409,8 +408,7 @@ export default function RegistrationFlow({
           ntrp: data.ntrp || null,
           utr: data.utr || null,
           age: data.age || null,
-          skillTier: data.skillTier || null,
-          ...(directorEntry ? { directorEntry: true } : {}),
+            ...(directorEntry ? { directorEntry: true } : {}),
           ...(data.couponCode ? { couponCode: data.couponCode } : {}),
         }),
       });

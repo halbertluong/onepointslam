@@ -16,7 +16,6 @@ const OPTIONAL_COLUMNS = [
   { key: 'ntrp', label: 'NTRP' },
   { key: 'utr', label: 'UTR' },
   { key: 'seed', label: 'Seed' },
-  { key: 'tier', label: 'Tier' },
   { key: 'status', label: 'Status' },
   { key: 'payment', label: 'Payment' },
 ] as const;
@@ -294,7 +293,6 @@ export default function PlayersPanel({
                 {visibleCols.ntrp && <th className="px-4 py-3 text-left">NTRP</th>}
                 {visibleCols.utr && <th className="px-4 py-3 text-left">UTR</th>}
                 {visibleCols.seed && <th className="px-4 py-3 text-left">Seed</th>}
-                {visibleCols.tier && <th className="px-4 py-3 text-left">Tier</th>}
                 {visibleCols.status && <th className="px-4 py-3 text-left">Status</th>}
                 {showPayments && visibleCols.payment && <th className="px-4 py-3 text-left">Payment</th>}
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -302,7 +300,7 @@ export default function PlayersPanel({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {players.length === 0 && (
-                <tr><td colSpan={10} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
+                <tr><td colSpan={9} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
               )}
               {sorted.map((p, i) => {
                 const missing = missingFromBracket(p);
@@ -350,7 +348,6 @@ export default function PlayersPanel({
                         />
                       </td>
                     )}
-                    {visibleCols.tier && <td className="px-4 py-3 text-slate-500">{p.skillTier ?? '—'}</td>}
                     {visibleCols.status && (
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${status.cls}`}>

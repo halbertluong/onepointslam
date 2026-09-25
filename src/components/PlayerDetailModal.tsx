@@ -3,8 +3,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/browser';
-import { updatePlayerTier } from '@/lib/tournamentWrites';
-import { SKILL_TIERS } from '@/components/PlayerRegistrationForm';
+import { updatePlayerInfo } from '@/lib/tournamentWrites';
 import type { Player } from '@/types';
 
 const GENDER_LABEL: Record<string, string> = {
@@ -50,17 +49,27 @@ export default function PlayerDetailModal({
   onViewPayment?: (paymentIntentId: string) => void;
   onSaved: () => void;
 }) {
-  const [tier, setTier] = useState(player.skillTier ?? '');
+  const [fullName, setFullName] = useState(player.fullName);
+  const [ntrp, setNtrp] = useState(player.ntrpRating != null ? String(player.ntrpRating) : '');
+  const [utr, setUtr] = useState(player.utrRating != null ? String(player.utrRating) : '');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
-  const dirty = tier !== (player.skillTier ?? '');
+  const dirty =
+    fullName !== player.fullName ||
+    ntrp !== (player.ntrpRating != null ? String(player.ntrpRating) : '') ||
+    utr !== (player.utrRating != null ? String(player.utrRating) : '');
 
-  async function handleSaveTier() {
+  async function handleSave() {
+    if (!fullName.trim()) { setErr('Name cannot be blank.'); return; }
     setSaving(true);
-    const { error } = await updatePlayerTier(createClient(), player.id, tier || null);
+    const { error } = await updatePlayerInfo(createClient(), player.id, {
+      fullName: fullName.trim(),
+      ntrpRating: ntrp.trim() ? parseFloat(ntrp) : null,
+      utrRating: utr.trim() ? parseFloat(utr) : null,
+    });
     setSaving(false);
-    if (error) { setErr(`Could not save tier: ${error}`); return; }
+    if (error) { setErr(`Could not save changes: ${error}`); return; }
     setErr('');
     onSaved();
   }
@@ -89,8 +98,14 @@ export default function PlayerDetailModal({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="font-bold text-lg text-slate-800">{player.fullName}</h2>
+            <div className="min-w-0 flex-1">
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                aria-label="Full name"
+                className="font-bold text-lg text-slate-800 w-full border border-transparent hover:border-slate-200 focus:border-slate-400 rounded-lg px-1.5 -mx-1.5 py-0.5 focus:outline-none"
+              />
               <a href={`mailto:${player.email}`} className="text-sm text-blue-600 hover:underline">
                 {player.email}
               </a>
@@ -115,8 +130,34 @@ export default function PlayerDetailModal({
               />
               <Field label="Gender" value={player.gender ? (GENDER_LABEL[player.gender] ?? player.gender) : '—'} />
               <Field label="Age" value={player.age ?? '—'} />
-              <Field label="NTRP Rating" value={player.ntrpRating ?? '—'} />
-              <Field label="UTR Rating" value={player.utrRating ?? '—'} />
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">NTRP Rating</p>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="1"
+                  max="7"
+                  value={ntrp}
+                  onChange={(e) => setNtrp(e.target.value)}
+                  placeholder="—"
+                  aria-label="NTRP rating"
+                  className="mt-0.5 w-full border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-slate-400"
+                />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">UTR Rating</p>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="16"
+                  value={utr}
+                  onChange={(e) => setUtr(e.target.value)}
+                  placeholder="—"
+                  aria-label="UTR rating"
+                  className="mt-0.5 w-full border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-slate-400"
+                />
+              </div>
               <Field label="Seed" value={player.seedRating ?? '—'} />
               {showPayments && (
                 <Field
@@ -140,27 +181,14 @@ export default function PlayerDetailModal({
               )}
             </div>
 
-            <div className="border-t border-slate-100 pt-4">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Skill Tier</p>
-              <div className="flex items-center gap-2">
-                <select
-                  value={tier}
-                  onChange={(e) => setTier(e.target.value)}
-                  className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-slate-400"
-                >
-                  <option value="">— None —</option>
-                  {SKILL_TIERS.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={handleSaveTier}
-                  disabled={saving || !dirty}
-                  className="btn-primary px-3 py-2 rounded-xl text-xs font-bold disabled:opacity-40 whitespace-nowrap"
-                >
-                  {saving ? 'Saving…' : 'Save Tier'}
-                </button>
-              </div>
+            <div className="border-t border-slate-100 pt-4 flex justify-end">
+              <button
+                onClick={handleSave}
+                disabled={saving || !dirty}
+                className="btn-primary px-4 py-2 rounded-xl text-xs font-bold disabled:opacity-40 whitespace-nowrap"
+              >
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
             </div>
           </div>
         </motion.div>
