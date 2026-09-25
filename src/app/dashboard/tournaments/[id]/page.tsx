@@ -23,7 +23,7 @@ import { calcRaised, formatCurrency, DEFAULT_PLATFORM_FEE } from '@/lib/pricing'
 import { toDateTimeLocalValue } from '@/lib/dates';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
-import { MATCH_STATUS_ORDER, MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
+import { MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
 import { tournamentPath } from '@/lib/slugs';
 
 function ArchiveSection({ tournamentId, isArchived }: { tournamentId: string; isArchived: boolean }) {
@@ -123,7 +123,7 @@ type PlayersMode = 'roster' | 'payments';
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
   const active = matches
     .filter((m) => ['playing', 'court_assigned', 'warmup', 'scheduled'].includes(m.status))
-    .sort((a, b) => (MATCH_STATUS_ORDER[a.status] ?? 9) - (MATCH_STATUS_ORDER[b.status] ?? 9) || (a.courtNumber ?? 99) - (b.courtNumber ?? 99));
+    .sort((a, b) => a.roundIndex - b.roundIndex || a.matchIndex - b.matchIndex);
 
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
 
