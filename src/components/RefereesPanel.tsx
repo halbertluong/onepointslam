@@ -13,9 +13,11 @@ export default function RefereesPanel() {
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [inviting, setInviting] = useState(false);
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [isError, setIsError] = useState(false);
+  const [fallbackLink, setFallbackLink] = useState('');
 
   const load = useCallback(async () => {
     const res = await fetch('/api/tenant/referees');
@@ -26,33 +28,48 @@ export default function RefereesPanel() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleInvite(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed) return;
-    setInviting(true);
+  async function addReferee(targetEmail: string) {
     setMessage('');
     setIsError(false);
+    setFallbackLink('');
     try {
       const res = await fetch('/api/tenant/referees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: trimmed }),
+        body: JSON.stringify({ email: targetEmail }),
       });
       const data = await res.json();
       if (!res.ok) {
         setMessage(data.error ?? 'Failed to add referee.');
         setIsError(true);
+      } else if (!data.emailSent) {
+        setMessage(`${targetEmail} was added, but the invite email couldn't be sent. Copy the link below and send it yourself.`);
+        setIsError(true);
+        setFallbackLink(data.actionLink ?? '');
       } else {
-        setMessage(data.created ? `Invite sent to ${trimmed}.` : `${trimmed} is now a referee for this program.`);
-        setEmail('');
-        await load();
+        setMessage(data.created ? `Invite sent to ${targetEmail}.` : `Sign-in link resent to ${targetEmail}.`);
       }
+      await load();
     } catch (err) {
       setMessage(`Failed: ${err}`);
       setIsError(true);
     }
+  }
+
+  async function handleInvite(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = email.trim();
+    if (!trimmed) return;
+    setInviting(true);
+    await addReferee(trimmed);
+    setEmail('');
     setInviting(false);
+  }
+
+  async function handleResend(id: string, refereeEmail: string) {
+    setResendingId(id);
+    await addReferee(refereeEmail);
+    setResendingId(null);
   }
 
   async function handleRemove(id: string, refereeEmail: string) {
@@ -98,7 +115,26 @@ export default function RefereesPanel() {
       </form>
 
       {message && (
-        <p className={`text-sm rounded-xl p-3 ${isError ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{message}</p>
+        <div className={`text-sm rounded-xl p-3 space-y-2 ${isError ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+          <p>{message}</p>
+          {fallbackLink && (
+            <div className="flex items-center gap-2">
+              <input
+                readOnly
+                value={fallbackLink}
+                onFocus={(e) => e.target.select()}
+                className="flex-1 min-w-0 bg-white border border-red-200 rounded-lg px-2 py-1.5 text-xs font-mono text-slate-600"
+              />
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(fallbackLink)}
+                className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-red-200 hover:bg-red-100 transition-colors shrink-0"
+              >
+                Copy
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {loading ? (
@@ -110,14 +146,24 @@ export default function RefereesPanel() {
           {referees.map((r) => (
             <div key={r.id} className="px-4 py-3 flex items-center justify-between gap-3">
               <span className="text-sm font-medium text-slate-700 break-all">{r.email}</span>
-              <button
-                type="button"
-                onClick={() => handleRemove(r.id, r.email)}
-                disabled={removingId === r.id}
-                className="text-xs font-semibold text-slate-300 hover:text-red-600 transition-colors disabled:opacity-50 shrink-0"
-              >
-                {removingId === r.id ? '…' : 'Remove'}
-              </button>
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleResend(r.id, r.email)}
+                  disabled={resendingId === r.id}
+                  className="text-xs font-semibold text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-50"
+                >
+                  {resendingId === r.id ? '…' : 'Resend email'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRemove(r.id, r.email)}
+                  disabled={removingId === r.id}
+                  className="text-xs font-semibold text-slate-300 hover:text-red-600 transition-colors disabled:opacity-50"
+                >
+                  {removingId === r.id ? '…' : 'Remove'}
+                </button>
+              </div>
             </div>
           ))}
         </div>
