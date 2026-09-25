@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import BracketPanel from '@/components/BracketPanel';
+import { CoinTossIcon } from '@/components/icons/CoinTossIcon';
 import type { Player } from '@/types';
 import { mapMatch } from '@/types';
 import { getLosersRoundsCount } from '@/lib/bracket';
@@ -155,11 +156,11 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
                         )}
                         {m.server_player_id && m.status !== 'playing' && (
                           <span
-                            className="px-1.5 py-0.5 rounded text-xs font-bold"
+                            className="px-1.5 py-0.5 rounded text-xs font-bold inline-flex items-center gap-1"
                             style={{ backgroundColor: `${tenantColor}22`, color: tenantColor }}
                             title="Coin toss done — ready to score"
                           >
-                            🪙 Ready to score
+                            <CoinTossIcon /> Ready to score
                           </span>
                         )}
                       </div>

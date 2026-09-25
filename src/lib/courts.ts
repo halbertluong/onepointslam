@@ -28,10 +28,14 @@ export async function releaseCourtToNextMatch(
     .maybeSingle();
 
   if (next) {
-    await supabase
+    const { error } = await supabase
       .from('matches')
       .update({ court_number: freedCourtNumber, status: 'court_assigned' })
       .eq('id', next.id);
+    // Best-effort hand-off — the match that just finished is already saved
+    // either way — but a silent failure here is exactly how a court gets
+    // stuck on a finished match forever, so at least surface it.
+    if (error) console.error('releaseCourtToNextMatch: failed to hand off court', error);
   }
 }
 
