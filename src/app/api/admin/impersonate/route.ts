@@ -40,6 +40,18 @@ export async function POST(req: NextRequest) {
 
   const base = process.env.NEXT_PUBLIC_SITE_URL || origin;
 
+  // Demo/test personas are seeded with placeholder, non-deliverable emails
+  // and are never confirmed by clicking a real inbox link. An unconfirmed
+  // target's OTP can only be verified with type: 'signup', not 'magiclink'
+  // (see https://github.com/supabase/auth/issues/905), so verifyOtp below
+  // would fail for them. Since this whole route is already gated to
+  // super_admin, force-confirm the target here so the magiclink flow works
+  // uniformly for every impersonation target.
+  const { data: targetRow } = await admin.from('users').select('id').eq('email', targetEmail).single();
+  if (targetRow?.id) {
+    await admin.auth.admin.updateUserById(targetRow.id, { email_confirm: true });
+  }
+
   const { data, error } = await admin.auth.admin.generateLink({
     type: 'magiclink',
     email: targetEmail,
