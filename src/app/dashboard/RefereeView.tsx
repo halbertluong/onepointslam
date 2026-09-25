@@ -14,6 +14,7 @@ interface MatchRow {
   winner_id: string | null;
   status: string;
   court_number: number | null;
+  bracket: string;
 }
 
 interface TournamentRow {
@@ -81,6 +82,7 @@ export default function RefereeView({ tenantIds }: { tenantIds: string[] }) {
       winner_id: m.winner_id,
       status: m.status,
       court_number: m.court_number,
+      bracket: m.bracket,
     }));
     setMatches(matchRows);
 

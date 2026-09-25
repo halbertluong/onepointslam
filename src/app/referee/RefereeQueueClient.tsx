@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import BracketView from '@/components/BracketView';
-import type { Match, Player } from '@/types';
+import BracketPanel from '@/components/BracketPanel';
+import type { Player } from '@/types';
+import { mapMatch } from '@/types';
+import { getLosersRoundsCount } from '@/lib/bracket';
 import { MATCH_STATUS_ORDER, MATCH_STATUS_LABEL } from '@/lib/matchStatus';
 
 interface MatchRow {
@@ -16,6 +18,7 @@ interface MatchRow {
   winner_id: string | null;
   status: string;
   court_number: number | null;
+  bracket: string;
 }
 
 interface TournamentRow {
@@ -36,22 +39,6 @@ interface Props {
   players: Record<string, Record<string, unknown>>;
   /** When provided, renders match cards as buttons instead of Links */
   onMatchClick?: (match: MatchRow) => void;
-}
-
-function toMatchType(m: MatchRow): Match {
-  return {
-    id: m.id,
-    tournamentId: m.tournament_id,
-    roundIndex: m.round_index,
-    matchIndex: m.match_index,
-    player1Id: m.player1_id as string | 'BYE' | null,
-    player2Id: m.player2_id as string | 'BYE' | null,
-    serverPlayerId: null,
-    winnerId: m.winner_id,
-    status: m.status as Match['status'],
-    bracket: 'main',
-    courtNumber: m.court_number ?? undefined,
-  };
 }
 
 function toPlayerType(p: Record<string, unknown>): Player {
@@ -217,12 +204,14 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
           const tenantColor = (tenant?.primary_color as string | undefined) ?? '#3b82f6';
           const logoUrl = tenant?.logo_url as string | undefined;
           const maxPlayers = (t?.settings?.maxPlayers as number | undefined) ?? 32;
+          const format = (t?.settings?.bracketFormat as string | undefined) ?? 'single_elimination';
 
           const bracketSource = (allMatches ?? matches).filter((m) => m.tournament_id === tournamentId);
-          const allTournamentMatches = bracketSource.map(toMatchType);
+          const allTournamentMatches = bracketSource.map((m) => mapMatch(m as unknown as Record<string, unknown>));
           const allPlayers = [...new Set(
             bracketSource.flatMap((m) => [m.player1_id, m.player2_id]).filter(Boolean) as string[]
           )].map((id) => players[id]).filter(Boolean).map(toPlayerType);
+          const sharedProps = { players: allPlayers, tournamentId, liveUpdates: true as const };
 
           return (
             <div key={tournamentId} className="space-y-4">
@@ -242,14 +231,50 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
                 </div>
               </div>
               <div className="bg-white rounded-2xl overflow-x-auto px-4 py-4">
-                <BracketView
-                  initialMatches={allTournamentMatches}
-                  players={allPlayers}
+                <BracketPanel
+                  {...sharedProps}
+                  matches={allTournamentMatches.filter((m) => m.bracket === 'main')}
                   maxPlayers={maxPlayers}
-                  tournamentId={tournamentId}
-                  liveUpdates
+                  title={format === 'single_elimination' ? 'Bracket' : 'Winners Bracket'}
                 />
               </div>
+
+              {format === 'consolation' && (
+                <div className="bg-white rounded-2xl overflow-x-auto px-4 py-4">
+                  <BracketPanel
+                    {...sharedProps}
+                    matches={allTournamentMatches.filter((m) => m.bracket === 'consolation')}
+                    maxPlayers={maxPlayers}
+                    title="Consolation Bracket"
+                    emptyMessage="No consolation bracket yet."
+                  />
+                </div>
+              )}
+
+              {format === 'double_elimination' && (
+                <>
+                  <div className="bg-white rounded-2xl overflow-x-auto px-4 py-4">
+                    <BracketPanel
+                      {...sharedProps}
+                      matches={allTournamentMatches.filter((m) => m.bracket === 'losers')}
+                      maxPlayers={maxPlayers}
+                      totalRoundsOverride={getLosersRoundsCount(maxPlayers)}
+                      title="Losers Bracket"
+                      emptyMessage="No losers bracket yet."
+                    />
+                  </div>
+                  <div className="bg-white rounded-2xl overflow-x-auto px-4 py-4">
+                    <BracketPanel
+                      {...sharedProps}
+                      matches={allTournamentMatches.filter((m) => m.bracket === 'grand_final' && (m.player1Id || m.matchIndex === 0))}
+                      maxPlayers={2}
+                      totalRoundsOverride={1}
+                      title="Grand Final"
+                      emptyMessage="Grand final not reached yet."
+                    />
+                  </div>
+                </>
+              )}
             </div>
           );
         })}
