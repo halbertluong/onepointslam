@@ -67,7 +67,6 @@ export async function promotePendingRegistration(
       ntrp_rating: pending.ntrp_rating,
       utr_rating: pending.utr_rating,
       age: pending.age,
-      skill_tier: pending.skill_tier,
       status: 'registered',
       payment_status: 'paid',
       stripe_payment_intent_id: paymentIntentId,

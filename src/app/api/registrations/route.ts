@@ -17,7 +17,6 @@ export async function POST(req: NextRequest) {
     ntrp?: string;
     utr?: string;
     age?: string;
-    skillTier?: string;
     /** Set by the director dashboard to add a player at the desk. Authorization
      *  is verified server-side below — the flag alone grants nothing. */
     directorEntry?: boolean;
@@ -26,7 +25,7 @@ export async function POST(req: NextRequest) {
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
-  const { tournamentId, fullName, email, gender, ntrp, utr, age, skillTier } = body;
+  const { tournamentId, fullName, email, gender, ntrp, utr, age } = body;
   if (!tournamentId || !fullName || !email) {
     return NextResponse.json({ error: 'tournamentId, fullName, and email are required' }, { status: 400 });
   }
@@ -108,7 +107,6 @@ export async function POST(req: NextRequest) {
     tournament_id: tournamentId,
     full_name: fullName,
     email,
-    skill_tier: skillTier ?? null,
     gender: gender || null,
     ntrp_rating: ntrp ? parseFloat(ntrp) : null,
     utr_rating: utr ? parseFloat(utr) : null,

@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   let body: {
     tournamentId?: string; directorEntry?: boolean;
     fullName?: string; email?: string;
-    gender?: string; ntrp?: string; utr?: string; age?: string; skillTier?: string;
+    gender?: string; ntrp?: string; utr?: string; age?: string;
     couponCode?: string;
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
@@ -187,7 +187,6 @@ export async function POST(req: NextRequest) {
     ntrp_rating: body.ntrp ? parseFloat(body.ntrp) : null,
     utr_rating: body.utr ? parseFloat(body.utr) : null,
     age: body.age ? parseInt(body.age) : null,
-    skill_tier: body.skillTier || null,
     stripe_payment_intent_id: result.paymentIntentId,
     user_id: user?.id ?? null,
     last_stripe_status: null,

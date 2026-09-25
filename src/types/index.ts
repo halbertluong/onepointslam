@@ -136,7 +136,6 @@ export interface Player {
   fullName: string;
   email: string;
   seedRating?: number;
-  skillTier?: string;
   gender?: string;
   ntrpRating?: number;
   utrRating?: number;
@@ -156,7 +155,6 @@ export function mapPlayer(row: Record<string, unknown>): Player {
     fullName: (row.full_name ?? row.fullName) as string,
     email: row.email as string,
     seedRating: (row.seed_rating ?? row.seedRating) as number | undefined,
-    skillTier: (row.skill_tier ?? row.skillTier) as string | undefined,
     gender: row.gender as string | undefined,
     ntrpRating: (row.ntrp_rating ?? row.ntrpRating) as number | undefined,
     utrRating: (row.utr_rating ?? row.utrRating) as number | undefined,
@@ -184,7 +182,6 @@ export interface PendingRegistration {
   ntrpRating?: number;
   utrRating?: number;
   age?: number;
-  skillTier?: string;
   stripePaymentIntentId: string;
   /** Set once Stripe reports a terminal non-success outcome for this attempt's
    *  payment (declined, canceled). Absent while still open — no outcome yet,
@@ -204,7 +201,6 @@ export function mapPendingRegistration(row: Record<string, unknown>): PendingReg
     ntrpRating: (row.ntrp_rating ?? row.ntrpRating) as number | undefined,
     utrRating: (row.utr_rating ?? row.utrRating) as number | undefined,
     age: row.age as number | undefined,
-    skillTier: (row.skill_tier ?? row.skillTier) as string | undefined,
     stripePaymentIntentId: (row.stripe_payment_intent_id ?? row.stripePaymentIntentId) as string,
     lastStripeStatus: (row.last_stripe_status ?? row.lastStripeStatus) as string | undefined,
     createdAt: (row.created_at ?? row.createdAt) as string,

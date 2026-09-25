@@ -64,7 +64,6 @@ export function generatePlayers(count: number, entryFee: number): DemoPlayer[] {
       fullName,
       email: `${emailName}@${pick(domains)}`,
       seedRating: i < 4 ? i + 1 : undefined,
-      skillTier: ntrp >= 4.5 ? 'advanced' : ntrp >= 3.5 ? 'intermediate' : 'beginner',
       gender,
       ntrpRating: ntrp,
       utrRating: parseFloat((ntrp * 3.2 - 4.5 + Math.random()).toFixed(1)),
