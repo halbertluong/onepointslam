@@ -21,7 +21,7 @@ import MatchRulesEditor from '@/components/MatchRulesEditor';
 import type { PrizePlace } from '@/types';
 import { advanceWinner, reverseWinner, getRoundName, getRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatchLocal } from '@/lib/courts';
-import { MATCH_STATUS_ORDER, MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
+import { MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -417,7 +417,7 @@ function DirectorRefereeQueue({
 
   const active = matches
     .filter((m) => ['playing', 'court_assigned', 'warmup', 'scheduled'].includes(m.status ?? '') && !m.winnerId && m.player1Id && m.player1Id !== 'BYE' && m.player2Id && m.player2Id !== 'BYE')
-    .sort((a, b) => (MATCH_STATUS_ORDER[a.status ?? ''] ?? 9) - (MATCH_STATUS_ORDER[b.status ?? ''] ?? 9) || (a.courtNumber ?? 99) - (b.courtNumber ?? 99));
+    .sort((a, b) => (a.roundIndex ?? 0) - (b.roundIndex ?? 0) || (a.matchIndex ?? 0) - (b.matchIndex ?? 0));
 
   if (selectedMatchId) {
     const match = matches.find((m) => m.id === selectedMatchId);
@@ -929,6 +929,8 @@ function RefereeView({
     winner_id: m.winnerId,
     status: m.status,
     court_number: m.courtNumber ?? null,
+    bracket: m.bracket,
+    server_player_id: m.serverPlayerId,
   });
 
   // Active matches for the queue list; all matches for the bracket view
