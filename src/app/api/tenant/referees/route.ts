@@ -108,14 +108,32 @@ export async function POST(req: NextRequest) {
       .update({ role: 'referee', assigned_tenant_ids: [tenantId] })
       .eq('id', linkData.user.id);
     if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
-
-    const actionLink = linkData.properties?.action_link;
-    if (actionLink) {
-      await sendInviteEmail(email, tenant.display_name, actionLink);
-    }
   }
 
-  return NextResponse.json({ success: true, created });
+  // Every add (new or re-add) gets a fresh sign-in link emailed out, so
+  // clicking "Add Referee" again for someone who never got their first
+  // email is a working retry, not a silent no-op.
+  const linkType = created ? 'invite' : 'magiclink';
+  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+    type: linkType,
+    email,
+    options: { redirectTo: `${getSiteUrl()}/auth/confirm?next=/referee` },
+  });
+  const actionLink = linkError ? undefined : linkData?.properties?.action_link;
+
+  let emailSent = false;
+  if (actionLink) {
+    emailSent = await sendInviteEmail(email, tenant.display_name, actionLink);
+  }
+
+  return NextResponse.json({
+    success: true,
+    created,
+    emailSent,
+    // Only handed back when the email didn't go out, so the director can
+    // send it manually instead of the referee being stuck with nothing.
+    actionLink: emailSent ? undefined : actionLink,
+  });
 }
 
 export async function DELETE(req: NextRequest) {
@@ -144,13 +162,13 @@ export async function DELETE(req: NextRequest) {
   return NextResponse.json({ success: true });
 }
 
-async function sendInviteEmail(email: string, tenantName: string, actionLink: string) {
+async function sendInviteEmail(email: string, tenantName: string, actionLink: string): Promise<boolean> {
   const resendApiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_EMAIL ?? 'noreply@onepointbowl.com';
 
   if (!resendApiKey) {
     console.log('[referee-invite] RESEND_API_KEY not set — invite link:', actionLink);
-    return;
+    return false;
   }
 
   const res = await fetch('https://api.resend.com/emails', {
@@ -167,5 +185,7 @@ async function sendInviteEmail(email: string, tenantName: string, actionLink: st
   if (!res.ok) {
     const body = await res.text();
     console.error('[referee-invite] Resend error:', body);
+    return false;
   }
+  return true;
 }
