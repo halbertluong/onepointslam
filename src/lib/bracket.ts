@@ -212,17 +212,67 @@ function wbLoserDestination(
   return { roundIndex: 2 * roundIndex - 1, matchIndex, slot: 'player2Id' };
 }
 
+/**
+ * Whether a "minor round" losers-bracket drop-in (a winners-bracket round
+ * `wbRoundIndex` loser, at `wbMatchIndex`, landing via `wbLoserDestination`)
+ * will ever get an opponent in the slot it's waiting on.
+ *
+ * That opponent is the survivor of the losers bracket's own "major round"
+ * immediately before it — recursively, all the way back to round 0 — and
+ * every one of those rounds is fed *exclusively* by round-0 winners-bracket
+ * losers drawn from one contiguous block of main-bracket round-0 matches:
+ * the same `2^wbRoundIndex` matches, starting at
+ * `wbMatchIndex * 2^wbRoundIndex`, that feed winners-bracket round
+ * `wbRoundIndex` at `wbMatchIndex` in the first place (standard balanced-
+ * bracket indexing). A bye produces no loser, so if every match in that
+ * block is a bye, that whole losers-bracket branch never receives anyone,
+ * ever — the drop-in the loser is waiting to face doesn't exist and never
+ * will, no matter how much later play happens elsewhere in the bracket.
+ *
+ * Byes only ever occur in round 0, and only there, so this only needs
+ * checking for `wbRoundIndex >= 1` — round 0 itself drops in pairs handled
+ * by `round0DropDestination`, where the equivalent check is "is the sibling
+ * of this pair a bye", already handled separately in `pushRoundZeroDrop`.
+ */
+function minorRoundDropIsUnreachable(
+  findMatch: (bracket: Match['bracket'], roundIndex: number, matchIndex: number) => Match | undefined,
+  wbRoundIndex: number,
+  wbMatchIndex: number,
+): boolean {
+  const blockSize = Math.pow(2, wbRoundIndex);
+  const blockStart = wbMatchIndex * blockSize;
+  for (let i = blockStart; i < blockStart + blockSize; i++) {
+    const r0Match = findMatch('main', 0, i);
+    const isBye = !!r0Match && (r0Match.player1Id == null || r0Match.player2Id == null);
+    if (!isBye) return false;
+  }
+  return true;
+}
+
 export function generateBracket(
   players: Player[],
   settings: TournamentSettings,
   tournamentId: string,
 ): Match[] {
   const N = players.length;
-  // The configured draw size is a floor, not a suggestion: a 64-player draw with
-  // 20 entrants still gets 64 slots (the rest byes), which is what makes
-  // resizing a draw possible at all. Always rounded up to a power of two, and
-  // never smaller than the field actually needs.
-  const P = Math.max(nextPowerOf2(N), nextPowerOf2(settings?.maxPlayers ?? 0));
+  const format = settings?.bracketFormat ?? 'single_elimination';
+
+  // The configured draw size is normally a floor, not a suggestion: a
+  // 64-player draw with 20 entrants still gets 64 slots (the rest byes),
+  // which is what makes resizing a draw possible at all (a director can set
+  // the max ahead of registration closing, and late signups just fill open
+  // slots via addPlayersToDraw without a full regeneration).
+  //
+  // Double elimination is the one exception: once byes fill half the draw or
+  // more, main round 0 is nothing but byes, which means the losers bracket's
+  // very first round never receives anyone — and downstream of that, the
+  // routing that pairs winners-bracket losers off with each other has no one
+  // real to pair them with. A double-elimination bracket that's more empty
+  // than full can't be played to completion, so it's always sized tightly to
+  // the actual field instead of the configured floor.
+  const P = format === 'double_elimination'
+    ? nextPowerOf2(N)
+    : Math.max(nextPowerOf2(N), nextPowerOf2(settings?.maxPlayers ?? 0));
 
   // Seeded players keep their declared order; unseeded are shuffled so each
   // generation produces a fresh draw. Both then go through the standard
@@ -235,7 +285,6 @@ export function generateBracket(
   const slots: (string | null)[] = seedSlotOrder(P).map((seedNo) => ranked[seedNo - 1]?.id ?? null);
 
   const main = buildSingleElimMatches(slots, tournamentId, 'main');
-  const format = settings?.bracketFormat ?? 'single_elimination';
 
   if (format === 'consolation') {
     // Round-0 losers of the main bracket feed a second, independent
@@ -380,6 +429,12 @@ export function settleByeAdvancement(matches: Match[]): AdvancementUpdate[] {
  * same way a generation-time bye would have. If both siblings are real
  * matches, the slot just waits, `scheduled`, for both drops to land and a
  * referee to play it normally — the common case, left untouched here.
+ *
+ * Only ever called with a genuine round-0 `sourceMatch` — a losers-bracket
+ * "minor round" drop-in (winners-bracket round 1+) has its own equivalent
+ * check in `minorRoundDropIsUnreachable`, since the sibling relationship here
+ * is specific to how `round0DropDestination` pairs off round-0 losers and
+ * doesn't mean anything for a later round.
  */
 function pushRoundZeroDrop(
   updates: AdvancementUpdate[],
@@ -394,15 +449,26 @@ function pushRoundZeroDrop(
   const siblingIndex = drop.slot === 'player1Id' ? sourceMatch.matchIndex + 1 : sourceMatch.matchIndex - 1;
   const sibling = findMatch('main', 0, siblingIndex);
   const siblingIsBye = !!sibling && (sibling.player1Id == null || sibling.player2Id == null);
-  if (siblingIsBye) {
+  const forcedWalkover = siblingIsBye;
+  if (forcedWalkover) {
     patch.winnerId = loserId;
     patch.status = 'walkover';
   }
   updates.push({ matchId: dest.id, updates: patch });
 
-  if (siblingIsBye) {
-    const fwdMatchIndex = Math.floor(dest.matchIndex / 2);
-    const fwdSlot = dest.matchIndex % 2 === 0 ? 'player1Id' : 'player2Id';
+  if (forcedWalkover) {
+    // Round 0 -> round 1 means different things in different brackets: the
+    // losers bracket's round 0 is a "major" round, and a major round always
+    // advances into the next ("minor") round at the *same* match index,
+    // filling player1 — see the 'losers' branch of resolveAdvancement. Only
+    // the consolation bracket (a standard single-elimination bracket) halves
+    // the index every round the way `advanceWinner`/round-0 byes elsewhere
+    // in this file do.
+    const isLosersBracket = dest.bracket === 'losers';
+    const fwdMatchIndex = isLosersBracket ? dest.matchIndex : Math.floor(dest.matchIndex / 2);
+    const fwdSlot: 'player1Id' | 'player2Id' = isLosersBracket
+      ? 'player1Id'
+      : dest.matchIndex % 2 === 0 ? 'player1Id' : 'player2Id';
     const fwd = findMatch(dest.bracket, dest.roundIndex + 1, fwdMatchIndex);
     if (fwd) updates.push({ matchId: fwd.id, updates: { [fwdSlot]: loserId } });
   }
@@ -442,16 +508,53 @@ export function resolveAdvancement(
     // Double elimination: the winners-bracket loser drops into the losers bracket.
     if (match.bracket === 'main' && loserId) {
       if (match.roundIndex === winnersRounds - 1) {
-        // Winners-bracket final loser waits in the losers-bracket final slot
-        // (player2 — the survivor of the losers bracket occupies player1).
-        const lbFinalRound = 2 * (winnersRounds - 1) - 1;
-        const lbFinal = findMatch('losers', lbFinalRound, 0);
-        if (lbFinal) updates.push({ matchId: lbFinal.id, updates: { player2Id: loserId } });
-      } else {
+        if (winnersRounds === 1) {
+          // A 2-entrant draw: there's only ever one winners-bracket match, so
+          // no losers bracket exists at all (buildLosersBracket produces zero
+          // rounds for it). The loser is the losers-bracket "champion" by
+          // default — straight into the grand final's player2 slot.
+          const gf = findMatch('grand_final', 0, 0);
+          if (gf) updates.push({ matchId: gf.id, updates: { player2Id: loserId } });
+        } else {
+          // Winners-bracket final loser waits in the losers-bracket final slot
+          // (player2 — the survivor of the losers bracket occupies player1).
+          const lbFinalRound = 2 * (winnersRounds - 1) - 1;
+          const lbFinal = findMatch('losers', lbFinalRound, 0);
+          if (lbFinal) updates.push({ matchId: lbFinal.id, updates: { player2Id: loserId } });
+        }
+      } else if (match.roundIndex === 0) {
         const dest = wbLoserDestination(match.roundIndex, match.matchIndex, winnersRounds);
         if (dest) {
           const lbMatch = findMatch('losers', dest.roundIndex, dest.matchIndex);
           if (lbMatch) pushRoundZeroDrop(updates, findMatch, lbMatch, dest, loserId, match);
+        }
+      } else {
+        // A "minor round" drop (winners-bracket round 1+). Unlike a round-0
+        // drop, this always lands alone in player2 of an existing losers
+        // match — there's no sibling pairing to settle here, only the
+        // question of whether player1 will ever be able to arrive at all
+        // (see minorRoundDropIsUnreachable). If not, this loser has already
+        // beaten everyone that branch of the losers bracket could ever have
+        // produced, by default — settle it now and send them on, the same
+        // way a round-0 bye's forced walkover advances.
+        const dest = wbLoserDestination(match.roundIndex, match.matchIndex, winnersRounds);
+        if (dest) {
+          const lbMatch = findMatch('losers', dest.roundIndex, dest.matchIndex);
+          if (lbMatch) {
+            const unreachable = minorRoundDropIsUnreachable(findMatch, match.roundIndex, match.matchIndex);
+            const patch: Partial<Match> = { [dest.slot]: loserId };
+            if (unreachable) {
+              patch.winnerId = loserId;
+              patch.status = 'walkover';
+            }
+            updates.push({ matchId: lbMatch.id, updates: patch });
+            if (unreachable) {
+              const fwdMatchIndex = Math.floor(lbMatch.matchIndex / 2);
+              const fwdSlot = lbMatch.matchIndex % 2 === 0 ? 'player1Id' : 'player2Id';
+              const fwd = findMatch(lbMatch.bracket, lbMatch.roundIndex + 1, fwdMatchIndex);
+              if (fwd) updates.push({ matchId: fwd.id, updates: { [fwdSlot]: loserId } });
+            }
+          }
         }
       }
     }
@@ -559,6 +662,13 @@ function loserDropDestination(
   winnersRounds: number,
   hasBracket: (bracket: Match['bracket']) => boolean,
 ): { bracket: Match['bracket']; roundIndex: number; matchIndex: number; slot: 'player1Id' | 'player2Id' } | null {
+  if (winnersRounds === 1 && match.roundIndex === 0 && hasBracket('grand_final')) {
+    // A 2-entrant draw has no losers bracket at all (hasBracket('losers') is
+    // false — buildLosersBracket produced zero rows for it) — the winners-
+    // bracket final's loser went straight into the grand final instead. Must
+    // stay in sync with the matching case in resolveAdvancement.
+    return { bracket: 'grand_final', roundIndex: 0, matchIndex: 0, slot: 'player2Id' };
+  }
   if (hasBracket('losers')) {
     if (match.roundIndex === winnersRounds - 1) {
       return { bracket: 'losers', roundIndex: 2 * (winnersRounds - 1) - 1, matchIndex: 0, slot: 'player2Id' };
@@ -568,6 +678,26 @@ function loserDropDestination(
   }
   if (hasBracket('consolation') && match.roundIndex === 0) {
     return { bracket: 'consolation', ...round0DropDestination(match.matchIndex) };
+  }
+  return null;
+}
+
+/**
+ * Where a winners-bracket final's WINNER was routed, for undo purposes.
+ * Every other match's winner advances via the generic "next round of the
+ * same bracket" cascade in `reverseWinner` — but there is no round
+ * `winnersRounds` of the main bracket, so the winners-bracket final is the
+ * one match whose winner is instead pushed straight into the grand final's
+ * player1 slot, a special case in `resolveAdvancement` this mirrors. Returns
+ * null for every other match.
+ */
+function winnerDropDestination(
+  match: Match,
+  winnersRounds: number,
+  hasBracket: (bracket: Match['bracket']) => boolean,
+): { bracket: Match['bracket']; roundIndex: number; matchIndex: number; slot: 'player1Id' | 'player2Id' } | null {
+  if (match.bracket === 'main' && match.roundIndex === winnersRounds - 1 && hasBracket('grand_final')) {
+    return { bracket: 'grand_final', roundIndex: 0, matchIndex: 0, slot: 'player1Id' };
   }
   return null;
 }
@@ -598,23 +728,39 @@ export function reverseWinner(matches: Match[], matchId: string, winnersRounds?:
     ? reverseWinner(matches, nextMatch.id, winnersRounds)
     : [...matches];
 
+  const hasBracket = (bracket: Match['bracket']) => matches.some((m) => m.bracket === bracket);
+
   // Same cascade, but for the loser's cross-bracket drop (double elim / consolation).
-  const dropDest =
-    match.bracket === 'main' && winnersRounds
-      ? loserDropDestination(match, winnersRounds, (bracket) => matches.some((m) => m.bracket === bracket))
-      : null;
+  const dropDest = match.bracket === 'main' && winnersRounds ? loserDropDestination(match, winnersRounds, hasBracket) : null;
   const dropMatch = dropDest
     ? updated.find((m) => m.bracket === dropDest.bracket && m.roundIndex === dropDest.roundIndex && m.matchIndex === dropDest.matchIndex)
     : null;
   if (dropMatch?.winnerId) updated = reverseWinner(updated, dropMatch.id, winnersRounds);
 
+  // Same cascade again, but for the rare case where the winner's own
+  // advancement isn't the generic "next round" case above (the
+  // winners-bracket final, whose winner goes straight to the grand final).
+  const winDest = winnersRounds ? winnerDropDestination(match, winnersRounds, hasBracket) : null;
+  const winDestMatch = winDest
+    ? updated.find((m) => m.bracket === winDest.bracket && m.roundIndex === winDest.roundIndex && m.matchIndex === winDest.matchIndex)
+    : null;
+  if (winDestMatch?.winnerId) updated = reverseWinner(updated, winDestMatch.id, winnersRounds);
+
   return updated.map((m) => {
+    // A 2-entrant draw's winners-bracket final routes both its winner and its
+    // loser into the very same grand-final match (player1 and player2
+    // respectively — there's no losers bracket to hold the loser separately),
+    // so more than one of the clears below can land on the same row; every
+    // check here contributes to one accumulated patch instead of returning
+    // early; and independently.
+    let patch: Partial<Match> = {};
+
     // An undone match hasn't been played, so it keeps no record of how it was
     // played either — the toss/serve and per-sport result fields clear with the
     // winner. persistReversal writes the same reset to the database.
     if (m.id === matchId) {
-      return {
-        ...m,
+      patch = {
+        ...patch,
         winnerId: null,
         loserId: null,
         status: 'scheduled' as const,
@@ -629,11 +775,16 @@ export function reverseWinner(matches: Match[], matchId: string, winnersRounds?:
         possessionOutcome: null,
       };
     }
-    if (m.bracket === match.bracket && m.roundIndex === nextRound && m.matchIndex === nextMatchIndex) return { ...m, [slot]: null };
-    if (dropDest && m.bracket === dropDest.bracket && m.roundIndex === dropDest.roundIndex && m.matchIndex === dropDest.matchIndex) {
-      return { ...m, [dropDest.slot]: null };
+    if (m.bracket === match.bracket && m.roundIndex === nextRound && m.matchIndex === nextMatchIndex) {
+      patch = { ...patch, [slot]: null };
     }
-    return m;
+    if (dropDest && m.bracket === dropDest.bracket && m.roundIndex === dropDest.roundIndex && m.matchIndex === dropDest.matchIndex) {
+      patch = { ...patch, [dropDest.slot]: null };
+    }
+    if (winDest && m.bracket === winDest.bracket && m.roundIndex === winDest.roundIndex && m.matchIndex === winDest.matchIndex) {
+      patch = { ...patch, [winDest.slot]: null };
+    }
+    return Object.keys(patch).length > 0 ? { ...m, ...patch } : m;
   });
 }
 
@@ -656,6 +807,29 @@ export function getLosersRoundsCount(maxPlayers: number): number {
  */
 export function getConsolationRoundsCount(maxPlayers: number): number {
   return getRoundsCount(maxPlayers) - 1;
+}
+
+/**
+ * How many rounds of `bracket` actually exist in a set of already-generated
+ * match rows, read straight from the data instead of recomputed from
+ * `settings.maxPlayers`.
+ *
+ * Every one of the `get*RoundsCount` helpers above answers "how many rounds
+ * would a draw of this configured size have" — the right question at
+ * generation time, when there's no bracket yet to look at. Once a bracket
+ * exists, `settings.maxPlayers` is no longer guaranteed to describe it:
+ * double elimination sizes its draw to the actual field rather than the
+ * configured floor (see `generateBracket`), so a director who configured a
+ * 32-player draw and got 15 signups ends up with a real 16-slot bracket —
+ * `getRoundsCount(32)` would answer 5 when the bracket in front of you only
+ * has 4. Anything recomputing a round count for a bracket that already has
+ * match rows (routing a result, or labeling a bracket panel) should read it
+ * from those rows via this instead. Falls back to `fallback` for an empty or
+ * not-yet-generated bracket, where there's nothing to derive it from.
+ */
+export function actualRoundsCount(matches: Match[], bracket: Match['bracket'], fallback: number): number {
+  const roundIndexes = matches.filter((m) => m.bracket === bracket).map((m) => m.roundIndex);
+  return roundIndexes.length > 0 ? Math.max(...roundIndexes) + 1 : fallback;
 }
 
 /**

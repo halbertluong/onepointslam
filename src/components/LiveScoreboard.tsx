@@ -6,7 +6,7 @@ import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 import BracketView from '@/components/BracketView';
 import { mapMatch, mapPlayer } from '@/types';
 import type { Match, Player } from '@/types';
-import { getConsolationRoundsCount, getLosersRoundsCount } from '@/lib/bracket';
+import { getConsolationRoundsCount, getLosersRoundsCount, getRoundsCount, actualRoundsCount } from '@/lib/bracket';
 
 /** Safari (incl. older iPadOS) only exposes the webkit-prefixed fullscreen API. */
 type FullscreenDoc = Document & {
@@ -268,8 +268,11 @@ export default function LiveScoreboard({
   // Matches the label the Bracket tab and Referee Console already use for
   // this bracket in a double-elimination tournament.
   const secondaryTitle = isDoubleElim ? 'Consolations Bracket' : 'Consolation Bracket';
+  // Double elimination sizes its draw to the actual field, not the configured
+  // maxPlayers floor (see generateBracket) — read the round count that was
+  // actually built instead of a possibly-larger one from settings.
   const secondaryRoundsCount = isDoubleElim
-    ? getLosersRoundsCount(tournament?.maxPlayers ?? 32)
+    ? actualRoundsCount(losersMatches, 'losers', getLosersRoundsCount(tournament?.maxPlayers ?? 32))
     : getConsolationRoundsCount(tournament?.maxPlayers ?? 32);
 
   const mainMatchIds = new Set(bracketMatches.map((m) => m.id));
@@ -389,6 +392,11 @@ export default function LiveScoreboard({
                   initialMatches={bracketMatches}
                   players={players}
                   maxPlayers={tournament?.maxPlayers ?? 32}
+                  // Double elimination sizes its draw to the actual field, not the
+                  // configured maxPlayers floor (see generateBracket) — read the
+                  // round count that was actually built instead of a possibly-larger
+                  // one from settings, or this panel shows empty phantom rounds.
+                  totalRoundsOverride={actualRoundsCount(bracketMatches, 'main', getRoundsCount(tournament?.maxPlayers ?? 32))}
                   highlightMatchIds={highlightMatchIds}
                   followMatchId={followMatchId}
                 />
