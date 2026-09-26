@@ -227,6 +227,26 @@ export default function LiveScoreboard({
   const safeHex = (c: string | undefined) => /^#[0-9a-fA-F]{6}$/.test(c ?? '') ? c! : '#3b82f6';
   const primary = safeHex(tournament?.tenant.primary_color);
   const secondary = safeHex(tournament?.tenant.secondary_color);
+  // A tenant's brand color can legitimately be white or another pale shade
+  // (a school's secondary color is often white) — unreadable as text, an
+  // icon fill, or a solid badge behind white digits on this page's white
+  // chrome. Darken anything too light to a legible shade, preserving hue
+  // where there is one and falling back to a neutral slate where there
+  // isn't (e.g. white/gray), so every accent stays visible and distinct.
+  const legibleAccent = (hex: string) => {
+    const n = parseInt(hex.slice(1), 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const toLinear = (c: number) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+    const luminance = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+    if (luminance < 0.6) return hex;
+    const max = Math.max(r, g, b);
+    if (max - Math.min(r, g, b) < 12) return '#475569';
+    const scale = 140 / max;
+    const toHex = (c: number) => Math.round(c * scale).toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  };
+  const primaryAccent = legibleAccent(primary);
+  const secondaryAccent = legibleAccent(secondary);
 
   // The current match(es) plus everything still queued behind them, in the
   // order they'll be called — replaces a court-only view so spectators can
@@ -313,26 +333,26 @@ export default function LiveScoreboard({
       className={`bg-white text-slate-900 flex flex-col ${embedded ? 'h-[75vh] rounded-2xl overflow-hidden border border-slate-200' : 'h-screen overflow-hidden'}`}
       style={{ fontFamily: 'system-ui, sans-serif' }}
     >
-      <style>{`:root { --tenant-primary: ${primary}; --tenant-secondary: ${secondary}; }`}</style>
+      <style>{`:root { --tenant-primary: ${primaryAccent}; --tenant-secondary: ${secondaryAccent}; }`}</style>
 
       {/* Top bar */}
-      <div className="px-6 py-3 flex items-center justify-between border-b-2 shrink-0" style={{ background: `linear-gradient(135deg, ${primary}1f, ${secondary}0d, transparent)`, borderBottomColor: `${primary}33` }}>
+      <div className="px-6 py-3 flex items-center justify-between border-b-2 shrink-0" style={{ background: `linear-gradient(135deg, ${primaryAccent}33, ${secondaryAccent}1a, transparent)`, borderBottomColor: `${primaryAccent}59` }}>
         <div className="flex items-center gap-3">
           {tournament?.tenant.logo_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={tournament.tenant.logo_url} alt={tournament.tenant.display_name} className="h-9 w-auto object-contain" />
           ) : (
-            <OnePointBowlLogo size={32} color={primary} />
+            <OnePointBowlLogo size={32} color={primaryAccent} />
           )}
           <div>
             <p className="font-black text-lg leading-tight text-slate-900">{tournament?.name ?? '…'}</p>
-            <p className="text-sm font-semibold" style={{ color: secondary }}>{tournament?.tenant.display_name}</p>
+            <p className="text-sm font-semibold" style={{ color: secondaryAccent }}>{tournament?.tenant.display_name}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <div className="text-right">
             {isLive ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold animate-pulse" style={{ backgroundColor: primary, color: '#fff' }}>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold animate-pulse" style={{ backgroundColor: primaryAccent, color: '#fff' }}>
                 ● LIVE
               </span>
             ) : (
@@ -361,7 +381,7 @@ export default function LiveScoreboard({
             <span>{pct}%</span>
           </div>
           <div className="bg-slate-200 rounded-full h-2">
-            <div className="h-2 rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
+            <div className="h-2 rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${primaryAccent}, ${secondaryAccent})` }} />
           </div>
         </div>
       )}
@@ -385,7 +405,7 @@ export default function LiveScoreboard({
               <h2 className="text-xs font-black uppercase tracking-widest text-slate-600">
                 {hasSecondaryBracket ? 'Main Bracket' : 'Bracket'}
               </h2>
-              <div className="h-1 w-10 rounded-full mt-1.5" style={{ background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
+              <div className="h-1 w-10 rounded-full mt-1.5" style={{ background: `linear-gradient(90deg, ${primaryAccent}, ${secondaryAccent})` }} />
             </div>
             <div className="flex-1 min-h-0 overflow-auto px-4 pb-4">
               {bracketMatches.length > 0 ? (
@@ -406,7 +426,7 @@ export default function LiveScoreboard({
             <div className="w-[40%] shrink-0 flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-sm">
               <div className="px-4 pt-3 pb-2 shrink-0">
                 <h2 className="text-xs font-black uppercase tracking-widest text-slate-600">{secondaryTitle}</h2>
-                <div className="h-1 w-10 rounded-full mt-1.5" style={{ background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
+                <div className="h-1 w-10 rounded-full mt-1.5" style={{ background: `linear-gradient(90deg, ${primaryAccent}, ${secondaryAccent})` }} />
               </div>
               <div className="flex-1 min-h-0 overflow-auto px-4 pb-4">
                 {secondaryMatches.length > 0 ? (
@@ -437,8 +457,8 @@ export default function LiveScoreboard({
                     {onCourtMatches.length > 0 && (
                       <div className="space-y-2.5">
                         <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: primary }} />
-                          <h2 className="text-xs font-black uppercase tracking-widest" style={{ color: primary }}>On Court</h2>
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: primaryAccent }} />
+                          <h2 className="text-xs font-black uppercase tracking-widest" style={{ color: primaryAccent }}>On Court</h2>
                         </div>
                         {onCourtMatches.map((m) => {
                           const isPlaying = m.status === 'playing';
@@ -447,13 +467,13 @@ export default function LiveScoreboard({
                               key={m.id}
                               className="rounded-xl border-2 p-3 flex gap-3"
                               style={{
-                                borderColor: primary,
-                                backgroundColor: isPlaying ? `${primary}17` : `${primary}0a`,
+                                borderColor: primaryAccent,
+                                backgroundColor: isPlaying ? `${primaryAccent}17` : `${primaryAccent}0a`,
                               }}
                             >
                               <div
                                 className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-black text-base text-white shadow"
-                                style={{ backgroundColor: primary }}
+                                style={{ backgroundColor: primaryAccent }}
                                 title={m.court_number ? `Court ${m.court_number}` : 'No court assigned'}
                               >
                                 {m.court_number ?? '–'}
@@ -474,7 +494,7 @@ export default function LiveScoreboard({
                                   </div>
                                 </div>
                                 <div className="flex items-center justify-between mt-2">
-                                  <span className="text-[11px] font-bold" style={{ color: primary }}>
+                                  <span className="text-[11px] font-bold" style={{ color: primaryAccent }}>
                                     {isPlaying ? '● Playing now' : m.status === 'court_assigned' ? 'Head to court →' : 'Warming up'}
                                   </span>
                                   <span className="text-[11px] text-slate-500 shrink-0">R{m.round_index + 1} · M{m.match_index + 1}</span>
@@ -489,18 +509,18 @@ export default function LiveScoreboard({
                     {queuedMatches.length > 0 && (
                       <div className="space-y-2.5">
                         <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: secondary }} />
-                          <h2 className="text-xs font-black uppercase tracking-widest" style={{ color: secondary }}>Up Next</h2>
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: secondaryAccent }} />
+                          <h2 className="text-xs font-black uppercase tracking-widest" style={{ color: secondaryAccent }}>Up Next</h2>
                         </div>
                         {queuedMatches.map((m, i) => (
                           <div
                             key={m.id}
                             className="rounded-xl border p-3 flex gap-3"
-                            style={{ borderColor: `${secondary}66`, backgroundColor: `${secondary}0d` }}
+                            style={{ borderColor: `${secondaryAccent}66`, backgroundColor: `${secondaryAccent}0d` }}
                           >
                             <div
                               className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-black text-sm text-white"
-                              style={{ backgroundColor: secondary }}
+                              style={{ backgroundColor: secondaryAccent }}
                               title={`#${i + 1} in the queue`}
                             >
                               #{i + 1}
@@ -515,7 +535,7 @@ export default function LiveScoreboard({
                                 </div>
                               </div>
                               <div className="flex items-center justify-between mt-2">
-                                <span className="text-[11px] font-bold" style={{ color: secondary }}>Up next</span>
+                                <span className="text-[11px] font-bold" style={{ color: secondaryAccent }}>Up next</span>
                                 <span className="text-[11px] text-slate-500 shrink-0">R{m.round_index + 1} · M{m.match_index + 1}</span>
                               </div>
                             </div>
@@ -532,7 +552,7 @@ export default function LiveScoreboard({
             <div className="flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white flex-1 shadow-sm">
               <div className="px-4 pt-3 pb-2 shrink-0">
                 <h2 className="text-xs font-black uppercase tracking-widest text-slate-600">Recent Results</h2>
-                <div className="h-1 w-10 rounded-full mt-1.5" style={{ background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
+                <div className="h-1 w-10 rounded-full mt-1.5" style={{ background: `linear-gradient(90deg, ${primaryAccent}, ${secondaryAccent})` }} />
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-3 space-y-2">
                 {recentlyFinished.length === 0 ? (
@@ -545,7 +565,7 @@ export default function LiveScoreboard({
                         {m.player1_name === m.winner_name ? m.player2_name : m.player1_name}
                       </span>
                       <span className="text-slate-400 text-xs shrink-0">→</span>
-                      <span className="font-bold shrink-0" style={{ color: primary }}>{m.winner_name}</span>
+                      <span className="font-bold shrink-0" style={{ color: primaryAccent }}>{m.winner_name}</span>
                     </div>
                   </div>
                 ))}
