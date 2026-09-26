@@ -16,7 +16,7 @@ import CouponCodesPanel from '@/components/CouponCodesPanel';
 import TournamentUrlCard from '@/components/TournamentUrlCard';
 import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount, getConsolationRoundsCount, queueRoundPriority } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
-import { persistReversal, settleOpenByes } from '@/lib/tournamentWrites';
+import { persistReversal, settleOpenByes, resetMatchResults } from '@/lib/tournamentWrites';
 import type { Tournament, Player, Match, PendingRegistration } from '@/types';
 import { mapPlayer, mapMatch, mapPendingRegistration } from '@/types';
 import { calcRaised, formatCurrency, DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
@@ -94,6 +94,46 @@ function ResetBracketSection({ matches, saving, onReset }: { matches: Match[]; s
         className="px-5 py-2.5 rounded-xl text-sm font-bold border-2 border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
       >
         {saving ? '…' : '↺ Reset bracket'}
+      </button>
+    </div>
+  );
+}
+
+function ResetResultsSection({ matches, saving, onReset }: { matches: Match[]; saving: boolean; onReset: () => Promise<void> }) {
+  const decided = matches.filter((m) => m.status === 'finalized' || m.status === 'walkover').length;
+
+  async function handleClick() {
+    const warning = decided > 0
+      ? `\n\n${decided} recorded result${decided !== 1 ? 's' : ''} will be cleared.`
+      : '';
+    if (!window.confirm(
+      `Reset all match results?\n\nEvery winner, court assignment and bracket advancement will be cleared so you can run through the whole tournament again — for example as a test of the double elimination flow.${warning}\n\nThe draw itself — round 1 matchups, seeding, and byes — is left exactly as it is.\n\nThis cannot be undone.`,
+    )) return;
+    await onReset();
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-amber-200 p-6 space-y-4">
+      <div>
+        <h2 className="font-bold text-slate-800">Reset Match Results</h2>
+        <p className="text-sm text-slate-500 mt-0.5">
+          Clears every recorded score, winner, court assignment and bracket advancement so you can
+          play through the tournament again from scratch. The generated draw — who&apos;s matched up
+          in round 1, seeding, and byes — is not touched, so there&apos;s no need to rebuild it.
+        </p>
+        {decided > 0 && (
+          <p className="text-sm text-amber-700 mt-2">
+            {decided} recorded result{decided !== 1 ? 's' : ''} will be cleared.
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={saving}
+        className="px-5 py-2.5 rounded-xl text-sm font-bold border-2 border-amber-200 text-amber-700 hover:bg-amber-50 transition-colors disabled:opacity-50"
+      >
+        {saving ? '…' : '↺ Reset match results'}
       </button>
     </div>
   );
@@ -385,6 +425,31 @@ export default function TournamentAdminPage() {
     setMessage(statusError
       ? `Matches deleted, but the status could not be updated: ${statusError.message}`
       : 'Bracket reset. Update the draw size or format, then generate the bracket again.');
+    await load();
+    setSaving(false);
+  }
+
+  /**
+   * Clears every match result but keeps the generated draw (round-1
+   * matchups, seeding, byes) exactly as it is — for running the tournament
+   * through again as a test without redoing the bracket work.
+   */
+  async function handleResetResults() {
+    setSaving(true);
+    const supabase = createClient();
+    const { error } = await resetMatchResults(supabase, matches);
+    if (error) {
+      setMessage(`Could not reset results: ${error}`);
+      setSaving(false);
+      return;
+    }
+    // A tournament that had already gone live or finished needs to come back
+    // to 'bracket_generated' — the pre-live state 'Start Live Play' expects —
+    // now that none of its matches are actually decided any more.
+    if (tournament && tournament.status !== 'bracket_generated') {
+      await supabase.from('tournaments').update({ status: 'bracket_generated' }).eq('id', id);
+    }
+    setMessage('Match results reset. The draw is unchanged — start live play to run through it again.');
     await load();
     setSaving(false);
   }
@@ -840,6 +905,10 @@ export default function TournamentAdminPage() {
             bracketGenerated={bracketGenerated}
             onSave={(patch, newName) => handleSaveSettings(patch, newName)}
           />
+
+          {bracketGenerated && (
+            <ResetResultsSection matches={matches} saving={saving} onReset={handleResetResults} />
+          )}
 
           {bracketGenerated && (
             <ResetBracketSection matches={matches} saving={saving} onReset={handleResetBracket} />

@@ -6,7 +6,7 @@ import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 import BracketView from '@/components/BracketView';
 import { mapMatch, mapPlayer } from '@/types';
 import type { Match, Player } from '@/types';
-import { getConsolationRoundsCount } from '@/lib/bracket';
+import { getConsolationRoundsCount, getLosersRoundsCount } from '@/lib/bracket';
 
 /** Safari (incl. older iPadOS) only exposes the webkit-prefixed fullscreen API. */
 type FullscreenDoc = Document & {
@@ -68,6 +68,7 @@ export default function LiveScoreboard({
   const [matches, setMatches] = useState<LiveMatch[]>([]);
   const [bracketMatches, setBracketMatches] = useState<Match[]>([]);
   const [consolationMatches, setConsolationMatches] = useState<Match[]>([]);
+  const [losersMatches, setLosersMatches] = useState<Match[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -122,6 +123,7 @@ export default function LiveScoreboard({
     setPlayers(mappedPlayers);
     setBracketMatches(allMatches.filter((m) => m.bracket === 'main').map(mapMatch));
     setConsolationMatches(allMatches.filter((m) => m.bracket === 'consolation').map(mapMatch));
+    setLosersMatches(allMatches.filter((m) => m.bracket === 'losers').map(mapMatch));
 
     const pMap: Record<string, string> = {};
     mappedPlayers.forEach((p) => { pMap[p.id] = p.fullName; });
@@ -255,25 +257,40 @@ export default function LiveScoreboard({
   // most recent change was in a bracket with no panel here (e.g. a losers
   // bracket) — fall back to the next match up, so the screen still opens on
   // something relevant instead of the top of an untouched draw.
+  // Every bracket format beyond plain single elimination gets a second panel
+  // next to the main draw: 'consolation' shows the consolation bracket,
+  // 'double_elimination' shows the losers bracket (where a winners-bracket
+  // loss actually goes) — without this, a double-elimination tournament's
+  // second bracket would only ever appear as loose cards in the queue/results
+  // list, with no picture of who's playing whom or how far they've come back.
+  const isDoubleElim = tournament?.bracketFormat === 'double_elimination';
+  const secondaryMatches = isDoubleElim ? losersMatches : consolationMatches;
+  // Matches the label the Bracket tab and Referee Console already use for
+  // this bracket in a double-elimination tournament.
+  const secondaryTitle = isDoubleElim ? 'Consolations Bracket' : 'Consolation Bracket';
+  const secondaryRoundsCount = isDoubleElim
+    ? getLosersRoundsCount(tournament?.maxPlayers ?? 32)
+    : getConsolationRoundsCount(tournament?.maxPlayers ?? 32);
+
   const mainMatchIds = new Set(bracketMatches.map((m) => m.id));
-  const consolationMatchIds = new Set(consolationMatches.map((m) => m.id));
+  const secondaryMatchIds = new Set(secondaryMatches.map((m) => m.id));
   const upcomingInMainBracket = upcomingMatches.filter((m) => mainMatchIds.has(m.id));
-  const upcomingInConsolationBracket = upcomingMatches.filter((m) => consolationMatchIds.has(m.id));
+  const upcomingInSecondaryBracket = upcomingMatches.filter((m) => secondaryMatchIds.has(m.id));
 
   const lastChangedInMain = lastChangedMatchId && mainMatchIds.has(lastChangedMatchId) ? lastChangedMatchId : null;
-  const lastChangedInConsolation = lastChangedMatchId && consolationMatchIds.has(lastChangedMatchId) ? lastChangedMatchId : null;
+  const lastChangedInSecondary = lastChangedMatchId && secondaryMatchIds.has(lastChangedMatchId) ? lastChangedMatchId : null;
 
   const followMatchId = lastChangedInMain ?? upcomingInMainBracket[0]?.id ?? null;
   const highlightMatchIds = Array.from(new Set(
     [lastChangedInMain, ...upcomingInMainBracket.slice(0, 2).map((m) => m.id)].filter((id): id is string => !!id),
   ));
 
-  const followConsolationMatchId = lastChangedInConsolation ?? upcomingInConsolationBracket[0]?.id ?? null;
-  const highlightConsolationMatchIds = Array.from(new Set(
-    [lastChangedInConsolation, ...upcomingInConsolationBracket.slice(0, 2).map((m) => m.id)].filter((id): id is string => !!id),
+  const followSecondaryMatchId = lastChangedInSecondary ?? upcomingInSecondaryBracket[0]?.id ?? null;
+  const highlightSecondaryMatchIds = Array.from(new Set(
+    [lastChangedInSecondary, ...upcomingInSecondaryBracket.slice(0, 2).map((m) => m.id)].filter((id): id is string => !!id),
   ));
 
-  const hasConsolationBracket = tournament?.bracketFormat === 'consolation' && consolationMatches.length > 0;
+  const hasSecondaryBracket = (tournament?.bracketFormat === 'consolation' || isDoubleElim) && secondaryMatches.length > 0;
 
   const totalMatches = matches.length;
   const finishedMatches = matches.filter((m) => m.status === 'finalized' || m.status === 'walkover').length;
@@ -359,10 +376,10 @@ export default function LiveScoreboard({
           bracket joins the main one, 60/40 for a single-bracket tournament */}
       {hasMatches && (
         <div className="flex-1 flex gap-4 p-4 min-h-0 overflow-hidden">
-          <div className={`${hasConsolationBracket ? 'w-[40%]' : 'w-[60%]'} shrink-0 flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-sm`}>
+          <div className={`${hasSecondaryBracket ? 'w-[40%]' : 'w-[60%]'} shrink-0 flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-sm`}>
             <div className="px-4 pt-3 pb-2 shrink-0">
               <h2 className="text-xs font-black uppercase tracking-widest text-slate-600">
-                {hasConsolationBracket ? 'Main Bracket' : 'Bracket'}
+                {hasSecondaryBracket ? 'Main Bracket' : 'Bracket'}
               </h2>
               <div className="h-1 w-10 rounded-full mt-1.5" style={{ background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
             </div>
@@ -381,31 +398,31 @@ export default function LiveScoreboard({
             </div>
           </div>
 
-          {hasConsolationBracket && (
+          {hasSecondaryBracket && (
             <div className="w-[40%] shrink-0 flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-sm">
               <div className="px-4 pt-3 pb-2 shrink-0">
-                <h2 className="text-xs font-black uppercase tracking-widest text-slate-600">Consolation Bracket</h2>
+                <h2 className="text-xs font-black uppercase tracking-widest text-slate-600">{secondaryTitle}</h2>
                 <div className="h-1 w-10 rounded-full mt-1.5" style={{ background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
               </div>
               <div className="flex-1 min-h-0 overflow-auto px-4 pb-4">
-                {consolationMatches.length > 0 ? (
+                {secondaryMatches.length > 0 ? (
                   <BracketView
-                    initialMatches={consolationMatches}
+                    initialMatches={secondaryMatches}
                     players={players}
                     maxPlayers={tournament?.maxPlayers ?? 32}
-                    totalRoundsOverride={getConsolationRoundsCount(tournament?.maxPlayers ?? 32)}
-                    highlightMatchIds={highlightConsolationMatchIds}
-                    followMatchId={followConsolationMatchId}
+                    totalRoundsOverride={secondaryRoundsCount}
+                    highlightMatchIds={highlightSecondaryMatchIds}
+                    followMatchId={followSecondaryMatchId}
                   />
                 ) : (
-                  <p className="text-slate-400 text-center py-8">No consolation bracket yet.</p>
+                  <p className="text-slate-400 text-center py-8">No {secondaryTitle.toLowerCase()} yet.</p>
                 )}
               </div>
             </div>
           )}
 
           {/* Matches — 20% alongside two brackets, 40% alongside one */}
-          <div className={`${hasConsolationBracket ? 'w-[20%]' : 'w-[40%]'} flex flex-col min-h-0 gap-4 overflow-hidden`}>
+          <div className={`${hasSecondaryBracket ? 'w-[20%]' : 'w-[40%]'} flex flex-col min-h-0 gap-4 overflow-hidden`}>
             {/* On court + up next, grouped and color-coded so it's obvious at a glance */}
             <div className="flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white shadow-sm" style={{ flex: upcomingMatches.length > 0 ? '1 1 auto' : '0 0 auto' }}>
               <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-3 pb-3 space-y-4">
