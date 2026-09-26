@@ -329,7 +329,20 @@ export default function LiveScoreboard({
 
   const totalMatches = matches.length;
   const finishedMatches = matches.filter((m) => m.status === 'finalized' || m.status === 'walkover').length;
-  const pct = totalMatches > 0 ? Math.round((finishedMatches / totalMatches) * 100) : 0;
+  // A generated bracket always carries a few rows that can never be played
+  // out: a losers-bracket branch a bye wiped out before it ever got an
+  // opponent, or (every double-elimination tournament that doesn't go to a
+  // decider) the grand final's bracket-reset match. Those stay 'scheduled'
+  // with no real players forever, uncounted by either side of this ratio —
+  // `finishedMatches` never reaches `totalMatches` even once nothing is left
+  // to actually play, permanently undercounting "complete". Rather than
+  // reconstruct exactly which rows are dead (mirroring the same routing
+  // logic resolveAdvancement uses to fill them), lean on `upcomingMatches`,
+  // which is already this page's source of truth for "anything left to
+  // play": once it's empty, everything remaining is either finished or
+  // provably unreachable, so the event is complete either way.
+  const allPlayableMatchesDone = totalMatches > 0 && upcomingMatches.length === 0;
+  const pct = totalMatches > 0 ? (allPlayableMatchesDone ? 100 : Math.round((finishedMatches / totalMatches) * 100)) : 0;
 
   // Whether there's a bracket to show at all — independent of `status`, since
   // a director can record results (via the referee console or the dashboard)
@@ -388,7 +401,7 @@ export default function LiveScoreboard({
       {totalMatches > 0 && (
         <div className="px-6 py-2.5 border-b border-slate-200 shrink-0">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-600 mb-1.5">
-            <span>{finishedMatches} of {totalMatches} matches complete</span>
+            <span>{allPlayableMatchesDone ? totalMatches : finishedMatches} of {totalMatches} matches complete</span>
             <span>{pct}%</span>
           </div>
           <div className="bg-slate-200 rounded-full h-2">

@@ -182,6 +182,25 @@ export default function NewTournamentPage() {
                 a player can land in the second bracket with nobody to play.
               </p>
             )}
+            {settings.bracketFormat === 'double_elimination' && (
+              <label className="flex items-start gap-2 mt-3 text-sm text-slate-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={settings.grandFinalEnabled ?? true}
+                  onChange={(e) => updateSettings('grandFinalEnabled', e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Play a Grand Final between the two brackets
+                  <span className="block text-xs text-slate-400 mt-0.5">
+                    On: the main bracket runner-up gets a second chance in the losers bracket, and
+                    whoever survives it plays the main bracket champion for the title. Off: the main
+                    bracket final is the outright championship — the losers bracket still runs for
+                    everyone eliminated early, but its winner never faces the runner-up.
+                  </span>
+                </span>
+              </label>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

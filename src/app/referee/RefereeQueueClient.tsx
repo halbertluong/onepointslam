@@ -8,6 +8,7 @@ import type { Match, Player } from '@/types';
 import { mapMatch } from '@/types';
 import { getLosersRoundsCount, getConsolationRoundsCount, getRoundsCount, actualRoundsCount, queueRoundPriority } from '@/lib/bracket';
 import { MATCH_STATUS_LABEL, MATCH_STATUS_ORDER } from '@/lib/matchStatus';
+import { createClient } from '@/lib/supabase/browser';
 
 interface MatchRow {
   id: string;
@@ -58,8 +59,12 @@ function toPlayerType(p: Record<string, unknown>): Player {
   };
 }
 
-export default function RefereeQueueClient({ matches, allMatches, tournaments, players, onMatchClick }: Props) {
+export default function RefereeQueueClient({ matches: initialMatches, allMatches, tournaments, players, onMatchClick }: Props) {
   const [view, setView] = useState<'list' | 'bracket'>('list');
+  // Local copy so a court reassignment updates the list immediately instead
+  // of waiting on a full page reload — this page is a one-time server fetch
+  // with no realtime subscription.
+  const [matches, setMatches] = useState(initialMatches);
 
   const tournamentMap = Object.fromEntries(tournaments.map((t) => [t.id, t]));
 
@@ -74,6 +79,40 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
     || queueRoundPriority(a.bracket as Match['bracket'], a.round_index) - queueRoundPriority(b.bracket as Match['bracket'], b.round_index)
     || a.match_index - b.match_index
   );
+
+  // A court change is purely a physical reassignment — it never implies
+  // progress the match hasn't actually made. Only a still-'scheduled' match
+  // picks up 'court_assigned' when given a court (the same transition
+  // releaseCourtToNextMatch makes); only a 'court_assigned' match reverts to
+  // 'scheduled' when its court is cleared. A match already warming up or
+  // playing keeps that status either way — moving it to a different court
+  // (or briefly clearing its board) doesn't undo the coin toss or the score
+  // already in progress.
+  function nextStatusForCourtChange(current: string, newCourt: number | null): string {
+    if (newCourt == null) return current === 'court_assigned' ? 'scheduled' : current;
+    return current === 'scheduled' ? 'court_assigned' : current;
+  }
+
+  async function reassignCourt(matchId: string, newCourt: number | null) {
+    const prev = matches;
+    setMatches((cur) => cur.map((m) =>
+      m.id === matchId ? { ...m, court_number: newCourt, status: nextStatusForCourtChange(m.status, newCourt) } : m,
+    ));
+    const target = prev.find((m) => m.id === matchId);
+    if (!target) return;
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('matches')
+      .update({ court_number: newCourt, status: nextStatusForCourtChange(target.status, newCourt) })
+      .eq('id', matchId);
+    // Best-effort like the auto hand-off in releaseCourtToNextMatch — revert
+    // the optimistic update rather than leave the UI showing a court that
+    // was never actually saved.
+    if (error) {
+      console.error('reassignCourt: failed to save', error);
+      setMatches(prev);
+    }
+  }
 
   const grouped = activeMatches.reduce<Record<string, MatchRow[]>>((acc, m) => {
     (acc[m.tournament_id] ??= []).push(m);
@@ -123,6 +162,13 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
           const tenant = t?.tenants;
           const tenantColor = (tenant?.primary_color as string | undefined) ?? '#3b82f6';
           const logoUrl = tenant?.logo_url as string | undefined;
+          // The configured court count is the normal ceiling, but a match
+          // already sitting on a higher-numbered court (assigned before the
+          // setting was lowered, say) still needs to appear as an option —
+          // otherwise reassigning it away and back would be the only way to
+          // see its own current court in the list.
+          const configuredCourts = (t?.settings?.numberOfCourts as number | undefined) ?? 0;
+          const maxCourts = Math.max(configuredCourts, ...tMatches.map((m) => m.court_number ?? 0), 4);
 
           return (
             <div key={tournamentId} className="space-y-2">
@@ -148,20 +194,45 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
                 const p2 = players[m.player2_id ?? ''];
                 const isLive = m.status === 'playing';
 
-                const cardInner = (
-                  <>
+                const matchupLink = (
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                    <PlayerBadge player={p1} tenantColor={tenantColor} />
+                    <span className="text-white/20 font-bold text-sm">vs</span>
+                    <PlayerBadge player={p2} tenantColor={tenantColor} align="right" />
+                  </div>
+                );
+
+                const cardClass = "block w-full text-left transition-all active:scale-[0.98] hover:opacity-90";
+
+                return (
+                  <div
+                    key={m.id}
+                    className="rounded-2xl p-4 transition-all bg-white/5 hover:bg-white/10 border"
+                    style={{
+                      borderColor: isLive ? tenantColor : 'transparent',
+                      boxShadow: isLive ? `0 0 0 1px ${tenantColor}22` : undefined,
+                    }}
+                  >
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-white/30">R{m.round_index + 1} · M{m.match_index + 1}</span>
-                        {m.court_number ? (
-                          <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-white/10 text-white/60">
-                            Court {m.court_number}
-                          </span>
-                        ) : (
-                          <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-white/5 text-white/25 italic">
-                            Unassigned
-                          </span>
-                        )}
+                        {/* Not wrapped in the matchup link/button below — it's its
+                            own control, not a navigation target, and a <select>
+                            nested inside a <Link>/<button> would be invalid HTML. */}
+                        <select
+                          value={m.court_number ?? ''}
+                          onChange={(e) => reassignCourt(m.id, e.target.value ? Number(e.target.value) : null)}
+                          onClick={(e) => e.stopPropagation()}
+                          title="Reassign this match's court"
+                          className={`rounded text-xs font-bold border-0 focus:outline-none focus:ring-1 focus:ring-white/40 cursor-pointer ${
+                            m.court_number ? 'bg-white/10 text-white/60' : 'bg-white/5 text-white/25 italic'
+                          }`}
+                        >
+                          <option value="">Unassigned</option>
+                          {Array.from({ length: maxCourts }, (_, i) => i + 1).map((n) => (
+                            <option key={n} value={n}>Court {n}</option>
+                          ))}
+                        </select>
                         {m.server_player_id && m.status !== 'playing' && (
                           <span
                             className="px-1.5 py-0.5 rounded text-xs font-bold inline-flex items-center gap-1"
@@ -188,28 +259,17 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
                         {MATCH_STATUS_LABEL[m.status] ?? m.status}
                       </span>
                     </div>
-                    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                      <PlayerBadge player={p1} tenantColor={tenantColor} />
-                      <span className="text-white/20 font-bold text-sm">vs</span>
-                      <PlayerBadge player={p2} tenantColor={tenantColor} align="right" />
-                    </div>
-                  </>
-                );
 
-                const cardClass = "block w-full text-left rounded-2xl p-4 transition-all active:scale-[0.98] bg-white/5 hover:bg-white/10 border";
-                const cardStyle = {
-                  borderColor: isLive ? tenantColor : 'transparent',
-                  boxShadow: isLive ? `0 0 0 1px ${tenantColor}22` : undefined,
-                };
-
-                return onMatchClick ? (
-                  <button key={m.id} onClick={() => onMatchClick(m)} className={cardClass} style={cardStyle}>
-                    {cardInner}
-                  </button>
-                ) : (
-                  <Link key={m.id} href={`/referee/${m.id}`} className={cardClass} style={cardStyle}>
-                    {cardInner}
-                  </Link>
+                    {onMatchClick ? (
+                      <button onClick={() => onMatchClick(m)} className={cardClass}>
+                        {matchupLink}
+                      </button>
+                    ) : (
+                      <Link href={`/referee/${m.id}`} className={cardClass}>
+                        {matchupLink}
+                      </Link>
+                    )}
+                  </div>
                 );
               })}
             </div>

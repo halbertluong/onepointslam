@@ -74,6 +74,14 @@ export interface TournamentSettings {
   inviteCode?: string;
   /** Defaults to 'single_elimination' when omitted (pre-dates other formats). */
   bracketFormat?: BracketFormat;
+  /** Double elimination only. Opt-out: omitted (or true) keeps the full
+   * "second chance" structure — the winners-bracket final's loser drops into
+   * the losers bracket final, and whoever comes out of the losers bracket
+   * plays the winners-bracket champion in a Grand Final. Set false for a
+   * tournament that still wants a losers/consolation bracket for early
+   * losers to keep competing in, but whose true championship is decided
+   * outright by the main bracket's own final — no cross-bracket match. */
+  grandFinalEnabled?: boolean;
   /** Saved Asset Studio copy. Absent until a director saves, in which case
    *  every field falls back to the value computed from the tournament. */
   assetDetails?: AssetDetails;

@@ -151,9 +151,18 @@ function buildSingleElimMatches(
  * rematch immediately after meeting in the winners bracket. Real
  * tournament-software implementations avoid this with extra placement logic;
  * out of scope here.
+ *
+ * The full structure's trailing round (always a "minor" round, since
+ * `lbRoundsTotal` is even) exists purely to receive the winners-bracket
+ * final's loser and produce a losers-bracket champion to send to the Grand
+ * Final. With `grandFinalEnabled: false` that round is dropped — the losers
+ * bracket instead ends on its own last major round, a final decided entirely
+ * by its own earlier rounds, with nothing routed in from the main bracket's
+ * final. See `resolveAdvancement`'s matching `hasBracket('grand_final')`
+ * guard, which must stay in sync with this.
  */
-function buildLosersBracket(winnersRounds: number, tournamentId: string): Match[] {
-  const lbRoundsTotal = 2 * (winnersRounds - 1);
+function buildLosersBracket(winnersRounds: number, tournamentId: string, grandFinalEnabled: boolean): Match[] {
+  const lbRoundsTotal = grandFinalEnabled ? 2 * (winnersRounds - 1) : 2 * (winnersRounds - 1) - 1;
   const matches: Match[] = [];
   let count = Math.pow(2, winnersRounds - 1) / 2; // P/4
 
@@ -323,12 +332,21 @@ export function generateBracket(
 
   if (format === 'double_elimination') {
     const winnersRounds = Math.log2(P);
+    // Opt-out (see TournamentSettings.grandFinalEnabled): a tournament that
+    // still wants everyone who loses to keep playing in a losers bracket, but
+    // whose champion is decided outright by the main bracket's own final —
+    // no cross-bracket match, and so no Grand Final rows at all.
+    const grandFinalEnabled = settings?.grandFinalEnabled !== false;
     // Losers-bracket rounds all start empty — including round 0, since main
     // round-0 matches aren't decided yet at generation time. They fill in as
     // real results come in via resolveAdvancement, the same way the
     // consolation bracket's later rounds do (round-0 walkovers have no real
     // loser, so nothing to route from them either).
-    const losers = buildLosersBracket(winnersRounds, tournamentId);
+    const losers = buildLosersBracket(winnersRounds, tournamentId, grandFinalEnabled);
+
+    if (!grandFinalEnabled) {
+      return [...main, ...propagateWalkovers(losers, 'losers')];
+    }
 
     const grandFinal: Match = {
       id: `${tournamentId}-grand_final-r0-0`,
@@ -545,6 +563,10 @@ export function resolveAdvancement(
         } else {
           // Winners-bracket final loser waits in the losers-bracket final slot
           // (player2 — the survivor of the losers bracket occupies player1).
+          // With no Grand Final for this tournament, that round was never
+          // built (see buildLosersBracket) — `findMatch` finds nothing at
+          // this round index and the loser is simply eliminated as runner-up,
+          // never entering the losers bracket at all.
           const lbFinalRound = 2 * (winnersRounds - 1) - 1;
           const lbFinal = findMatch('losers', lbFinalRound, 0);
           if (lbFinal) updates.push({ matchId: lbFinal.id, updates: { player2Id: loserId } });
@@ -604,9 +626,19 @@ export function resolveAdvancement(
   }
 
   if (match.bracket === 'losers') {
-    const lbRoundsTotal = 2 * (winnersRounds - 1);
+    // The full structure's trailing round only exists to receive the main
+    // bracket final's loser and feed a Grand Final (see buildLosersBracket) —
+    // with no Grand Final for this tournament, that round was never built,
+    // so the bracket is one round shorter and its actual last round ends one
+    // index earlier. Reading it off `allMatches` (rather than assuming the
+    // full-structure formula) keeps this in step with what was actually
+    // generated instead of looking for a round that doesn't exist.
+    const hasGrandFinal = allMatches.some((m) => m.bracket === 'grand_final');
+    const lbRoundsTotal = hasGrandFinal ? 2 * (winnersRounds - 1) : 2 * (winnersRounds - 1) - 1;
     const isLastLbRound = match.roundIndex === lbRoundsTotal - 1;
     if (isLastLbRound) {
+      // The losers bracket's own champion, decided — nowhere further to go
+      // without a Grand Final to send them to.
       const gf = findMatch('grand_final', 0, 0);
       if (gf) updates.push({ matchId: gf.id, updates: { player2Id: winnerId } });
       return updates;
@@ -697,8 +729,15 @@ function loserDropDestination(
     return { bracket: 'grand_final', roundIndex: 0, matchIndex: 0, slot: 'player2Id' };
   }
   if (hasBracket('losers')) {
+    // With no Grand Final (grandFinalEnabled: false — see generateBracket),
+    // the losers bracket is built one round shorter and the winners-bracket
+    // final's loser is never routed into it at all (resolveAdvancement's
+    // `findMatch` for this round simply finds nothing to update); matching
+    // that here rather than pointing at a round the bracket doesn't have.
     if (match.roundIndex === winnersRounds - 1) {
-      return { bracket: 'losers', roundIndex: 2 * (winnersRounds - 1) - 1, matchIndex: 0, slot: 'player2Id' };
+      return hasBracket('grand_final')
+        ? { bracket: 'losers', roundIndex: 2 * (winnersRounds - 1) - 1, matchIndex: 0, slot: 'player2Id' }
+        : null;
     }
     const dest = wbLoserDestination(match.roundIndex, match.matchIndex, winnersRounds);
     return dest ? { bracket: 'losers', ...dest } : null;

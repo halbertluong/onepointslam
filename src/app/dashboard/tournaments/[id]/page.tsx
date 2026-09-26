@@ -992,6 +992,7 @@ function SettingsEditor({
   const [ticketPrice, setTicketPrice] = useState(String(s?.ticketPriceForFundraiser ?? ''));
   const [maxPlayers, setMaxPlayers] = useState(String(s?.maxPlayers ?? 32));
   const [bracketFormat, setBracketFormat] = useState<Tournament['settings']['bracketFormat']>(s?.bracketFormat ?? 'single_elimination');
+  const [grandFinalEnabled, setGrandFinalEnabled] = useState(s?.grandFinalEnabled ?? true);
   // Normalised, not raw: a datetime-local input renders a date-only value as
   // blank, and saving from there would wipe the date the public page shows.
   const [tournamentDate, setTournamentDate] = useState(toDateTimeLocalValue(s?.tournamentDate));
@@ -1025,6 +1026,11 @@ function SettingsEditor({
     patch.allowLateRegistration = allowLateRegistration;
     patch.allowDonations = allowDonations;
     patch.bracketFormat = bracketFormat;
+    // Only takes effect at generation time (see generateBracket) — editing it
+    // after the bracket already exists has no effect on that bracket's
+    // structure or match routing, but it's still worth saving so the value
+    // reflects what a director intended for next time (e.g. a reset + regenerate).
+    patch.grandFinalEnabled = grandFinalEnabled;
     await onSave(patch, name);
   }
 
@@ -1090,6 +1096,25 @@ function SettingsEditor({
                 Needs a full draw — one entrant per slot. A bye leaves no loser to send onward, so
                 a player can land in the second bracket with nobody to play.
               </p>
+            )}
+            {!bracketGenerated && bracketFormat === 'double_elimination' && (
+              <label className="flex items-start gap-2 mt-3 text-sm text-slate-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={grandFinalEnabled}
+                  onChange={(e) => setGrandFinalEnabled(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Play a Grand Final between the two brackets
+                  <span className="block text-xs text-slate-400 mt-0.5">
+                    On: the main bracket runner-up gets a second chance in the losers bracket, and
+                    whoever survives it plays the main bracket champion for the title. Off: the main
+                    bracket final is the outright championship — the losers bracket still runs for
+                    everyone eliminated early, but its winner never faces the runner-up.
+                  </span>
+                </span>
+              </label>
             )}
           </div>
 
