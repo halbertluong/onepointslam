@@ -14,7 +14,7 @@ import NotesPanel from '@/components/NotesPanel';
 import AssetStudio from '@/components/AssetStudio';
 import CouponCodesPanel from '@/components/CouponCodesPanel';
 import TournamentUrlCard from '@/components/TournamentUrlCard';
-import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount, getConsolationRoundsCount, queueRoundPriority } from '@/lib/bracket';
+import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount, getConsolationRoundsCount, actualRoundsCount, queueRoundPriority } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 import { persistReversal, settleOpenByes, resetMatchResults } from '@/lib/tournamentWrites';
 import type { Tournament, Player, Match, PendingRegistration } from '@/types';
@@ -461,7 +461,10 @@ export default function TournamentAdminPage() {
     const wasAlreadyDecided = match.status === 'finalized' || match.status === 'walkover';
     const supabase = createClient();
     const loserId = winnerId === match.player1Id ? match.player2Id : match.player1Id;
-    const winnersRounds = getRoundsCount(tournament?.settings?.maxPlayers ?? 8);
+    // Double elimination sizes its draw to the actual field, not the configured
+    // maxPlayers floor (see generateBracket) — read the round count that was
+    // actually built rather than recomputing a possibly-larger one from settings.
+    const winnersRounds = actualRoundsCount(matches, 'main', getRoundsCount(tournament?.settings?.maxPlayers ?? 8));
     const advancement = resolveAdvancement(matches, match, winnerId, loserId ?? null, winnersRounds);
 
     for (const { matchId: mid, updates } of advancement) {
@@ -488,7 +491,7 @@ export default function TournamentAdminPage() {
    */
   async function handleReverseWinner(matchId: string) {
     setSaving(true);
-    const winnersRounds = getRoundsCount(tournament?.settings?.maxPlayers ?? 8);
+    const winnersRounds = actualRoundsCount(matches, 'main', getRoundsCount(tournament?.settings?.maxPlayers ?? 8));
     const { error } = await persistReversal(createClient(), matches, matchId, winnersRounds);
     setSaving(false);
     if (error) {
@@ -804,6 +807,11 @@ export default function TournamentAdminPage() {
                 {...sharedProps}
                 matches={mainMatches}
                 maxPlayers={maxPlayers}
+                // Double elimination sizes its draw to the actual field, not the
+                // configured maxPlayers floor (see generateBracket) — read the
+                // round count that was actually built instead of a possibly-larger
+                // one from settings, or this panel shows empty phantom rounds.
+                totalRoundsOverride={actualRoundsCount(mainMatches, 'main', getRoundsCount(maxPlayers))}
                 title={format === 'single_elimination' ? 'Bracket' : 'Main Draw'}
                 emptyMessage="No bracket yet. Generate one above."
               />
@@ -827,7 +835,7 @@ export default function TournamentAdminPage() {
                     {...sharedProps}
                     matches={matches.filter((m) => m.bracket === 'losers')}
                     maxPlayers={maxPlayers}
-                    totalRoundsOverride={getLosersRoundsCount(maxPlayers)}
+                    totalRoundsOverride={actualRoundsCount(matches, 'losers', getLosersRoundsCount(maxPlayers))}
                     title="Consolations Bracket"
                     emptyMessage="No consolations bracket yet."
                   />

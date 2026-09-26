@@ -8,7 +8,7 @@ import SoccerMatchClient from '@/components/SoccerMatchClient';
 import BasketballMatchClient from '@/components/BasketballMatchClient';
 import type { Match, Player, Tournament, KickOutcome, PossessionOutcome } from '@/types';
 import { mapPlayer } from '@/types';
-import { determineOneGoalBowlWinner, determineOnePointBowlWinner, resolveAdvancement, matchUpdatesToColumns, getRoundsCount } from '@/lib/bracket';
+import { determineOneGoalBowlWinner, determineOnePointBowlWinner, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, actualRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 
 export default function RefereeMatchPage() {
@@ -100,7 +100,10 @@ export default function RefereeMatchPage() {
     if (!match || !tournament) return false;
     const supabase = createClient();
     const loserId = winnerId === player1?.id ? (player2?.id ?? null) : (player1?.id ?? null);
-    const winnersRounds = getRoundsCount(tournament.settings?.maxPlayers ?? 8);
+    // Double elimination sizes its draw to the actual field, not the configured
+    // maxPlayers floor (see generateBracket) — read the round count that was
+    // actually built rather than recomputing a possibly-larger one from settings.
+    const winnersRounds = actualRoundsCount(allMatches, 'main', getRoundsCount(tournament.settings?.maxPlayers ?? 8));
     const advancement = resolveAdvancement(allMatches, match, winnerId, loserId, winnersRounds);
     const [first, ...rest] = advancement;
     const firstColumns = matchUpdatesToColumns(first.updates);

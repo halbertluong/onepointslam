@@ -6,7 +6,7 @@ import BracketPanel from '@/components/BracketPanel';
 import { CoinTossIcon } from '@/components/icons/CoinTossIcon';
 import type { Match, Player } from '@/types';
 import { mapMatch } from '@/types';
-import { getLosersRoundsCount, getConsolationRoundsCount, queueRoundPriority } from '@/lib/bracket';
+import { getLosersRoundsCount, getConsolationRoundsCount, getRoundsCount, actualRoundsCount, queueRoundPriority } from '@/lib/bracket';
 import { MATCH_STATUS_LABEL } from '@/lib/matchStatus';
 
 interface MatchRow {
@@ -246,6 +246,11 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
                   {...sharedProps}
                   matches={allTournamentMatches.filter((m) => m.bracket === 'main')}
                   maxPlayers={maxPlayers}
+                  // Double elimination sizes its draw to the actual field, not the
+                  // configured maxPlayers floor (see generateBracket) — read the
+                  // round count that was actually built instead of a possibly-larger
+                  // one from settings, or this panel shows empty phantom rounds.
+                  totalRoundsOverride={actualRoundsCount(allTournamentMatches, 'main', getRoundsCount(maxPlayers))}
                   title={format === 'single_elimination' ? 'Bracket' : 'Main Draw'}
                 />
               </div>
@@ -270,7 +275,7 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
                       {...sharedProps}
                       matches={allTournamentMatches.filter((m) => m.bracket === 'losers')}
                       maxPlayers={maxPlayers}
-                      totalRoundsOverride={getLosersRoundsCount(maxPlayers)}
+                      totalRoundsOverride={actualRoundsCount(allTournamentMatches, 'losers', getLosersRoundsCount(maxPlayers))}
                       title="Consolations Bracket"
                       emptyMessage="No consolations bracket yet."
                     />

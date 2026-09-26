@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { saveSeedRatings, withdrawPlayer } from '@/lib/tournamentWrites';
-import { getRoundsCount } from '@/lib/bracket';
+import { getRoundsCount, actualRoundsCount } from '@/lib/bracket';
 import AwaitingPaymentTable from '@/components/AwaitingPaymentTable';
 import PlayerDetailModal from '@/components/PlayerDetailModal';
 import type { Match, PendingRegistration, Player } from '@/types';
@@ -134,7 +134,11 @@ export default function PlayersPanel({
       'their opponent will be awarded a walkover.',
     )) return;
     setWithdrawingId(p.id);
-    const { error } = await withdrawPlayer(createClient(), matches, tournamentId, p.id, getRoundsCount(maxPlayers));
+    // Double elimination sizes its draw to the actual field, not the configured
+    // maxPlayers floor (see generateBracket) — read the round count that was
+    // actually built rather than recomputing a possibly-larger one from settings.
+    const winnersRounds = actualRoundsCount(matches, 'main', getRoundsCount(maxPlayers));
+    const { error } = await withdrawPlayer(createClient(), matches, tournamentId, p.id, winnersRounds);
     setWithdrawingId(null);
     if (error) { setErr(`Could not withdraw ${p.fullName}: ${error}`); return; }
     setErr('');
