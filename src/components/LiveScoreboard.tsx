@@ -477,8 +477,13 @@ export default function LiveScoreboard({
 
           {/* Matches — 20% alongside two brackets, 40% alongside one */}
           <div className={`${hasSecondaryBracket ? 'w-[20%]' : 'w-[40%]'} flex flex-col min-h-0 gap-4 overflow-hidden`}>
-            {/* On court + up next, grouped and color-coded so it's obvious at a glance */}
-            <div className="flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white shadow-sm" style={{ flex: upcomingMatches.length > 0 ? '1 1 auto' : '0 0 auto' }}>
+            {/* On court + up next, grouped and color-coded so it's obvious at a glance.
+                A content-sized ('auto') basis here let this panel's long
+                scrollable list claim nearly all the shared height, squeezing
+                Recent Results down to a sliver below it. A fixed 2:1 ratio
+                against Recent Results' own flex-1 guarantees it a real third
+                of the space regardless of how long the queue gets. */}
+            <div className="flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white shadow-sm" style={{ flex: upcomingMatches.length > 0 ? '2 1 0%' : '0 0 auto' }}>
               <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-3 pb-3 space-y-4">
                 {upcomingMatches.length === 0 ? (
                   <p className="text-slate-400 text-sm py-4 text-center">All matches complete 🎉</p>
