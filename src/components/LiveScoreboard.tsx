@@ -142,7 +142,12 @@ export default function LiveScoreboard({
       .channel(`live-${tournamentId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'matches', filter: `tournament_id=eq.${tournamentId}` }, () => { load(); })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    // Belt-and-suspenders poll: this page sits unattended on a TV for the
+    // length of the tournament, and a realtime websocket that silently drops
+    // after hours of being idle would otherwise leave it showing stale
+    // scores/bracket state with nothing to prompt a reconnect.
+    const poll = setInterval(load, 30_000);
+    return () => { supabase.removeChannel(channel); clearInterval(poll); };
   }, [load, tournamentId]);
 
   // Fullscreen — a TV kiosk browser is usually launched fullscreen already,
