@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import BracketView from '@/components/BracketView';
 import GenderDot from '@/components/GenderDot';
-import { addPlayersToDraw, persistSeededRedistribution } from '@/lib/tournamentWrites';
+import { addPlayersToDraw, persistSeededRedistribution, persistSwap } from '@/lib/tournamentWrites';
 import { generateBracket, rankPlayersForSeeding } from '@/lib/bracket';
 import type { Match, Player, Tournament, MaxPlayers } from '@/types';
 
@@ -75,32 +75,12 @@ export default function DrawEditorPanel({
 
   async function handleSwap(aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') {
     if (aMatchId === bMatchId && aSlot === bSlot) return;
-    // Any round — dragging in round 2+ used to look up round 0 only and silently
-    // do nothing.
-    const ma = mainMatches.find((m) => m.id === aMatchId);
-    const mb = mainMatches.find((m) => m.id === bMatchId);
-    if (!ma || !mb) return;
-    const aId = aSlot === 'p1' ? ma.player1Id : ma.player2Id;
-    const bId = bSlot === 'p1' ? mb.player1Id : mb.player2Id;
-
     setSaving(true);
-    const supabase = createClient();
-    let swapError: string | undefined;
-    if (aMatchId === bMatchId) {
-      const update = aSlot === 'p1' ? { player1_id: bId, player2_id: aId } : { player2_id: bId, player1_id: aId };
-      const { error } = await supabase.from('matches').update(update).eq('id', aMatchId);
-      swapError = error?.message;
-    } else {
-      const aField = aSlot === 'p1' ? 'player1_id' : 'player2_id';
-      const bField = bSlot === 'p1' ? 'player1_id' : 'player2_id';
-      const results = await Promise.all([
-        supabase.from('matches').update({ [aField]: bId }).eq('id', aMatchId),
-        supabase.from('matches').update({ [bField]: aId }).eq('id', bMatchId),
-      ]);
-      swapError = results.find((r) => r.error)?.error?.message;
-    }
+    // persistSwap re-reads both slots itself rather than trusting mainMatches
+    // — works for any round, byes included, and can't write a stale occupant.
+    const { error } = await persistSwap(createClient(), aMatchId, aSlot, bMatchId, bSlot);
     setSaving(false);
-    if (swapError) { setErr(`Could not swap those players: ${swapError}`); return; }
+    if (error) { setErr(`Could not swap those players: ${error}`); return; }
     flash('Players swapped.');
   }
 
