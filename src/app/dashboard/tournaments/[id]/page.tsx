@@ -16,7 +16,7 @@ import CouponCodesPanel from '@/components/CouponCodesPanel';
 import TournamentUrlCard from '@/components/TournamentUrlCard';
 import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount, getConsolationRoundsCount, queueRoundPriority } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
-import { persistReversal } from '@/lib/tournamentWrites';
+import { persistReversal, settleOpenByes } from '@/lib/tournamentWrites';
 import type { Tournament, Player, Match, PendingRegistration } from '@/types';
 import { mapPlayer, mapMatch, mapPendingRegistration } from '@/types';
 import { calcRaised, formatCurrency, DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
@@ -325,6 +325,12 @@ export default function TournamentAdminPage() {
   async function handleStartPlay() {
     setSaving(true);
     const supabase = createClient();
+
+    // Nobody is "advanced" on a bye until the tournament actually goes live —
+    // see settleOpenByes. This is that moment: settle every open first-round
+    // bye into a walkover and push its winner into round 1.
+    await settleOpenByes(supabase, matches);
+
     await supabase.from('tournaments').update({ status: 'live_play' }).eq('id', id);
 
     // Assign courts to only the first `numberOfCourts` ready matches. The rest
@@ -397,6 +403,10 @@ export default function TournamentAdminPage() {
       const { error } = await supabase.from('matches').update(matchUpdatesToColumns(updates)).eq('id', mid);
       if (error) { setMessage(`Could not save result: ${error.message}`); return; }
     }
+
+    // A real result can be recorded here before "Start Live Play" is ever
+    // clicked — see settleOpenByes — so a bye sharing that round settles now too.
+    await settleOpenByes(supabase, matches);
 
     if (!wasAlreadyDecided) {
       await releaseCourtToNextMatch(supabase, id, match.courtNumber);

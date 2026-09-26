@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Match, Player } from '@/types';
 import { mapMatch } from '@/types';
-import { reverseWinner, distributeBySeeding, resolveAdvancement, matchUpdatesToColumns } from './bracket';
+import { reverseWinner, distributeBySeeding, resolveAdvancement, settleByeAdvancement, matchUpdatesToColumns } from './bracket';
 import { releaseCourtToNextMatch } from './courts';
 
 /**
@@ -80,6 +80,24 @@ export async function persistReversal(
   return {};
 }
 
+/**
+ * Settles every still-open first-round bye in the main bracket into a
+ * walkover, once real play has actually started. A director isn't required
+ * to click "Start Live Play" before recording results — the dashboard's
+ * Bracket tab and the referee console both let results in as soon as the
+ * draw exists — so this is called from every one of those result-recording
+ * paths, not just Start Live Play itself, or a bye sharing a round with an
+ * early result would sit unsettled and leave the bracket stuck one round
+ * short of where it should be.
+ */
+export async function settleOpenByes(supabase: SupabaseClient, matches: Match[]): Promise<WriteResult> {
+  for (const { matchId, updates } of settleByeAdvancement(matches)) {
+    const { error } = await supabase.from('matches').update(matchUpdatesToColumns(updates)).eq('id', matchId);
+    if (error) return { error: error.message };
+  }
+  return {};
+}
+
 /** Fix a registrant's name, gender, age, or ratings, e.g. after a typo or a re-assessment. */
 export async function updatePlayerInfo(
   supabase: SupabaseClient,
@@ -132,32 +150,30 @@ export async function persistSeededRedistribution(
   if (round0.length === 0) return { error: 'There is no bracket to redistribute.' };
 
   const slots = distributeBySeeding(players, round0.length * 2);
-  const byeAt = (i: number) => (slots[i * 2] == null) !== (slots[i * 2 + 1] == null);
 
-  // First round: real pairings play, half-empty pairings are byes that
-  // auto-advance, fully empty pairings stay empty.
+  // First round takes the new pairings, byes included — but a bye is not
+  // resolved here. Nobody is "advanced" until the tournament actually goes
+  // live (see settleByeAdvancement), so a director can keep freely
+  // rearranging the draw, byes included, right up to that point.
   const firstRound = await Promise.all(
-    round0.map((match, i) => {
-      const p1 = slots[i * 2] ?? null;
-      const p2 = slots[i * 2 + 1] ?? null;
-      const isBye = byeAt(i);
-      return supabase
+    round0.map((match, i) =>
+      supabase
         .from('matches')
         .update({
-          player1_id: p1,
-          player2_id: p2,
-          winner_id: isBye ? (p1 ?? p2) : null,
-          status: isBye ? 'walkover' : 'scheduled',
+          player1_id: slots[i * 2] ?? null,
+          player2_id: slots[i * 2 + 1] ?? null,
+          winner_id: null,
+          status: 'scheduled',
           court_number: null,
           ...CLEARED_RESULT_FIELDS,
         })
-        .eq('id', match.id);
-    }),
+        .eq('id', match.id),
+    ),
   );
   const firstRoundErr = firstRound.find((r) => r.error);
   if (firstRoundErr?.error) return { error: firstRoundErr.error.message };
 
-  // Later rounds are emptied, then the byes are propagated forward into round 1.
+  // Later rounds are emptied — nothing to propagate forward yet.
   const later = await Promise.all(
     matches.filter((m) => m.bracket === 'main' && m.roundIndex > 0).map((match) =>
       supabase
@@ -174,21 +190,7 @@ export async function persistSeededRedistribution(
     ),
   );
   const laterErr = later.find((r) => r.error);
-  if (laterErr?.error) return { error: laterErr.error.message };
-
-  const round1 = matches.filter((m) => m.bracket === 'main' && m.roundIndex === 1);
-  const propagated = await Promise.all(
-    round0.flatMap((match, i) => {
-      if (!byeAt(i)) return [];
-      const advancing = slots[i * 2] ?? slots[i * 2 + 1] ?? null;
-      const target = round1.find((m) => m.matchIndex === Math.floor(match.matchIndex / 2));
-      if (!target) return [];
-      const slot = match.matchIndex % 2 === 0 ? 'player1_id' : 'player2_id';
-      return [supabase.from('matches').update({ [slot]: advancing }).eq('id', target.id)];
-    }),
-  );
-  const propErr = propagated.find((r) => r.error);
-  return propErr?.error ? { error: propErr.error.message } : {};
+  return laterErr?.error ? { error: laterErr.error.message } : {};
 }
 
 /**
@@ -305,6 +307,10 @@ export async function withdrawPlayer(
       const { error: restErr } = await supabase.from('matches').update(matchUpdatesToColumns(updates)).eq('id', matchId);
       if (restErr) return { error: restErr.message };
     }
+    // A withdrawal's walkover is a real result too — see settleOpenByes — so
+    // a bye sharing that round settles now, even before live play officially starts.
+    const settleErr = (await settleOpenByes(supabase, matches)).error;
+    if (settleErr) return { error: settleErr };
     await releaseCourtToNextMatch(supabase, tournamentId, current.courtNumber);
   }
 

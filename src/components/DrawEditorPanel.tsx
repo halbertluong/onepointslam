@@ -45,8 +45,11 @@ export default function DrawEditorPanel({
   const bracketSize = round0.length * 2;
 
   // A recorded result is the line we won't cross automatically: reshuffling the
-  // draw underneath played matches would invalidate them.
-  const playedMatches = matches.filter((m) => m.status === 'finalized').length;
+  // draw underneath played matches would invalidate them. A settled bye counts
+  // too — once the tournament goes live and byes are walked over (see
+  // settleByeAdvancement), that advancement is real and dragging the slot
+  // around would leave a stale winner sitting in the next round.
+  const playedMatches = matches.filter((m) => m.status === 'finalized' || m.status === 'walkover').length;
   const hasResults = playedMatches > 0;
 
   const placedIds = new Set(

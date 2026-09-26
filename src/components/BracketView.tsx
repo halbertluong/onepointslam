@@ -241,6 +241,14 @@ function MatchCardInner({
       ? 'finalized'
       : '';
 
+  // Shown as "BYE" the moment the draw has a lone occupant in round 0 — even
+  // before the tournament goes live and the match is actually settled into a
+  // walkover (see settleByeAdvancement) — so a director editing the draw
+  // still sees which slots are byes, without that lone occupant being
+  // declared a winner or advanced into round 1 yet.
+  const isRoundZeroBye =
+    match.bracket === 'main' && match.roundIndex === 0 && (match.player1Id == null) !== (match.player2Id == null);
+
   const bothRealPlayers =
     !!match.player1Id && !!match.player2Id && match.player1Id !== 'BYE' && match.player2Id !== 'BYE';
   const isResultEditable = resultEditable && bothRealPlayers && !!onSetWinner;
@@ -309,7 +317,7 @@ function MatchCardInner({
       )}
       <PlayerSlot
         id={match.player1Id} players={players} isWinner={isP1Winner}
-        isBye={match.status === 'walkover' && match.player1Id == null}
+        isBye={isRoundZeroBye && match.player1Id == null}
         matchId={match.id} slot="p1"
         editable={editable} isSource={draggingSlot === 'p1'} onDragStart={onDragStart} onDrop={onDrop}
         onSetWinner={isResultEditable ? () => onSetWinner!(match, match.player1Id as string) : undefined}
@@ -320,7 +328,7 @@ function MatchCardInner({
       />
       <PlayerSlot
         id={match.player2Id} players={players} isWinner={isP2Winner}
-        isBye={match.status === 'walkover' && match.player2Id == null}
+        isBye={isRoundZeroBye && match.player2Id == null}
         matchId={match.id} slot="p2"
         editable={editable} isSource={draggingSlot === 'p2'} onDragStart={onDragStart} onDrop={onDrop}
         onSetWinner={isResultEditable ? () => onSetWinner!(match, match.player2Id as string) : undefined}
