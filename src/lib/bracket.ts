@@ -80,7 +80,16 @@ export function distributeBySeeding(players: Player[], bracketSize: number): (st
   return seedSlotOrder(bracketSize).map((seedNo) => ranked[seedNo - 1]?.id ?? null);
 }
 
-/** Builds a single-elimination bracket (round 0 seeded from `slots`, byes auto-walked-over) tagged with the given `bracket` structure name. */
+/**
+ * Builds a single-elimination bracket, round 0 seeded from `slots`. A slot
+ * left null next to a real opponent is a bye, but it is not resolved here —
+ * a director can freely rearrange the draw (including anyone sitting on a
+ * bye) for as long as the tournament stays in the editing phase, and a bye
+ * that auto-walked-over at generation time left a stale advanced name behind
+ * in round 1 whenever it was later dragged elsewhere. Byes are settled into
+ * walkovers and advanced by `settleByeAdvancement`, called once the
+ * tournament actually goes live.
+ */
 function buildSingleElimMatches(
   slots: (string | null)[],
   tournamentId: string,
@@ -90,31 +99,17 @@ function buildSingleElimMatches(
   const matches: Match[] = [];
   const matchesPerRound = P / 2;
 
-  // A secondary bracket (consolation, losers) is seeded with every slot null
-  // — its real round-0 occupants only arrive later, dropped in one at a time
-  // as main-bracket round-0 results come in (see `resolveAdvancement`). Not
-  // knowing yet whether a given slot will end up a genuine bye (one real
-  // occupant) or a real match (two) is different from `main`'s round 0,
-  // where an empty slot IS a decided bye right now — so only treat "one side
-  // empty" as a bye when at least one side of this bracket's round 0 was
-  // actually seeded with real players.
-  const deferred = slots.every((s) => s == null);
-
   for (let i = 0; i < matchesPerRound; i++) {
-    const p1 = slots[i * 2];
-    const p2 = slots[i * 2 + 1];
-    const isByeMatch = !deferred && (p1 == null || p2 == null);
-
     matches.push({
       id: `${tournamentId}-${bracket}-r0-${i}`,
       tournamentId,
       roundIndex: 0,
       matchIndex: i,
-      player1Id: p1,
-      player2Id: p2,
+      player1Id: slots[i * 2],
+      player2Id: slots[i * 2 + 1],
       serverPlayerId: null,
-      winnerId: isByeMatch ? (p1 ?? p2) : null,
-      status: isByeMatch ? 'walkover' : 'scheduled',
+      winnerId: null,
+      status: 'scheduled',
       bracket,
       courtNumber: undefined,
     });
@@ -140,7 +135,7 @@ function buildSingleElimMatches(
     }
   }
 
-  return propagateWalkovers(matches, bracket);
+  return matches;
 }
 
 /**
@@ -333,6 +328,42 @@ export function advanceWinner(
  * own column-naming convention when persisting.
  */
 export type AdvancementUpdate = { matchId: string; updates: Partial<Match> };
+
+/**
+ * Settles every still-open first-round bye in the main bracket into a
+ * walkover and advances that winner into round 1. Deliberately not run at
+ * generation (or redistribution) time: a bye resolved and propagated that
+ * early left a stale, already-advanced name sitting in round 1 whenever a
+ * director later dragged that player to a different slot in the Draw
+ * Editor, since editing only ever patches the round-0 match itself. Instead
+ * nothing is decided until the tournament actually goes live — the one
+ * point past which the draw stops being rearranged — so this runs then.
+ */
+export function settleByeAdvancementLocal(matches: Match[]): Match[] {
+  const settled = matches.map((m) => {
+    if (m.bracket !== 'main' || m.roundIndex !== 0 || m.winnerId || m.status !== 'scheduled') return m;
+    const isBye = (m.player1Id == null) !== (m.player2Id == null);
+    if (!isBye) return m;
+    return { ...m, winnerId: (m.player1Id ?? m.player2Id) as string, status: 'walkover' as const };
+  });
+  return propagateWalkovers(settled, 'main');
+}
+
+/** Same as `settleByeAdvancementLocal`, but returns only the matches that actually changed, for a caller that persists one row per change (e.g. to Supabase) instead of working on the whole Match[] in memory. */
+export function settleByeAdvancement(matches: Match[]): AdvancementUpdate[] {
+  const advanced = settleByeAdvancementLocal(matches);
+
+  const updates: AdvancementUpdate[] = [];
+  for (const m of advanced) {
+    const before = matches.find((b) => b.id === m.id)!;
+    if (before.winnerId !== m.winnerId || before.status !== m.status) {
+      updates.push({ matchId: m.id, updates: { winnerId: m.winnerId, status: m.status } });
+    } else if (before.player1Id !== m.player1Id || before.player2Id !== m.player2Id) {
+      updates.push({ matchId: m.id, updates: { player1Id: m.player1Id, player2Id: m.player2Id } });
+    }
+  }
+  return updates;
+}
 
 /**
  * Pushes a round-0 cross-bracket drop-in (a losers-bracket or consolation-

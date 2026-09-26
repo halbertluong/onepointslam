@@ -1,5 +1,5 @@
 import type { Player, Match, MaxPlayers } from '@/types';
-import { generateBracket, advanceWinner } from '@/lib/bracket';
+import { generateBracket, advanceWinner, settleByeAdvancementLocal } from '@/lib/bracket';
 
 // ── Name generation ───────────────────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ export function generatePlayers(count: number, entryFee: number): DemoPlayer[] {
  * bracket to the field instead.
  */
 export function buildBracket(players: DemoPlayer[], drawSize?: number): Match[] {
-  return generateBracket(
+  const bracket = generateBracket(
     players,
     {
       maxPlayers: (drawSize ?? players.length) as MaxPlayers,
@@ -93,6 +93,11 @@ export function buildBracket(players: DemoPlayer[], drawSize?: number): Match[] 
     },
     'demo',
   );
+  // Unlike the real product, the demo has no separate pre-live editing phase
+  // — the bracket stage it lands on right after this is already shown as
+  // live play (see DirectorView's StatusPill), so byes are settled and
+  // advanced immediately rather than waiting for a later "go live" step.
+  return settleByeAdvancementLocal(bracket);
 }
 
 /**
