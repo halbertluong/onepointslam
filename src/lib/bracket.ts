@@ -90,10 +90,20 @@ function buildSingleElimMatches(
   const matches: Match[] = [];
   const matchesPerRound = P / 2;
 
+  // A secondary bracket (consolation, losers) is seeded with every slot null
+  // — its real round-0 occupants only arrive later, dropped in one at a time
+  // as main-bracket round-0 results come in (see `resolveAdvancement`). Not
+  // knowing yet whether a given slot will end up a genuine bye (one real
+  // occupant) or a real match (two) is different from `main`'s round 0,
+  // where an empty slot IS a decided bye right now — so only treat "one side
+  // empty" as a bye when at least one side of this bracket's round 0 was
+  // actually seeded with real players.
+  const deferred = slots.every((s) => s == null);
+
   for (let i = 0; i < matchesPerRound; i++) {
     const p1 = slots[i * 2];
     const p2 = slots[i * 2 + 1];
-    const isByeMatch = p1 == null || p2 == null;
+    const isByeMatch = !deferred && (p1 == null || p2 == null);
 
     matches.push({
       id: `${tournamentId}-${bracket}-r0-${i}`,
@@ -325,6 +335,49 @@ export function advanceWinner(
 export type AdvancementUpdate = { matchId: string; updates: Partial<Match> };
 
 /**
+ * Pushes a round-0 cross-bracket drop-in (a losers-bracket or consolation-
+ * bracket round-0 slot receiving the loser of a main-bracket round-0 match),
+ * plus — if this drop completes the slot — the forced walkover that follows.
+ *
+ * A round-0 slot in a secondary bracket is fed by exactly two main-bracket
+ * round-0 matches (see `round0DropDestination`). If the *other* one of that
+ * pair was itself a bye (no real opponent, so it never produces a loser to
+ * drop in), this slot will only ever receive this one drop-in — it's a
+ * permanent bye, decided the moment this loser lands, and nobody can ever
+ * referee it to a decision otherwise. Detect that case and settle it
+ * immediately: mark the slot's winner and advance it one round further, the
+ * same way a generation-time bye would have. If both siblings are real
+ * matches, the slot just waits, `scheduled`, for both drops to land and a
+ * referee to play it normally — the common case, left untouched here.
+ */
+function pushRoundZeroDrop(
+  updates: AdvancementUpdate[],
+  findMatch: (bracket: Match['bracket'], roundIndex: number, matchIndex: number) => Match | undefined,
+  dest: Match,
+  drop: BracketDrop,
+  loserId: string,
+  sourceMatch: Match,
+): void {
+  const patch: Partial<Match> = { [drop.slot]: loserId };
+
+  const siblingIndex = drop.slot === 'player1Id' ? sourceMatch.matchIndex + 1 : sourceMatch.matchIndex - 1;
+  const sibling = findMatch('main', 0, siblingIndex);
+  const siblingIsBye = !!sibling && (sibling.player1Id == null || sibling.player2Id == null);
+  if (siblingIsBye) {
+    patch.winnerId = loserId;
+    patch.status = 'walkover';
+  }
+  updates.push({ matchId: dest.id, updates: patch });
+
+  if (siblingIsBye) {
+    const fwdMatchIndex = Math.floor(dest.matchIndex / 2);
+    const fwdSlot = dest.matchIndex % 2 === 0 ? 'player1Id' : 'player2Id';
+    const fwd = findMatch(dest.bracket, dest.roundIndex + 1, fwdMatchIndex);
+    if (fwd) updates.push({ matchId: fwd.id, updates: { [fwdSlot]: loserId } });
+  }
+}
+
+/**
  * Computes every downstream match update triggered by declaring a winner (and,
  * for double elimination, the corresponding loser) of `match`. Centralizes the
  * bracket-topology math (winners-bracket advancement, losers-bracket
@@ -367,7 +420,7 @@ export function resolveAdvancement(
         const dest = wbLoserDestination(match.roundIndex, match.matchIndex, winnersRounds);
         if (dest) {
           const lbMatch = findMatch('losers', dest.roundIndex, dest.matchIndex);
-          if (lbMatch) updates.push({ matchId: lbMatch.id, updates: { [dest.slot]: loserId } });
+          if (lbMatch) pushRoundZeroDrop(updates, findMatch, lbMatch, dest, loserId, match);
         }
       }
     }
@@ -378,7 +431,7 @@ export function resolveAdvancement(
     if (match.bracket === 'main' && match.roundIndex === 0 && loserId) {
       const dest = round0DropDestination(match.matchIndex);
       const consMatch = findMatch('consolation', dest.roundIndex, dest.matchIndex);
-      if (consMatch) updates.push({ matchId: consMatch.id, updates: { [dest.slot]: loserId } });
+      if (consMatch) pushRoundZeroDrop(updates, findMatch, consMatch, dest, loserId, match);
     }
 
     // Winners-bracket final winner feeds the grand final (player1 slot).
