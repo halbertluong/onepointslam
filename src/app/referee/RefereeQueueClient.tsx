@@ -246,7 +246,7 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
                   {...sharedProps}
                   matches={allTournamentMatches.filter((m) => m.bracket === 'main')}
                   maxPlayers={maxPlayers}
-                  title={format === 'single_elimination' ? 'Bracket' : 'Winners Bracket'}
+                  title={format === 'single_elimination' ? 'Bracket' : 'Main Draw'}
                 />
               </div>
 
@@ -271,8 +271,8 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
                       matches={allTournamentMatches.filter((m) => m.bracket === 'losers')}
                       maxPlayers={maxPlayers}
                       totalRoundsOverride={getLosersRoundsCount(maxPlayers)}
-                      title="Losers Bracket"
-                      emptyMessage="No losers bracket yet."
+                      title="Consolations Bracket"
+                      emptyMessage="No consolations bracket yet."
                     />
                   </div>
                   <div className="bg-white rounded-2xl overflow-x-auto px-4 py-4">
