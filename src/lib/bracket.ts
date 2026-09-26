@@ -249,6 +249,29 @@ function minorRoundDropIsUnreachable(
   return true;
 }
 
+/**
+ * Same block-of-byes check as `minorRoundDropIsUnreachable`, but from just
+ * the set of main-bracket round-0 match indexes that are byes — everything
+ * a display needs is already known from the main bracket alone, with no
+ * need to wait for the drop to land or to look anything else up. Used by
+ * BracketView to show "BYE" instead of "TBD" for a losers-bracket minor
+ * round's still-empty survivor slot (player1) the moment it's certain that
+ * slot can never be filled, exactly mirroring what this same block check
+ * settles server-side once the drop-in actually arrives.
+ */
+export function minorRoundSurvivorSlotIsPermanentBye(
+  mainRoundZeroByeMatchIndexes: Set<number>,
+  wbRoundIndex: number,
+  wbMatchIndex: number,
+): boolean {
+  const blockSize = Math.pow(2, wbRoundIndex);
+  const blockStart = wbMatchIndex * blockSize;
+  for (let i = blockStart; i < blockStart + blockSize; i++) {
+    if (!mainRoundZeroByeMatchIndexes.has(i)) return false;
+  }
+  return true;
+}
+
 export function generateBracket(
   players: Player[],
   settings: TournamentSettings,

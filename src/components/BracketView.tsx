@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import type { Match, Player } from '@/types';
 import { mapMatch } from '@/types';
-import { getRoundName, getRoundsCount } from '@/lib/bracket';
+import { getRoundName, getRoundsCount, minorRoundSurvivorSlotIsPermanentBye } from '@/lib/bracket';
 import { CoinTossIcon } from '@/components/icons/CoinTossIcon';
 
 // ── Layout constants ───────────────────────────────────────────────────────────
@@ -163,13 +163,14 @@ function PlayerSlot({
       onDragOver={editable ? (e) => e.preventDefault() : undefined}
       onDrop={editable ? () => onDrop({ matchId, slot }) : undefined}
       style={{ height: CARD_H / 2 }}
-      // A drop-in slot (a fresh arrival from the main draw) gets a solid
-      // amber background and left rail plus a "NEW" badge — the same visual
-      // weight as the "WIN" badge — so it reads as unmistakable even at TV
-      // viewing distance, not just a thin line a viewer has to look for.
+      // A drop-in slot (a fresh arrival from the main draw) gets a bold
+      // all-around amber border and fill instead of the plain hairline
+      // divider — a boxed-off look that reads as "this didn't flow from a
+      // previous round" at a glance, without relying on a text badge.
       className={[
-        'w-full flex items-center justify-between gap-1 border-b border-slate-100 overflow-hidden transition-colors select-none text-left',
-        reserveLeftGutter ? 'pl-8' : isDropIn ? 'pl-5 border-l-4 border-amber-400' : 'pl-3',
+        'w-full flex items-center justify-between gap-1 overflow-hidden transition-colors select-none text-left',
+        isDropIn ? 'border-2 border-amber-400 rounded' : 'border-b border-slate-100',
+        reserveLeftGutter ? 'pl-8' : 'pl-3',
         reserveRightGutter ? 'pr-8' : 'pr-3',
         isWinner ? 'bg-emerald-50 win-row' : isDropIn ? 'bg-amber-50' : '',
         isSource  ? 'opacity-40 bg-blue-50' : '',
@@ -196,9 +197,6 @@ function PlayerSlot({
       <span className="flex items-center gap-0.5 shrink-0">
         {wonToss && <span key="toss" className="toss-badge leading-none" title="Won the coin toss"><CoinTossIcon /></span>}
         {isServer && <span key="serve" className="serve-badge text-sm leading-none" title="Served">🎾</span>}
-        {isDropIn && (
-          <span key="new" className="text-amber-700 bg-amber-200 rounded px-1 text-[10px] font-black leading-tight" title="New arrival, just eliminated from the main draw">NEW</span>
-        )}
         {isWinner && <span key="win" className="win-badge text-emerald-500 text-xs font-black">WIN</span>}
         {/*
           Touch dragging happens from this grip alone. A finger can only either
@@ -280,8 +278,22 @@ function MatchCardInner({
   // byes rather than waiting for the drop to land, so it shows "BYE" instead
   // of "TBD" immediately.
   const isSecondaryRoundZero = match.bracket !== 'main' && match.bracket !== 'grand_final' && match.roundIndex === 0;
-  const p1ForcedBye = isSecondaryRoundZero && match.player1Id == null
-    && !!mainRoundZeroByeMatchIndexes?.has(match.matchIndex * 2);
+  const isMinorLosersRound = match.bracket === 'losers' && match.roundIndex > 0 && match.roundIndex % 2 === 1;
+
+  // A minor round's player1 (the survivor carried forward from the previous
+  // major round, all the way back to round 0) can be permanently empty too:
+  // if the whole block of main-bracket round-0 matches that ever could have
+  // fed that lineage were all byes, no one ever produced a round-0 loser to
+  // start it, so nothing will ever arrive there — see
+  // minorRoundSurvivorSlotIsPermanentBye in lib/bracket.ts, the read-side
+  // twin of the same check resolveAdvancement makes server-side.
+  const minorRoundWbIndex = isMinorLosersRound ? (match.roundIndex + 1) / 2 : null;
+  const p1MinorForcedBye = isMinorLosersRound && match.player1Id == null && minorRoundWbIndex != null
+    && !!mainRoundZeroByeMatchIndexes
+    && minorRoundSurvivorSlotIsPermanentBye(mainRoundZeroByeMatchIndexes, minorRoundWbIndex, match.matchIndex);
+
+  const p1ForcedBye = (isSecondaryRoundZero && match.player1Id == null
+    && !!mainRoundZeroByeMatchIndexes?.has(match.matchIndex * 2)) || p1MinorForcedBye;
   const p2ForcedBye = isSecondaryRoundZero && match.player2Id == null
     && !!mainRoundZeroByeMatchIndexes?.has(match.matchIndex * 2 + 1);
 
@@ -296,7 +308,6 @@ function MatchCardInner({
   // player1 carries the previous round's survivor forward and player2 is the
   // new arrival from that round's main-bracket loser (see resolveAdvancement's
   // 'losers' branch); even round indexes are pure consolidation, no drop-ins.
-  const isMinorLosersRound = match.bracket === 'losers' && match.roundIndex > 0 && match.roundIndex % 2 === 1;
   const p1IsDropIn = isSecondaryRoundZero;
   const p2IsDropIn = isSecondaryRoundZero || isMinorLosersRound;
 
