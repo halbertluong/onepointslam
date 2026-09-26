@@ -232,7 +232,11 @@ export default function LiveScoreboard({
   // order they'll be called — replaces a court-only view so spectators can
   // see what's coming even before it's assigned a court.
   const upcomingMatches = matches
-    .filter((m) => m.status !== 'finalized' && m.status !== 'walkover')
+    .filter((m) =>
+      m.status !== 'finalized' && m.status !== 'walkover' &&
+      m.player1_id && m.player2_id &&
+      m.player1_id !== 'BYE' && m.player2_id !== 'BYE'
+    )
     .sort((a, b) =>
       (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9) ||
       (a.court_number ?? 99) - (b.court_number ?? 99) ||
