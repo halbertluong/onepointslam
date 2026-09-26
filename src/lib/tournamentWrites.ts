@@ -81,6 +81,56 @@ export async function persistReversal(
 }
 
 /**
+ * Swaps the occupants of two round-0 slots in the Draw Editor — a bye (null)
+ * on either side is a valid occupant to swap in, same as a real player.
+ *
+ * Reads the two match rows fresh from the database rather than trusting the
+ * caller's in-memory snapshot before computing and writing the swap — the
+ * same reason addPlayersToDraw does its own fresh read. A snapshot that's
+ * even slightly behind (the previous swap's reload hasn't landed in props
+ * yet, another tab made a change) computes the swap from stale occupants,
+ * and writing that stale pair can duplicate a player into two slots at once
+ * instead of moving them.
+ */
+export async function persistSwap(
+  supabase: SupabaseClient,
+  aMatchId: string,
+  aSlot: 'p1' | 'p2',
+  bMatchId: string,
+  bSlot: 'p1' | 'p2',
+): Promise<WriteResult> {
+  if (aMatchId === bMatchId && aSlot === bSlot) return {};
+
+  const { data: rows, error: readErr } = await supabase
+    .from('matches')
+    .select('id, player1_id, player2_id')
+    .in('id', aMatchId === bMatchId ? [aMatchId] : [aMatchId, bMatchId]);
+  if (readErr) return { error: readErr.message };
+
+  const ma = rows?.find((r) => r.id === aMatchId);
+  const mb = rows?.find((r) => r.id === bMatchId);
+  if (!ma || !mb) return { error: 'That slot no longer exists — reload the draw and try again.' };
+
+  const aId = (aSlot === 'p1' ? ma.player1_id : ma.player2_id) as string | null;
+  const bId = (bSlot === 'p1' ? mb.player1_id : mb.player2_id) as string | null;
+
+  if (aMatchId === bMatchId) {
+    const update = aSlot === 'p1' ? { player1_id: bId, player2_id: aId } : { player2_id: bId, player1_id: aId };
+    const { error } = await supabase.from('matches').update(update).eq('id', aMatchId);
+    return error ? { error: error.message } : {};
+  }
+
+  const aField = aSlot === 'p1' ? 'player1_id' : 'player2_id';
+  const bField = bSlot === 'p1' ? 'player1_id' : 'player2_id';
+  const results = await Promise.all([
+    supabase.from('matches').update({ [aField]: bId }).eq('id', aMatchId),
+    supabase.from('matches').update({ [bField]: aId }).eq('id', bMatchId),
+  ]);
+  const err = results.find((r) => r.error)?.error?.message;
+  return err ? { error: err } : {};
+}
+
+/**
  * Settles every still-open first-round bye in the main bracket into a
  * walkover, once real play has actually started. A director isn't required
  * to click "Start Live Play" before recording results — the dashboard's

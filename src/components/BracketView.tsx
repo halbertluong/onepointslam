@@ -109,7 +109,10 @@ function PlayerSlot({
 }) {
   const name = getPlayerName(id, players, isBye);
   const p    = id ? players.get(id) ?? null : null;
-  const isDraggable = editable && !!id && id !== 'BYE' && name !== 'TBD';
+  // A bye slot (id null, isBye true) is draggable too — a director can move
+  // the bye itself, swapping it with a real player elsewhere in round 0,
+  // same as dragging that player onto the bye the other way around.
+  const isDraggable = editable && (isBye || (!!id && id !== 'BYE' && name !== 'TBD'));
   const isClickable = !!onSetWinner;
   const Tag = isClickable ? 'button' : 'div';
 
