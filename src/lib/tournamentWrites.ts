@@ -184,6 +184,63 @@ export async function saveSeedRatings(
 }
 
 /**
+ * Clears every recorded result — winners, court assignments, per-sport toss
+ * / kick / possession fields — across every bracket, so a director can run
+ * the whole tournament through again (e.g. as a dry run of double
+ * elimination) without redoing the work of building the draw.
+ *
+ * The generated draw itself is left untouched: main round 0 is the only
+ * place player placement is ever a director decision (seeding, manual
+ * placement in the Draw Editor, byes) rather than something a match result
+ * produced, so its player1_id/player2_id are the one thing this keeps.
+ * Every other slot — later main rounds, the whole losers/consolation
+ * bracket, the grand final — only ever holds a player because some match's
+ * result put them there, so those are cleared back to empty along with the
+ * result itself; they'll refill the same way they did the first time, as
+ * real results come back in.
+ *
+ * Finishes by resettling round-0 byes (see settleByeAdvancement) so the
+ * bracket lands right back in its post-generation state — byes walked over
+ * and advanced — rather than sitting one round behind where a fresh draw
+ * would be.
+ */
+export async function resetMatchResults(
+  supabase: SupabaseClient,
+  matches: Match[],
+): Promise<WriteResult> {
+  const cleared: Match[] = [];
+
+  for (const match of matches) {
+    const isMainRoundZero = match.bracket === 'main' && match.roundIndex === 0;
+    const patch: Record<string, unknown> = {
+      winner_id: null,
+      loser_id: null,
+      status: 'scheduled',
+      court_number: null,
+      ...CLEARED_RESULT_FIELDS,
+    };
+    if (!isMainRoundZero) {
+      patch.player1_id = null;
+      patch.player2_id = null;
+    }
+    const { error } = await supabase.from('matches').update(patch).eq('id', match.id);
+    if (error) return { error: error.message };
+
+    cleared.push({
+      ...match,
+      winnerId: null,
+      loserId: null,
+      status: 'scheduled',
+      courtNumber: undefined,
+      player1Id: isMainRoundZero ? match.player1Id : null,
+      player2Id: isMainRoundZero ? match.player2Id : null,
+    });
+  }
+
+  return settleOpenByes(supabase, cleared);
+}
+
+/**
  * Rewrite a tournament's first round so the given players sit in standard
  * tournament-seeding positions, and reset every later round back to empty.
  *
