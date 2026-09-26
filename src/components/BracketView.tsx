@@ -8,6 +8,8 @@ import { CoinTossIcon } from '@/components/icons/CoinTossIcon';
 
 // ── Layout constants ───────────────────────────────────────────────────────────
 const CARD_H  = 80;  // px — height of one match card (two player rows)
+const CARD_GAP_Y = 16; // px — vertical breathing room between adjacent match cards, so a packed early round (e.g. a full round of byes) doesn't read as one continuous block
+const SLOT_H  = CARD_H + CARD_GAP_Y; // px — vertical space each match "owns"; the card centers within it, leaving CARD_GAP_Y split above/below
 const COL_W   = 200; // px — width of each column
 const COL_GAP = 48;  // px — gap between columns (hosts SVG connectors)
 
@@ -484,7 +486,7 @@ function Connectors({ currentCount, nextCount, numFirstRound, band }: {
   /** Vertical range worth drawing, when the draw is large enough to window. */
   band?: { top: number; bottom: number };
 }) {
-  const totalH      = numFirstRound * CARD_H;
+  const totalH      = numFirstRound * SLOT_H;
   const currentCellH = totalH / currentCount;
   const nextCellH    = totalH / nextCount;
   const midX        = COL_GAP / 2;
@@ -724,7 +726,7 @@ export default function BracketView({
     return byRound;
   }, [matches, totalRounds]);
   const numFirstRound  = Math.max(rounds[0]?.length ?? 1, 1);
-  const totalH         = numFirstRound * CARD_H;
+  const totalH         = numFirstRound * SLOT_H;
 
   // A losers bracket's "major" round carries its match count unchanged into
   // the very next ("minor") round rather than halving (see getRoundName), so
