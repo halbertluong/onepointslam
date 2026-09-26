@@ -36,6 +36,15 @@ interface BracketViewProps {
   highlightMatchIds?: string[];
   /** When set, the view scrolls to bring this match into view whenever the id changes — used to keep a live scoreboard tracking the current match as the tournament moves. */
   followMatchId?: string | null;
+  /**
+   * Round-0 match indexes of the MAIN bracket that are byes (a lone occupant,
+   * no opponent). Only meaningful when rendering a losers/consolation bracket:
+   * a round-0 slot fed by one of these indexes (see round0DropDestination in
+   * lib/bracket.ts — main index 2n feeds player1, 2n+1 feeds player2) will
+   * never receive an opponent, since a bye produces no loser to drop in. That
+   * slot reads as "BYE" instead of "TBD" once this is passed.
+   */
+  mainRoundZeroByeMatchIndexes?: Set<number>;
 }
 
 type DragKey = { matchId: string; slot: 'p1' | 'p2' } | null;
@@ -82,13 +91,15 @@ function hideGhost() {
 
 // ── Player slot ───────────────────────────────────────────────────────────────
 function PlayerSlot({
-  id, players, isWinner, isBye, matchId, slot, isSource, onDragStart, onDrop, editable, onSetWinner,
+  id, players, isWinner, isBye, isDropIn, matchId, slot, isSource, onDragStart, onDrop, editable, onSetWinner,
   wonToss, isServer, reserveRightGutter, reserveLeftGutter,
 }: {
   id: string | null | undefined;
   players: PlayerIndex;
   isWinner: boolean;
   isBye?: boolean;
+  /** A fresh arrival from the main draw this round, rather than a survivor advancing within this bracket — see BracketViewProps.mainRoundZeroByeMatchIndexes for the full explanation. Shown as a small staggered amber marker so the flow of the draw reads at a glance. */
+  isDropIn?: boolean;
   matchId: string;
   slot: 'p1' | 'p2';
   /** This slot is the one currently being dragged. */
@@ -152,18 +163,26 @@ function PlayerSlot({
       onDragOver={editable ? (e) => e.preventDefault() : undefined}
       onDrop={editable ? () => onDrop({ matchId, slot }) : undefined}
       style={{ height: CARD_H / 2 }}
+      // A drop-in slot (a fresh arrival from the main draw) gets extra left
+      // indent plus an amber rail, staggering it visually from a slot that's
+      // advancing within this bracket — so which is which reads at a glance
+      // without needing the tooltip.
       className={[
         'w-full flex items-center justify-between gap-1 border-b border-slate-100 overflow-hidden transition-colors select-none text-left',
-        reserveLeftGutter ? 'pl-8' : 'pl-3',
+        reserveLeftGutter ? 'pl-8' : isDropIn ? 'pl-5 border-l-2 border-amber-300' : 'pl-3',
         reserveRightGutter ? 'pr-8' : 'pr-3',
         isWinner ? 'bg-emerald-50 win-row' : '',
         isSource  ? 'opacity-40 bg-blue-50' : '',
         isDraggable ? 'cursor-grab active:cursor-grabbing hover:bg-slate-50' : '',
         isClickable ? 'cursor-pointer hover:bg-blue-50' : '',
       ].join(' ')}
+      title={isDropIn ? 'New arrival, just eliminated from the main draw' : undefined}
     >
       <div className="flex-1 min-w-0">
         <span className={`text-sm font-medium truncate block ${isWinner ? 'text-emerald-700 font-bold' : 'text-slate-700'}`}>
+          {isDropIn && (
+            <span className="text-amber-500 font-bold mr-1 text-xs" title="New arrival, just eliminated from the main draw">↓</span>
+          )}
           {p?.seedRating ? (
             <span className="text-amber-500 font-bold mr-1 text-xs">[{p.seedRating}]</span>
           ) : null}
@@ -224,10 +243,13 @@ interface MatchCardProps {
   onReverseMatch?: (matchId: string) => void;
   /** Called out as "up next" — see `BracketViewProps.highlightMatchIds`. */
   highlighted?: boolean;
+  /** See `BracketViewProps.mainRoundZeroByeMatchIndexes`. */
+  mainRoundZeroByeMatchIndexes?: Set<number>;
 }
 
 function MatchCardInner({
   match, players, topPx, editable, draggingSlot, onDragStart, onDrop, resultEditable, onSetWinner, onMatchClick, onReverseMatch, highlighted,
+  mainRoundZeroByeMatchIndexes,
 }: MatchCardProps) {
   // A match with no winner has none — without the first test, an undecided
   // later-round match marked both of its empty slots as the winner, because a
@@ -251,6 +273,32 @@ function MatchCardInner({
   // declared a winner or advanced into round 1 yet.
   const isRoundZeroBye =
     match.bracket === 'main' && match.roundIndex === 0 && (match.player1Id == null) !== (match.player2Id == null);
+
+  // A losers/consolation round-0 slot fed by a main-bracket bye (see
+  // round0DropDestination in lib/bracket.ts) will never get an opponent — the
+  // bye produced no loser to drop in. Read that from the main bracket's own
+  // byes rather than waiting for the drop to land, so it shows "BYE" instead
+  // of "TBD" immediately.
+  const isSecondaryRoundZero = match.bracket !== 'main' && match.bracket !== 'grand_final' && match.roundIndex === 0;
+  const p1ForcedBye = isSecondaryRoundZero && match.player1Id == null
+    && !!mainRoundZeroByeMatchIndexes?.has(match.matchIndex * 2);
+  const p2ForcedBye = isSecondaryRoundZero && match.player2Id == null
+    && !!mainRoundZeroByeMatchIndexes?.has(match.matchIndex * 2 + 1);
+
+  // A losers-bracket slot is either a fresh drop-in (a loser just eliminated
+  // from the main draw) or a survivor advancing within the losers bracket
+  // itself — distinguished visually so the flow of the draw reads at a
+  // glance. Round 0 is fed entirely by main-bracket round-0 losers (both
+  // slots are drop-ins); a consolation bracket only ever takes drop-ins in
+  // round 0, everything after is pure internal advancement (see
+  // resolveAdvancement). A true losers bracket keeps taking drop-ins every
+  // other round after that: odd round indexes are "minor" rounds where
+  // player1 carries the previous round's survivor forward and player2 is the
+  // new arrival from that round's main-bracket loser (see resolveAdvancement's
+  // 'losers' branch); even round indexes are pure consolidation, no drop-ins.
+  const isMinorLosersRound = match.bracket === 'losers' && match.roundIndex > 0 && match.roundIndex % 2 === 1;
+  const p1IsDropIn = isSecondaryRoundZero;
+  const p2IsDropIn = isSecondaryRoundZero || isMinorLosersRound;
 
   const bothRealPlayers =
     !!match.player1Id && !!match.player2Id && match.player1Id !== 'BYE' && match.player2Id !== 'BYE';
@@ -320,7 +368,8 @@ function MatchCardInner({
       )}
       <PlayerSlot
         id={match.player1Id} players={players} isWinner={isP1Winner}
-        isBye={isRoundZeroBye && match.player1Id == null}
+        isBye={(isRoundZeroBye && match.player1Id == null) || p1ForcedBye}
+        isDropIn={p1IsDropIn && !p1ForcedBye}
         matchId={match.id} slot="p1"
         editable={editable} isSource={draggingSlot === 'p1'} onDragStart={onDragStart} onDrop={onDrop}
         onSetWinner={isResultEditable ? () => onSetWinner!(match, match.player1Id as string) : undefined}
@@ -331,7 +380,8 @@ function MatchCardInner({
       />
       <PlayerSlot
         id={match.player2Id} players={players} isWinner={isP2Winner}
-        isBye={isRoundZeroBye && match.player2Id == null}
+        isBye={(isRoundZeroBye && match.player2Id == null) || p2ForcedBye}
+        isDropIn={p2IsDropIn && !p2ForcedBye}
         matchId={match.id} slot="p2"
         editable={editable} isSource={draggingSlot === 'p2'} onDragStart={onDragStart} onDrop={onDrop}
         onSetWinner={isResultEditable ? () => onSetWinner!(match, match.player2Id as string) : undefined}
@@ -362,6 +412,7 @@ const MatchCard = memo(MatchCardInner, (a, b) =>
   a.onMatchClick === b.onMatchClick &&
   a.onReverseMatch === b.onReverseMatch &&
   a.highlighted === b.highlighted &&
+  a.mainRoundZeroByeMatchIndexes === b.mainRoundZeroByeMatchIndexes &&
   a.match.id === b.match.id &&
   a.match.player1Id === b.match.player1Id &&
   a.match.player2Id === b.match.player2Id &&
@@ -468,6 +519,7 @@ export default function BracketView({
   onReverseMatch,
   highlightMatchIds,
   followMatchId,
+  mainRoundZeroByeMatchIndexes,
 }: BracketViewProps) {
   const [matches,  setMatches]  = useState<Match[]>(initialMatches);
   const [dragging, setDragging] = useState<DragKey>(null);
@@ -695,6 +747,7 @@ export default function BracketView({
                     onMatchClick={onMatchClick ? matchClick : undefined}
                     onReverseMatch={onReverseMatch ? reverseMatch : undefined}
                     highlighted={highlightSet.has(match.id)}
+                    mainRoundZeroByeMatchIndexes={mainRoundZeroByeMatchIndexes}
                   />
                   );
                 })}
