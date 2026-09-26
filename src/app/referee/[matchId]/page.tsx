@@ -103,15 +103,21 @@ export default function RefereeMatchPage() {
     const winnersRounds = getRoundsCount(tournament.settings?.maxPlayers ?? 8);
     const advancement = resolveAdvancement(allMatches, match, winnerId, loserId, winnersRounds);
     const [first, ...rest] = advancement;
-    const { error } = await supabase
-      .from('matches')
-      .update({ ...matchUpdatesToColumns(first.updates), ...extraFields })
-      .eq('id', first.matchId);
-    if (error) { setSaveError(`Could not save result: ${error.message}`); return false; }
-    setSaveError('');
-    for (const { matchId: id, updates } of rest) {
-      await supabase.from('matches').update(matchUpdatesToColumns(updates)).eq('id', id);
+    const firstColumns = matchUpdatesToColumns(first.updates);
+    const { status: extraStatus, ...otherExtraFields } = extraFields ?? {};
+    const { error: rpcError } = await supabase.rpc('advance_match_winner', {
+      p_match_id: first.matchId,
+      p_winner_id: winnerId,
+      p_loser_id: loserId,
+      p_status: extraStatus ?? firstColumns.status,
+      p_downstream: rest.map(({ matchId: id, updates }) => ({ match_id: id, ...matchUpdatesToColumns(updates) })),
+    });
+    if (rpcError) { setSaveError(`Could not save result: ${rpcError.message}`); return false; }
+    if (Object.keys(otherExtraFields).length > 0) {
+      const { error } = await supabase.from('matches').update(otherExtraFields).eq('id', first.matchId);
+      if (error) { setSaveError(`Could not save result: ${error.message}`); return false; }
     }
+    setSaveError('');
     await releaseCourtToNextMatch(supabase, match.tournamentId, match.courtNumber);
     return true;
   }
