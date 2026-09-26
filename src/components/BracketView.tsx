@@ -163,15 +163,15 @@ function PlayerSlot({
       onDragOver={editable ? (e) => e.preventDefault() : undefined}
       onDrop={editable ? () => onDrop({ matchId, slot }) : undefined}
       style={{ height: CARD_H / 2 }}
-      // A drop-in slot (a fresh arrival from the main draw) gets extra left
-      // indent plus an amber rail, staggering it visually from a slot that's
-      // advancing within this bracket — so which is which reads at a glance
-      // without needing the tooltip.
+      // A drop-in slot (a fresh arrival from the main draw) gets a solid
+      // amber background and left rail plus a "NEW" badge — the same visual
+      // weight as the "WIN" badge — so it reads as unmistakable even at TV
+      // viewing distance, not just a thin line a viewer has to look for.
       className={[
         'w-full flex items-center justify-between gap-1 border-b border-slate-100 overflow-hidden transition-colors select-none text-left',
-        reserveLeftGutter ? 'pl-8' : isDropIn ? 'pl-5 border-l-2 border-amber-300' : 'pl-3',
+        reserveLeftGutter ? 'pl-8' : isDropIn ? 'pl-5 border-l-4 border-amber-400' : 'pl-3',
         reserveRightGutter ? 'pr-8' : 'pr-3',
-        isWinner ? 'bg-emerald-50 win-row' : '',
+        isWinner ? 'bg-emerald-50 win-row' : isDropIn ? 'bg-amber-50' : '',
         isSource  ? 'opacity-40 bg-blue-50' : '',
         isDraggable ? 'cursor-grab active:cursor-grabbing hover:bg-slate-50' : '',
         isClickable ? 'cursor-pointer hover:bg-blue-50' : '',
@@ -180,9 +180,6 @@ function PlayerSlot({
     >
       <div className="flex-1 min-w-0">
         <span className={`text-sm font-medium truncate block ${isWinner ? 'text-emerald-700 font-bold' : 'text-slate-700'}`}>
-          {isDropIn && (
-            <span className="text-amber-500 font-bold mr-1 text-xs" title="New arrival, just eliminated from the main draw">↓</span>
-          )}
           {p?.seedRating ? (
             <span className="text-amber-500 font-bold mr-1 text-xs">[{p.seedRating}]</span>
           ) : null}
@@ -199,6 +196,9 @@ function PlayerSlot({
       <span className="flex items-center gap-0.5 shrink-0">
         {wonToss && <span key="toss" className="toss-badge leading-none" title="Won the coin toss"><CoinTossIcon /></span>}
         {isServer && <span key="serve" className="serve-badge text-sm leading-none" title="Served">🎾</span>}
+        {isDropIn && (
+          <span key="new" className="text-amber-700 bg-amber-200 rounded px-1 text-[10px] font-black leading-tight" title="New arrival, just eliminated from the main draw">NEW</span>
+        )}
         {isWinner && <span key="win" className="win-badge text-emerald-500 text-xs font-black">WIN</span>}
         {/*
           Touch dragging happens from this grip alone. A finger can only either
