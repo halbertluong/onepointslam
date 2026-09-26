@@ -6,6 +6,7 @@ import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 import BracketView from '@/components/BracketView';
 import { mapMatch, mapPlayer } from '@/types';
 import type { Match, Player } from '@/types';
+import { getConsolationRoundsCount } from '@/lib/bracket';
 
 /** Safari (incl. older iPadOS) only exposes the webkit-prefixed fullscreen API. */
 type FullscreenDoc = Document & {
@@ -45,6 +46,7 @@ interface TournamentInfo {
   name: string;
   status: string;
   maxPlayers: number;
+  bracketFormat: string;
   tenant: { display_name: string; primary_color: string; secondary_color: string; logo_url: string | null };
 }
 
@@ -65,9 +67,15 @@ export default function LiveScoreboard({
   const [tournament, setTournament] = useState<TournamentInfo | null>(null);
   const [matches, setMatches] = useState<LiveMatch[]>([]);
   const [bracketMatches, setBracketMatches] = useState<Match[]>([]);
+  const [consolationMatches, setConsolationMatches] = useState<Match[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // The id of whichever match a realtime event most recently touched — lets
+  // the bracket panels scroll to and highlight the exact spot that just
+  // changed, so spectators watching the TV can see what a referee just
+  // entered instead of having to spot it themselves in a large draw.
+  const [lastChangedMatchId, setLastChangedMatchId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -85,6 +93,7 @@ export default function LiveScoreboard({
       name: t.name,
       status: t.status,
       maxPlayers: (settings?.maxPlayers as number) ?? 32,
+      bracketFormat: (settings?.bracketFormat as string) ?? 'single_elimination',
       tenant: {
         display_name: (tenantRaw?.display_name as string) ?? 'One Point Bowl',
         primary_color: (tenantRaw?.primary_color as string) ?? '#3b82f6',
@@ -112,6 +121,7 @@ export default function LiveScoreboard({
     const mappedPlayers = (rawPlayers ?? []).map(mapPlayer);
     setPlayers(mappedPlayers);
     setBracketMatches(allMatches.filter((m) => m.bracket === 'main').map(mapMatch));
+    setConsolationMatches(allMatches.filter((m) => m.bracket === 'consolation').map(mapMatch));
 
     const pMap: Record<string, string> = {};
     mappedPlayers.forEach((p) => { pMap[p.id] = p.fullName; });
@@ -140,7 +150,11 @@ export default function LiveScoreboard({
     const supabase = createClient();
     const channel = supabase
       .channel(`live-${tournamentId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches', filter: `tournament_id=eq.${tournamentId}` }, () => { load(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches', filter: `tournament_id=eq.${tournamentId}` }, (payload) => {
+        const changedId = (payload.new as { id?: string } | null)?.id ?? (payload.old as { id?: string } | null)?.id ?? null;
+        if (changedId) setLastChangedMatchId(changedId);
+        load();
+      })
       .subscribe();
     // Belt-and-suspenders poll: this page sits unattended on a TV for the
     // length of the tournament, and a realtime websocket that silently drops
@@ -234,13 +248,32 @@ export default function LiveScoreboard({
     .slice(-8)
     .reverse();
 
-  // The bracket only renders the main bracket, so the "follow" target has to
-  // be narrowed to matches that actually have a card there — a current match
-  // in a consolation/losers bracket has nothing to highlight or scroll to.
+  // Each bracket panel can only scroll to and highlight a match that
+  // actually has a card in it, so the "follow" target is narrowed per panel.
+  // Whatever a realtime event most recently touched wins (that's the spot a
+  // referee just updated); with nothing to follow yet — first load, or the
+  // most recent change was in a bracket with no panel here (e.g. a losers
+  // bracket) — fall back to the next match up, so the screen still opens on
+  // something relevant instead of the top of an untouched draw.
   const mainMatchIds = new Set(bracketMatches.map((m) => m.id));
+  const consolationMatchIds = new Set(consolationMatches.map((m) => m.id));
   const upcomingInMainBracket = upcomingMatches.filter((m) => mainMatchIds.has(m.id));
-  const highlightMatchIds = upcomingInMainBracket.slice(0, 2).map((m) => m.id);
-  const followMatchId = upcomingInMainBracket[0]?.id ?? null;
+  const upcomingInConsolationBracket = upcomingMatches.filter((m) => consolationMatchIds.has(m.id));
+
+  const lastChangedInMain = lastChangedMatchId && mainMatchIds.has(lastChangedMatchId) ? lastChangedMatchId : null;
+  const lastChangedInConsolation = lastChangedMatchId && consolationMatchIds.has(lastChangedMatchId) ? lastChangedMatchId : null;
+
+  const followMatchId = lastChangedInMain ?? upcomingInMainBracket[0]?.id ?? null;
+  const highlightMatchIds = Array.from(new Set(
+    [lastChangedInMain, ...upcomingInMainBracket.slice(0, 2).map((m) => m.id)].filter((id): id is string => !!id),
+  ));
+
+  const followConsolationMatchId = lastChangedInConsolation ?? upcomingInConsolationBracket[0]?.id ?? null;
+  const highlightConsolationMatchIds = Array.from(new Set(
+    [lastChangedInConsolation, ...upcomingInConsolationBracket.slice(0, 2).map((m) => m.id)].filter((id): id is string => !!id),
+  ));
+
+  const hasConsolationBracket = tournament?.bracketFormat === 'consolation' && consolationMatches.length > 0;
 
   const totalMatches = matches.length;
   const finishedMatches = matches.filter((m) => m.status === 'finalized' || m.status === 'walkover').length;
@@ -322,13 +355,15 @@ export default function LiveScoreboard({
         </div>
       )}
 
-      {/* Bracket (left) + matches (right) */}
+      {/* Bracket(s) (left) + matches (right) — 40/40/20 when a consolation
+          bracket joins the main one, 60/40 for a single-bracket tournament */}
       {hasMatches && (
         <div className="flex-1 flex gap-4 p-4 min-h-0 overflow-hidden">
-          {/* Bracket — 60% */}
-          <div className="w-[60%] shrink-0 flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-sm">
+          <div className={`${hasConsolationBracket ? 'w-[40%]' : 'w-[60%]'} shrink-0 flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-sm`}>
             <div className="px-4 pt-3 pb-2 shrink-0">
-              <h2 className="text-xs font-black uppercase tracking-widest text-slate-600">Bracket</h2>
+              <h2 className="text-xs font-black uppercase tracking-widest text-slate-600">
+                {hasConsolationBracket ? 'Main Bracket' : 'Bracket'}
+              </h2>
               <div className="h-1 w-10 rounded-full mt-1.5" style={{ background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
             </div>
             <div className="flex-1 min-h-0 overflow-auto px-4 pb-4">
@@ -346,8 +381,31 @@ export default function LiveScoreboard({
             </div>
           </div>
 
-          {/* Matches — 40% */}
-          <div className="w-[40%] flex flex-col min-h-0 gap-4 overflow-hidden">
+          {hasConsolationBracket && (
+            <div className="w-[40%] shrink-0 flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-sm">
+              <div className="px-4 pt-3 pb-2 shrink-0">
+                <h2 className="text-xs font-black uppercase tracking-widest text-slate-600">Consolation Bracket</h2>
+                <div className="h-1 w-10 rounded-full mt-1.5" style={{ background: `linear-gradient(90deg, ${primary}, ${secondary})` }} />
+              </div>
+              <div className="flex-1 min-h-0 overflow-auto px-4 pb-4">
+                {consolationMatches.length > 0 ? (
+                  <BracketView
+                    initialMatches={consolationMatches}
+                    players={players}
+                    maxPlayers={tournament?.maxPlayers ?? 32}
+                    totalRoundsOverride={getConsolationRoundsCount(tournament?.maxPlayers ?? 32)}
+                    highlightMatchIds={highlightConsolationMatchIds}
+                    followMatchId={followConsolationMatchId}
+                  />
+                ) : (
+                  <p className="text-slate-400 text-center py-8">No consolation bracket yet.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Matches — 20% alongside two brackets, 40% alongside one */}
+          <div className={`${hasConsolationBracket ? 'w-[20%]' : 'w-[40%]'} flex flex-col min-h-0 gap-4 overflow-hidden`}>
             {/* On court + up next, grouped and color-coded so it's obvious at a glance */}
             <div className="flex flex-col min-h-0 rounded-2xl border border-slate-300 bg-white shadow-sm" style={{ flex: upcomingMatches.length > 0 ? '1 1 auto' : '0 0 auto' }}>
               <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-3 pb-3 space-y-4">

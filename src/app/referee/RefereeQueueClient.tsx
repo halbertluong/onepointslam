@@ -4,9 +4,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import BracketPanel from '@/components/BracketPanel';
 import { CoinTossIcon } from '@/components/icons/CoinTossIcon';
-import type { Player } from '@/types';
+import type { Match, Player } from '@/types';
 import { mapMatch } from '@/types';
-import { getLosersRoundsCount } from '@/lib/bracket';
+import { getLosersRoundsCount, getConsolationRoundsCount, queueRoundPriority } from '@/lib/bracket';
 import { MATCH_STATUS_LABEL } from '@/lib/matchStatus';
 
 interface MatchRow {
@@ -64,7 +64,8 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
   const tournamentMap = Object.fromEntries(tournaments.map((t) => [t.id, t]));
 
   const activeMatches = [...matches].sort((a, b) =>
-    a.round_index - b.round_index || a.match_index - b.match_index
+    queueRoundPriority(a.bracket as Match['bracket'], a.round_index) - queueRoundPriority(b.bracket as Match['bracket'], b.round_index)
+    || a.match_index - b.match_index
   );
 
   const grouped = activeMatches.reduce<Record<string, MatchRow[]>>((acc, m) => {
@@ -255,6 +256,7 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
                     {...sharedProps}
                     matches={allTournamentMatches.filter((m) => m.bracket === 'consolation')}
                     maxPlayers={maxPlayers}
+                    totalRoundsOverride={getConsolationRoundsCount(maxPlayers)}
                     title="Consolation Bracket"
                     emptyMessage="No consolation bracket yet."
                   />
