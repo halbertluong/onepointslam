@@ -7,7 +7,7 @@ import { CoinTossIcon } from '@/components/icons/CoinTossIcon';
 import type { Match, Player } from '@/types';
 import { mapMatch } from '@/types';
 import { getLosersRoundsCount, getConsolationRoundsCount, getRoundsCount, actualRoundsCount, queueRoundPriority } from '@/lib/bracket';
-import { MATCH_STATUS_LABEL } from '@/lib/matchStatus';
+import { MATCH_STATUS_LABEL, MATCH_STATUS_ORDER } from '@/lib/matchStatus';
 
 interface MatchRow {
   id: string;
@@ -63,8 +63,15 @@ export default function RefereeQueueClient({ matches, allMatches, tournaments, p
 
   const tournamentMap = Object.fromEntries(tournaments.map((t) => [t.id, t]));
 
+  // Status first — a match already on a court (or warming up) belongs at the
+  // top of the queue regardless of round, matching the order the TV
+  // scoreboard's On Court / Up Next lists already call matches in. Without
+  // this, a referee could see an earlier, still-unassigned round-3 match
+  // listed above the round-3 match a director already sent to Court 1.
   const activeMatches = [...matches].sort((a, b) =>
-    queueRoundPriority(a.bracket as Match['bracket'], a.round_index) - queueRoundPriority(b.bracket as Match['bracket'], b.round_index)
+    (MATCH_STATUS_ORDER[a.status] ?? 9) - (MATCH_STATUS_ORDER[b.status] ?? 9)
+    || (a.court_number ?? 99) - (b.court_number ?? 99)
+    || queueRoundPriority(a.bracket as Match['bracket'], a.round_index) - queueRoundPriority(b.bracket as Match['bracket'], b.round_index)
     || a.match_index - b.match_index
   );
 
