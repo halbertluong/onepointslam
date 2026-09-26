@@ -336,12 +336,16 @@ export function propagateWalkovers(matches: Match[], bracket?: Match['bracket'])
     const nextRound = m.roundIndex + 1;
     const nextMatchIndex = Math.floor(m.matchIndex / 2);
     const slot = m.matchIndex % 2 === 0 ? 'player1Id' : 'player2Id';
-    const nextMatch = updated.find(
+    const nextIndex = updated.findIndex(
       (nm) => nm.roundIndex === nextRound && nm.matchIndex === nextMatchIndex && (!bracket || nm.bracket === bracket),
     );
-    if (nextMatch) {
-      if (slot === 'player1Id') nextMatch.player1Id = m.winnerId;
-      else nextMatch.player2Id = m.winnerId;
+    // Replace with a new object rather than mutating the shared match in
+    // place: settleByeAdvancement diffs this result against the caller's
+    // original array by reference, and an in-place mutation would corrupt
+    // that "before" snapshot (same object on both sides), silently dropping
+    // the propagated winner from the database update.
+    if (nextIndex !== -1) {
+      updated[nextIndex] = { ...updated[nextIndex], [slot]: m.winnerId };
     }
   }
 
