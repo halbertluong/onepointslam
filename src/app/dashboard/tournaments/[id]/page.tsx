@@ -313,32 +313,44 @@ export default function TournamentAdminPage() {
       })),
     );
     if (!error) {
-      await supabase.from('tournaments').update({ status: 'live_play' }).eq('id', id);
-
-      // Assign courts to only the first `numberOfCourts` ready matches. The rest
-      // stay queued and pick up a court in real time as matches finish (see
-      // releaseCourtToNextMatch), instead of all being assigned up front.
-      const courts = tournament.settings?.numberOfCourts ?? 0;
-      if (courts > 0) {
-        const round0 = generated
-          .filter((m) => m.bracket === 'main' && m.roundIndex === 0 && m.status === 'scheduled'
-            && m.player1Id && m.player2Id && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
-          .sort((a, b) => a.matchIndex - b.matchIndex)
-          .slice(0, courts);
-        await Promise.all(
-          round0.map((m, i) =>
-            supabase.from('matches')
-              .update({ court_number: i + 1, status: 'court_assigned' })
-              .eq('id', m.id)
-          )
-        );
-      }
-
-      setMessage('Bracket generated — tournament is live!');
+      await supabase.from('tournaments').update({ status: 'bracket_generated' }).eq('id', id);
+      setMessage('Bracket generated!');
       load();
     } else {
       setMessage(error.message);
     }
+    setSaving(false);
+  }
+
+  async function handleStartPlay() {
+    setSaving(true);
+    const supabase = createClient();
+    await supabase.from('tournaments').update({ status: 'live_play' }).eq('id', id);
+
+    // Assign courts to only the first `numberOfCourts` ready matches. The rest
+    // stay queued and pick up a court in real time as matches finish
+    // (see releaseCourtToNextMatch), instead of all being assigned up front.
+    // Only matches still 'scheduled' are eligible — a match that already has a
+    // result (or was previously assigned a court) must never be handed a court
+    // again just because it happens to be the earliest round-0 match index.
+    const courts = tournament?.settings?.numberOfCourts ?? 0;
+    if (courts > 0) {
+      const round0 = matches
+        .filter((m) => m.bracket === 'main' && m.roundIndex === 0 && m.status === 'scheduled'
+          && m.player1Id && m.player2Id && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
+        .sort((a, b) => a.matchIndex - b.matchIndex)
+        .slice(0, courts);
+      await Promise.all(
+        round0.map((m, i) =>
+          supabase.from('matches')
+            .update({ court_number: i + 1, status: 'court_assigned' })
+            .eq('id', m.id)
+        )
+      );
+    }
+
+    setMessage('Tournament is now live!');
+    load();
     setSaving(false);
   }
 
@@ -539,6 +551,28 @@ export default function TournamentAdminPage() {
             <button onClick={handleGenerateBracket} disabled={saving}
               className="btn-primary px-3 py-2 rounded-xl font-semibold text-sm disabled:opacity-60">
               Generate Bracket
+            </button>
+          )}
+          {tournament.status === 'bracket_generated' && (
+            <button onClick={handleStartPlay} disabled={saving}
+              className="btn-primary px-3 py-2 rounded-xl font-semibold text-sm disabled:opacity-60">
+              Start Live Play
+            </button>
+          )}
+          {tournament.status === 'live_play' && (
+            <button
+              onClick={async () => {
+                setSaving(true);
+                const supabase = createClient();
+                await supabase.from('tournaments').update({ status: 'bracket_generated' }).eq('id', id);
+                setMessage('Returned to bracket view.');
+                load();
+                setSaving(false);
+              }}
+              disabled={saving}
+              className="px-3 py-2 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors disabled:opacity-60"
+            >
+              ↩ Stop Live Play
             </button>
           )}
         </div>
