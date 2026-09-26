@@ -615,6 +615,33 @@ export function getLosersRoundsCount(maxPlayers: number): number {
   return 2 * (getRoundsCount(maxPlayers) - 1);
 }
 
+/**
+ * Round count for a consolation bracket, given the main draw's max players.
+ * It seeds from main round 0's losers — half as many players as the main
+ * draw — so it always has exactly one fewer round than main. Without this,
+ * a caller that reuses main's round count to label the consolation bracket
+ * mislabels every round one size too big (e.g. a 32-draw's consolation
+ * round 0, really a round of 16, showing as "Round of 32").
+ */
+export function getConsolationRoundsCount(maxPlayers: number): number {
+  return getRoundsCount(maxPlayers) - 1;
+}
+
+/**
+ * Where a match belongs in queue order across bracket types, lowest first.
+ * Within a single bracket, earlier rounds always come first. For a
+ * consolation-format tournament, the consolation bracket's rounds are
+ * interleaved two main-bracket rounds behind it — main R1, main R2,
+ * consolation R1, main R3, consolation R2, main R4, consolation R3, ... —
+ * instead of every consolation match waiting until the entire main bracket
+ * is finished. Other bracket types (losers, grand_final) just use their own
+ * round index, since nothing here asks them to interleave with anything.
+ */
+export function queueRoundPriority(bracket: Match['bracket'], roundIndex: number): number {
+  if (bracket === 'consolation') return 2 * roundIndex + 2;
+  return roundIndex <= 1 ? roundIndex : 2 * roundIndex - 1;
+}
+
 /** Translates a partial Match (camelCase) into the matches table's snake_case columns, for persisting `resolveAdvancement` results. */
 export function matchUpdatesToColumns(updates: Partial<Match>): Record<string, unknown> {
   const out: Record<string, unknown> = {};

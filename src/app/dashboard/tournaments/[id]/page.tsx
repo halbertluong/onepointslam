@@ -14,7 +14,7 @@ import NotesPanel from '@/components/NotesPanel';
 import AssetStudio from '@/components/AssetStudio';
 import CouponCodesPanel from '@/components/CouponCodesPanel';
 import TournamentUrlCard from '@/components/TournamentUrlCard';
-import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount } from '@/lib/bracket';
+import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount, getConsolationRoundsCount, queueRoundPriority } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 import { persistReversal } from '@/lib/tournamentWrites';
 import type { Tournament, Player, Match, PendingRegistration } from '@/types';
@@ -123,7 +123,7 @@ type PlayersMode = 'roster' | 'payments';
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
   const active = matches
     .filter((m) => ['playing', 'court_assigned', 'warmup', 'scheduled'].includes(m.status))
-    .sort((a, b) => a.roundIndex - b.roundIndex || a.matchIndex - b.matchIndex);
+    .sort((a, b) => queueRoundPriority(a.bracket, a.roundIndex) - queueRoundPriority(b.bracket, b.roundIndex) || a.matchIndex - b.matchIndex);
 
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
 
@@ -705,6 +705,7 @@ export default function TournamentAdminPage() {
                   {...sharedProps}
                   matches={matches.filter((m) => m.bracket === 'consolation')}
                   maxPlayers={maxPlayers}
+                  totalRoundsOverride={getConsolationRoundsCount(maxPlayers)}
                   title="Consolation Bracket"
                   emptyMessage="No consolation bracket yet."
                 />
