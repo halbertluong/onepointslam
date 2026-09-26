@@ -627,13 +627,22 @@ export default function BracketView({
     };
 
     // Measure once mounted, then follow the page and the bracket's own scroll.
+    // `scroll` events don't bubble, but they do fire in the capturing phase on
+    // every ancestor up to `window` — registering here with `capture: true`
+    // picks up scrolling on *any* container between the bracket and the page,
+    // not just the page itself. That matters on pages (e.g. the live
+    // scoreboard) that embed the bracket inside its own `overflow-auto` panel
+    // rather than letting the whole page scroll: without capture, scrolling
+    // that panel never reached this listener, so the viewport used to decide
+    // which cards to build stayed frozen at its initial guess and cards below
+    // it silently never rendered, even once scrolled into view.
     measure();
-    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
     window.addEventListener('resize', onScroll, { passive: true });
     scrollBox.current?.addEventListener('scroll', onScroll, { passive: true });
     const box = scrollBox.current;
     return () => {
-      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('scroll', onScroll, { capture: true });
       window.removeEventListener('resize', onScroll);
       box?.removeEventListener('scroll', onScroll);
     };
