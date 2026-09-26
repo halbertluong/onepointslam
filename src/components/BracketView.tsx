@@ -627,6 +627,15 @@ export default function BracketView({
   const numFirstRound  = Math.max(rounds[0]?.length ?? 1, 1);
   const totalH         = numFirstRound * CARD_H;
 
+  // A losers bracket's "major" round carries its match count unchanged into
+  // the very next ("minor") round rather than halving (see getRoundName), so
+  // two consecutive rounds legitimately share the same name — e.g. a 64-draw
+  // reads Round of 32, Round of 32, Round of 16, Round of 16, ... Left as-is
+  // that reads as a mistake, so the second round of a same-named pair gets a
+  // "(2)" suffix to show they're genuinely two different rounds.
+  const roundNames = rounds.map((roundMatches, r) => getRoundName(r, totalRounds, roundMatches.length));
+  const roundLabels = roundNames.map((name, r) => (r > 0 && roundNames[r - 1] === name ? `${name} (2)` : r < roundNames.length - 1 && roundNames[r + 1] === name ? `${name} (1)` : name));
+
   // Draws small enough to be cheap are built whole, so they never depend on
   // scroll measurement at all.
   const windowed = numFirstRound * 2 > WINDOW_ABOVE_SLOTS;
@@ -645,7 +654,7 @@ export default function BracketView({
           <div key={r} className="flex shrink-0 items-center">
             <div style={{ width: COL_W }} className="text-center">
               <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
-                {getRoundName(r, totalRounds, rounds[r]?.length ?? 0)}
+                {roundLabels[r]}
               </span>
             </div>
             {r < totalRounds - 1 && <div style={{ width: COL_GAP }} />}
