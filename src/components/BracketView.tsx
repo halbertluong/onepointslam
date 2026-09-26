@@ -297,6 +297,23 @@ function MatchCardInner({
   const p2ForcedBye = isSecondaryRoundZero && match.player2Id == null
     && !!mainRoundZeroByeMatchIndexes?.has(match.matchIndex * 2 + 1);
 
+  // A losers-bracket round-0 match that's a forced bye always advances its
+  // lone survivor into player1 (the top slot) of round 1 — round0→round1 is
+  // a 1-to-1 carry-over, not a merge (see Connectors' isCarryOver case), so
+  // the connector between them is drawn as a flat line at a fixed row. But
+  // which physical row (top or bottom) holds that survivor in THIS card
+  // depends on whether the bye landed in player1 or player2 — round0DropDestination
+  // sends an even main-bracket match index to player1 and an odd one to
+  // player2, so which slot is real is basically a coin flip per match. Left
+  // alone, a survivor sitting in the bottom row here while landing in the
+  // top row next round makes the flat carry-over line look like it's jumping
+  // between rows. Rendering the real occupant on top whenever the bye
+  // landed in player1 keeps every survivor in a consistent row so the line
+  // reads flat. Only meaningful for the losers bracket: a consolation
+  // bracket's round0→round1 is an ordinary 2-to-1 merge, not a carry-over.
+  const swapRoundZeroByeOrder = match.bracket === 'losers' && match.roundIndex === 0
+    && match.player1Id == null && match.player2Id != null;
+
   // A losers-bracket slot is either a fresh drop-in (a loser just eliminated
   // from the main draw) or a survivor advancing within the losers bracket
   // itself — distinguished visually so the flow of the draw reads at a
@@ -377,29 +394,39 @@ function MatchCardInner({
           ↩
         </button>
       )}
-      <PlayerSlot
-        id={match.player1Id} players={players} isWinner={isP1Winner}
-        isBye={(isRoundZeroBye && match.player1Id == null) || p1ForcedBye}
-        isDropIn={p1IsDropIn && !p1ForcedBye}
-        matchId={match.id} slot="p1"
-        editable={editable} isSource={draggingSlot === 'p1'} onDragStart={onDragStart} onDrop={onDrop}
-        onSetWinner={isResultEditable ? () => onSetWinner!(match, match.player1Id as string) : undefined}
-        wonToss={!!tossWinnerId && tossWinnerId === match.player1Id}
-        isServer={!!servedId && servedId === match.player1Id}
-        reserveRightGutter={hasOverlay}
-        reserveLeftGutter={showCourtBadge}
-      />
-      <PlayerSlot
-        id={match.player2Id} players={players} isWinner={isP2Winner}
-        isBye={(isRoundZeroBye && match.player2Id == null) || p2ForcedBye}
-        isDropIn={p2IsDropIn && !p2ForcedBye}
-        matchId={match.id} slot="p2"
-        editable={editable} isSource={draggingSlot === 'p2'} onDragStart={onDragStart} onDrop={onDrop}
-        onSetWinner={isResultEditable ? () => onSetWinner!(match, match.player2Id as string) : undefined}
-        wonToss={!!tossWinnerId && tossWinnerId === match.player2Id}
-        isServer={!!servedId && servedId === match.player2Id}
-        reserveRightGutter={hasOverlay}
-      />
+      {(() => {
+        const p1Slot = (
+          <PlayerSlot
+            key="p1"
+            id={match.player1Id} players={players} isWinner={isP1Winner}
+            isBye={(isRoundZeroBye && match.player1Id == null) || p1ForcedBye}
+            isDropIn={p1IsDropIn && !p1ForcedBye}
+            matchId={match.id} slot="p1"
+            editable={editable} isSource={draggingSlot === 'p1'} onDragStart={onDragStart} onDrop={onDrop}
+            onSetWinner={isResultEditable ? () => onSetWinner!(match, match.player1Id as string) : undefined}
+            wonToss={!!tossWinnerId && tossWinnerId === match.player1Id}
+            isServer={!!servedId && servedId === match.player1Id}
+            reserveRightGutter={hasOverlay}
+            reserveLeftGutter={showCourtBadge && !swapRoundZeroByeOrder}
+          />
+        );
+        const p2Slot = (
+          <PlayerSlot
+            key="p2"
+            id={match.player2Id} players={players} isWinner={isP2Winner}
+            isBye={(isRoundZeroBye && match.player2Id == null) || p2ForcedBye}
+            isDropIn={p2IsDropIn && !p2ForcedBye}
+            matchId={match.id} slot="p2"
+            editable={editable} isSource={draggingSlot === 'p2'} onDragStart={onDragStart} onDrop={onDrop}
+            onSetWinner={isResultEditable ? () => onSetWinner!(match, match.player2Id as string) : undefined}
+            wonToss={!!tossWinnerId && tossWinnerId === match.player2Id}
+            isServer={!!servedId && servedId === match.player2Id}
+            reserveRightGutter={hasOverlay}
+            reserveLeftGutter={showCourtBadge && swapRoundZeroByeOrder}
+          />
+        );
+        return swapRoundZeroByeOrder ? <>{p2Slot}{p1Slot}</> : <>{p1Slot}{p2Slot}</>;
+      })()}
     </div>
   );
 }
