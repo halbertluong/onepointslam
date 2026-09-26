@@ -301,6 +301,14 @@ export default function LiveScoreboard({
 
   const mainMatchIds = new Set(bracketMatches.map((m) => m.id));
   const secondaryMatchIds = new Set(secondaryMatches.map((m) => m.id));
+  // Round-0 main-bracket matches with a lone occupant — a losers/consolation
+  // round-0 slot fed by one of these will never get an opponent (see
+  // BracketView's mainRoundZeroByeMatchIndexes) and should read "BYE", not "TBD".
+  const mainRoundZeroByeMatchIndexes = new Set(
+    bracketMatches
+      .filter((m) => m.roundIndex === 0 && (m.player1Id == null) !== (m.player2Id == null))
+      .map((m) => m.matchIndex),
+  );
   const upcomingInMainBracket = upcomingMatches.filter((m) => mainMatchIds.has(m.id));
   const upcomingInSecondaryBracket = upcomingMatches.filter((m) => secondaryMatchIds.has(m.id));
 
@@ -445,6 +453,7 @@ export default function LiveScoreboard({
                     totalRoundsOverride={secondaryRoundsCount}
                     highlightMatchIds={highlightSecondaryMatchIds}
                     followMatchId={followSecondaryMatchId}
+                    mainRoundZeroByeMatchIndexes={mainRoundZeroByeMatchIndexes}
                   />
                 ) : (
                   <p className="text-slate-400 text-center py-8">No {secondaryTitle.toLowerCase()} yet.</p>
