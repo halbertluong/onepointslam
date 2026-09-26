@@ -729,7 +729,7 @@ export default function TournamentAdminPage() {
                 {...sharedProps}
                 matches={mainMatches}
                 maxPlayers={maxPlayers}
-                title={format === 'single_elimination' ? 'Bracket' : 'Winners Bracket'}
+                title={format === 'single_elimination' ? 'Bracket' : 'Main Draw'}
                 emptyMessage="No bracket yet. Generate one above."
               />
             </div>
@@ -753,8 +753,8 @@ export default function TournamentAdminPage() {
                     matches={matches.filter((m) => m.bracket === 'losers')}
                     maxPlayers={maxPlayers}
                     totalRoundsOverride={getLosersRoundsCount(maxPlayers)}
-                    title="Losers Bracket"
-                    emptyMessage="No losers bracket yet."
+                    title="Consolations Bracket"
+                    emptyMessage="No consolations bracket yet."
                   />
                 </div>
                 <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6">
