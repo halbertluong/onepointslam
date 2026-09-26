@@ -858,10 +858,25 @@ export function matchUpdatesToColumns(updates: Partial<Match>): Record<string, u
   return out;
 }
 
-export function getRoundName(roundIndex: number, totalRounds: number): string {
+/**
+ * `matchesInRound` — the actual number of matches generated for this round —
+ * is what "Round of N" (N = matchesInRound * 2) is named from. It's *not*
+ * derivable from `roundIndex`/`totalRounds` alone: that pair only assumes
+ * every round has half as many matches as the one before it, which holds for
+ * a standard single-elimination bracket (main draw, consolation bracket) but
+ * not for a losers bracket, where a "major" round carries its round count
+ * unchanged into the very next ("minor") round rather than halving — using
+ * the position-based formula there named a 64-draw's first losers round
+ * "Round of 1024" (2^10, from a 10-round losers bracket) when it only ever
+ * has 16 matches — a real "Round of 32". Final/Semi-Final/Quarter-Final are
+ * still named by position from the end, which continues to read naturally
+ * even where the losers bracket's last couple of rounds don't strictly
+ * double in size the way those names usually imply.
+ */
+export function getRoundName(roundIndex: number, totalRounds: number, matchesInRound: number): string {
   const fromEnd = totalRounds - 1 - roundIndex;
   if (fromEnd === 0) return 'Final';
   if (fromEnd === 1) return 'Semi-Final';
   if (fromEnd === 2) return 'Quarter-Final';
-  return `Round of ${Math.pow(2, fromEnd + 1)}`;
+  return `Round of ${matchesInRound * 2}`;
 }

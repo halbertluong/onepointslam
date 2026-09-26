@@ -1106,11 +1106,14 @@ function StatsView({
 }) {
   const stats = getTournamentStats(players, config.fundraisingGoal);
   const totalRounds = Math.ceil(Math.log2(Math.max(2, players.length)));
-  const byRound = Array.from({ length: totalRounds }, (_, r) => ({
-    round: getRoundName(r, totalRounds),
-    done: matches.filter((m) => m.roundIndex === r && (m.status === 'finalized' || m.status === 'walkover')).length,
-    total: matches.filter((m) => m.roundIndex === r).length,
-  }));
+  const byRound = Array.from({ length: totalRounds }, (_, r) => {
+    const total = matches.filter((m) => m.roundIndex === r).length;
+    return {
+      round: getRoundName(r, totalRounds, total),
+      done: matches.filter((m) => m.roundIndex === r && (m.status === 'finalized' || m.status === 'walkover')).length,
+      total,
+    };
+  });
 
   const avgNtrp = players.length
     ? (players.reduce((s, p) => s + (p.ntrpRating ?? 0), 0) / players.length).toFixed(2)

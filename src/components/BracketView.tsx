@@ -376,16 +376,30 @@ const MatchCard = memo(MatchCardInner, (a, b) =>
 );
 
 // ── SVG connectors between two rounds ────────────────────────────────────────
-function Connectors({ r, nextCount, numFirstRound, band }: {
-  r: number;
+/**
+ * `currentCount`/`nextCount` are read straight from the actual matches in
+ * each round rather than assumed from `r` — a standard single-elimination
+ * bracket (main draw, consolation) always halves (`nextCount ===
+ * currentCount / 2`), but a losers-bracket "major" round carries its count
+ * unchanged into the very next ("minor") round instead, one-to-one rather
+ * than merging pairs. Both cases are drawn here: a 2-to-1 merge (the
+ * standard case) or a 1-to-1 carry-over (major → minor) when the count
+ * doesn't change. `currentCellH`/`nextCellH` size to how much vertical space
+ * that round actually needs — `totalH / matchCountInThatRound` — rather than
+ * to a fixed doubling-per-round formula that assumes a merge happened.
+ */
+function Connectors({ currentCount, nextCount, numFirstRound, band }: {
+  currentCount: number;
   nextCount: number;
   numFirstRound: number;
   /** Vertical range worth drawing, when the draw is large enough to window. */
   band?: { top: number; bottom: number };
 }) {
-  const totalH   = numFirstRound * CARD_H;
-  const srcCellH = CARD_H * Math.pow(2, r);
-  const midX     = COL_GAP / 2;
+  const totalH      = numFirstRound * CARD_H;
+  const currentCellH = totalH / currentCount;
+  const nextCellH    = totalH / nextCount;
+  const midX        = COL_GAP / 2;
+  const isCarryOver  = nextCount === currentCount;
 
   return (
     <svg
@@ -394,11 +408,19 @@ function Connectors({ r, nextCount, numFirstRound, band }: {
       className="shrink-0"
       style={{ overflow: 'visible', display: 'block' }}
     >
-      {Array.from({ length: nextCount }, (_, mi) => {
+      {isCarryOver ? Array.from({ length: nextCount }, (_, mi) => {
+        // One-to-one carry-over: this round's survivor waits at the same
+        // vertical slot in the next round (no merge), a plain straight line.
+        const y = mi * currentCellH + currentCellH / 2;
+        if (band && (y < band.top || y > band.bottom)) return null;
+        return (
+          <line key={mi} x1={0} y1={y} x2={COL_GAP} y2={y} stroke="#cbd5e1" strokeWidth={1.5} strokeLinecap="round" />
+        );
+      }) : Array.from({ length: nextCount }, (_, mi) => {
         // vertical centre of each source match card
-        const src0Y = mi * 2       * srcCellH + srcCellH / 2;
-        const src1Y = (mi * 2 + 1) * srcCellH + srcCellH / 2;
-        const tgtY  = (src0Y + src1Y) / 2;
+        const src0Y = mi * 2       * currentCellH + currentCellH / 2;
+        const src1Y = (mi * 2 + 1) * currentCellH + currentCellH / 2;
+        const tgtY  = mi * nextCellH + nextCellH / 2;
         if (band && (src1Y < band.top || src0Y > band.bottom)) return null;
         return (
           <g key={mi} stroke="#cbd5e1" strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round">
@@ -623,7 +645,7 @@ export default function BracketView({
           <div key={r} className="flex shrink-0 items-center">
             <div style={{ width: COL_W }} className="text-center">
               <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
-                {getRoundName(r, totalRounds)}
+                {getRoundName(r, totalRounds, rounds[r]?.length ?? 0)}
               </span>
             </div>
             {r < totalRounds - 1 && <div style={{ width: COL_GAP }} />}
@@ -634,7 +656,12 @@ export default function BracketView({
       {/* Cards + connectors row */}
       <div className="flex items-start min-w-max">
         {rounds.map((roundMatches, r) => {
-          const cellH    = CARD_H * Math.pow(2, r);
+          // Sized to how many matches this round actually has, not assumed
+          // from `r` — a losers-bracket "major" round carries its match count
+          // unchanged into the next ("minor") round rather than halving, so a
+          // fixed doubling-per-round formula misplaces every round after the
+          // first one that doesn't (see `Connectors` for the matching case).
+          const cellH    = totalH / Math.max(roundMatches.length, 1);
           const topInset = (cellH - CARD_H) / 2; // centres card within slot
           const colLeft  = r * (COL_W + COL_GAP);
           return (
@@ -667,8 +694,8 @@ export default function BracketView({
               {/* Connectors to next round */}
               {r < totalRounds - 1 && (
                 <Connectors
-                  r={r}
-                  nextCount={rounds[r + 1]?.length ?? 0}
+                  currentCount={Math.max(roundMatches.length, 1)}
+                  nextCount={Math.max(rounds[r + 1]?.length ?? 1, 1)}
                   numFirstRound={numFirstRound}
                   band={windowed ? { top: viewport.top - WINDOW_MARGIN, bottom: viewport.bottom + WINDOW_MARGIN } : undefined}
                 />
