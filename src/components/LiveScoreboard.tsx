@@ -6,7 +6,7 @@ import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 import BracketView from '@/components/BracketView';
 import { mapMatch, mapPlayer } from '@/types';
 import type { Match, Player } from '@/types';
-import { getConsolationRoundsCount, getLosersRoundsCount, getRoundsCount, actualRoundsCount } from '@/lib/bracket';
+import { getConsolationRoundsCount, getLosersRoundsCount, getRoundsCount, actualRoundsCount, queueRoundPriority } from '@/lib/bracket';
 
 /** Safari (incl. older iPadOS) only exposes the webkit-prefixed fullscreen API. */
 type FullscreenDoc = Document & {
@@ -29,6 +29,7 @@ function FullscreenIcon({ active }: { active: boolean }) {
 
 interface LiveMatch {
   id: string;
+  bracket: Match['bracket'];
   round_index: number;
   match_index: number;
   court_number: number | null;
@@ -130,6 +131,7 @@ export default function LiveScoreboard({
 
     const liveMapped: LiveMatch[] = allMatches.map((m) => ({
       id: m.id,
+      bracket: m.bracket,
       round_index: m.round_index,
       match_index: m.match_index,
       court_number: m.court_number,
@@ -260,7 +262,7 @@ export default function LiveScoreboard({
     .sort((a, b) =>
       (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9) ||
       (a.court_number ?? 99) - (b.court_number ?? 99) ||
-      a.round_index - b.round_index ||
+      queueRoundPriority(a.bracket, a.round_index) - queueRoundPriority(b.bracket, b.round_index) ||
       a.match_index - b.match_index
     );
   // Split into two visually distinct groups: matches already out on a court

@@ -905,11 +905,31 @@ export function actualRoundsCount(matches: Match[], bracket: Match['bracket'], f
  * interleaved two main-bracket rounds behind it — main R1, main R2,
  * consolation R1, main R3, consolation R2, main R4, consolation R3, ... —
  * instead of every consolation match waiting until the entire main bracket
- * is finished. Other bracket types (losers, grand_final) just use their own
- * round index, since nothing here asks them to interleave with anything.
+ * is finished.
+ *
+ * A double-elimination losers bracket interleaves the same way, one "stage"
+ * behind — but a losers round doesn't map 1:1 to a main round the way a
+ * consolation round does: a major round (pure consolidation among losers-
+ * bracket survivors) shares its stage with the minor round right before it,
+ * since neither depends on any further main-bracket play (see
+ * resolveAdvancement's major/minor split). Round 0 is its own stage 0
+ * (fed directly by main round 0's losers); after that, minor round `r` and
+ * the major round right after it (`r+1`) both belong to stage `ceil(r/2)`.
+ * Without this, a player just eliminated from the main draw could be sent
+ * straight into a losers-bracket match with no gap at all — main and losers
+ * rounds landed at the same priority and interleaved arbitrarily instead of
+ * finishing a main round before moving on to that round's drop-ins.
+ *
+ * grand_final just uses its own round index (0 or 1), since it only ever
+ * becomes court-ready once both a winners and a losers champion are decided
+ * — nothing here needs to hold it back further.
  */
 export function queueRoundPriority(bracket: Match['bracket'], roundIndex: number): number {
   if (bracket === 'consolation') return 2 * roundIndex + 2;
+  if (bracket === 'losers') {
+    const stage = roundIndex === 0 ? 0 : Math.ceil(roundIndex / 2);
+    return 2 * stage + 2;
+  }
   return roundIndex <= 1 ? roundIndex : 2 * roundIndex - 1;
 }
 
