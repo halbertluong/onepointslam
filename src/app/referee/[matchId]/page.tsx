@@ -10,7 +10,7 @@ import type { Match, Player, Tournament, KickOutcome, PossessionOutcome } from '
 import { mapPlayer } from '@/types';
 import { determineOneGoalBowlWinner, determineOnePointBowlWinner, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, actualRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
-import { secondServeEnabled, chargePriceCents } from '@/lib/addOns';
+import { SERVE_KINDS, addOnEnabled, type ServeKind } from '@/lib/addOns';
 
 export default function RefereeMatchPage() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -23,6 +23,18 @@ export default function RefereeMatchPage() {
   const [allMatches, setAllMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState('');
+  const [serveInfo, setServeInfo] = useState<React.ComponentProps<typeof RefereeMatchClient>['serveAddOns']>();
+
+  const handleBuyServe = useCallback(async (playerId: string, kind: ServeKind): Promise<{ ok: boolean; error?: string }> => {
+    const res = await fetch(`/api/matches/${matchId}/serve-purchases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerId, kind }),
+    });
+    if (res.ok) return { ok: true };
+    const data = await res.json().catch(() => ({}));
+    return { ok: false, error: data.error ?? 'Could not record that serve.' };
+  }, [matchId]);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -84,8 +96,18 @@ export default function RefereeMatchPage() {
         courtNumber: x.court_number,
       })),
     );
+    // Serve add-ons: which are on, what each player would pay, and what this
+    // match already bought — all quoted by the server (see serve-purchases).
+    const enabled = SERVE_KINDS.filter((k) => addOnEnabled((t as { settings?: unknown } | null)?.settings as Record<string, unknown> | undefined, k));
+    if (enabled.length > 0) {
+      const res = await fetch(`/api/matches/${matchId}/serve-purchases`).catch(() => null);
+      if (res?.ok) {
+        const data = await res.json();
+        setServeInfo({ enabled: [...enabled], quotes: data.quotes ?? {}, purchased: data.purchases ?? [], onBuy: handleBuyServe });
+      }
+    }
     setLoading(false);
-  }, [matchId]);
+  }, [matchId, handleBuyServe]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -95,18 +117,6 @@ export default function RefereeMatchPage() {
       .from('matches')
       .update({ toss_winner_id: tossWinnerId, server_player_id: serverPlayerId })
       .eq('id', matchId);
-  }
-
-  async function handleBuySecondServe(playerId: string): Promise<boolean> {
-    if (!tournament || !match) return false;
-    const { error } = await createClient().from('player_charges').insert({
-      tournament_id: match.tournamentId,
-      player_id: playerId,
-      kind: 'second_serve',
-      amount_cents: chargePriceCents('second_serve', tournament.settings),
-      match_id: match.id,
-    });
-    return !error;
   }
 
   async function applyAdvancement(winnerId: string, extraFields?: Record<string, unknown>): Promise<boolean> {
@@ -243,11 +253,7 @@ export default function RefereeMatchPage() {
         onServerDetermined={handleServerDetermined}
         onDeclareWinner={handleDeclareWinner}
         onWalkover={handleWalkover}
-        secondServe={
-          secondServeEnabled(tournament?.settings)
-            ? { priceCents: chargePriceCents('second_serve', tournament?.settings), onBuy: handleBuySecondServe }
-            : undefined
-        }
+        serveAddOns={serveInfo}
         onBack={() => router.push('/referee')}
         onNext={() => router.push('/referee')}
       />

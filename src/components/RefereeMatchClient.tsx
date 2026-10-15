@@ -4,6 +4,8 @@ import { useState } from 'react';
 import CoinTossAnimation from './CoinTossAnimation';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Match, Player } from '@/types';
+import { CHARGE_LABEL, type ServeKind } from '@/lib/addOns';
+import { formatCurrency } from '@/lib/pricing';
 
 type Phase = 'player_check' | 'coin_toss' | 'choice' | 'scoring' | 'finalized';
 
@@ -20,12 +22,17 @@ interface Props {
   onDeclareWinner: (winnerId: string) => void | Promise<void>;
   /** Called when a walkover is given. `winnerId` is the advancing player. */
   onWalkover: (winnerId: string) => void | Promise<void>;
-  /** When provided, a player who faults their serve can buy a 2nd one. The
-   *  caller records the charge (added to the player's balance) and resolves
-   *  to false if it could not be saved or one was already bought. */
-  secondServe?: {
-    priceCents: number;
-    onBuy: (playerId: string) => boolean | Promise<boolean>;
+  /** When provided, a player who faults their serve can buy a 2nd serve and,
+   *  after faulting that, a 3rd. Prices are quoted (and the charge recorded)
+   *  by the server, which knows each player's earlier purchases. */
+  serveAddOns?: {
+    /** Which serves are on for this tournament — a 3rd only ever follows a 2nd. */
+    enabled: ServeKind[];
+    /** Cents each player would pay for each serve right now. */
+    quotes: Record<string, Partial<Record<ServeKind, number>>>;
+    /** Serves already bought for this match (survives a page reload). */
+    purchased: { playerId: string; kind: ServeKind }[];
+    onBuy: (playerId: string, kind: ServeKind) => Promise<{ ok: boolean; error?: string }>;
   };
   onBack: () => void;
   onNext: () => void;
@@ -41,7 +48,7 @@ export default function RefereeMatchClient({
   onServerDetermined,
   onDeclareWinner,
   onWalkover,
-  secondServe,
+  serveAddOns,
   onBack,
   onNext,
 }: Props) {
@@ -58,8 +65,8 @@ export default function RefereeMatchClient({
   const [overrideServer, setOverrideServer] = useState<'player1' | 'player2' | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [secondServeBoughtBy, setSecondServeBoughtBy] = useState<string | null>(null);
-  const [secondServeError, setSecondServeError] = useState('');
+  const [purchases, setPurchases] = useState(serveAddOns?.purchased ?? []);
+  const [serveError, setServeError] = useState('');
 
   const effectiveServer = overrideServer ?? server;
   const p1Name = player1.fullName;
@@ -96,13 +103,13 @@ export default function RefereeMatchClient({
     onServerDetermined?.(null, serverId);
   }
 
-  async function handleBuySecondServe(playerId: string) {
-    if (!secondServe) return;
+  async function handleBuyServe(playerId: string, kind: ServeKind) {
+    if (!serveAddOns) return;
     setSaving(true);
-    const ok = await secondServe.onBuy(playerId);
+    const result = await serveAddOns.onBuy(playerId, kind);
     setSaving(false);
-    if (ok) { setSecondServeBoughtBy(playerId); setSecondServeError(''); }
-    else setSecondServeError('Could not record the 2nd serve — it may already have been bought for this match.');
+    if (result.ok) { setPurchases((prev) => [...prev, { playerId, kind }]); setServeError(''); }
+    else setServeError(result.error ?? 'Could not record that serve.');
   }
 
   async function handleDeclareWinner(winnerId: string) {
@@ -363,40 +370,62 @@ export default function RefereeMatchClient({
                 )}
               </AnimatePresence>
 
-              {secondServe && serveRuleProfile !== 'two_serves_traditional' && (
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
-                  {secondServeBoughtBy ? (
-                    <p className="text-sm text-center text-white/70">
-                      <strong>{secondServeBoughtBy === player1.id ? p1Name : p2Name}</strong> bought a 2nd serve
-                      — {`$${(secondServe.priceCents / 100).toFixed(2)}`} added to their balance.
-                    </p>
-                  ) : (
-                    <>
-                      <p className="text-xs text-center text-white/40 uppercase tracking-wide font-semibold">
-                        Missed serve? Buy a 2nd serve · ${(secondServe.priceCents / 100).toFixed(2)}
-                      </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { player: player1, name: p1Name, key: 'player1' as const },
-                          { player: player2, name: p2Name, key: 'player2' as const },
-                        ]
-                          .filter(({ key }) => !effectiveServer || effectiveServer === key)
-                          .map(({ player, name, key }) => (
-                            <button
-                              key={key}
-                              onClick={() => handleBuySecondServe(player.id)}
-                              disabled={saving}
-                              className={`bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl py-2.5 px-2 text-xs font-semibold text-white/70 transition-colors disabled:opacity-50 ${effectiveServer ? 'col-span-2' : ''}`}
-                            >
-                              {name} buys 2nd serve
-                            </button>
-                          ))}
-                      </div>
-                    </>
-                  )}
-                  {secondServeError && <p className="text-xs text-red-400 text-center">{secondServeError}</p>}
-                </div>
-              )}
+              {serveAddOns && serveAddOns.enabled.length > 0 && serveRuleProfile !== 'two_serves_traditional' && (() => {
+                const nameOf = (id: string) => (id === player1.id ? p1Name : p2Name);
+                const bought = (kind: ServeKind) => purchases.find((x) => x.kind === kind);
+                const second = bought('second_serve');
+                const third = bought('third_serve');
+                // The next serve on offer: a 2nd until one is bought, then a 3rd for that same player.
+                const next: ServeKind | null = !second
+                  ? (serveAddOns.enabled.includes('second_serve') ? 'second_serve' : null)
+                  : !third && serveAddOns.enabled.includes('third_serve') ? 'third_serve' : null;
+                const candidates = next === 'third_serve' && second
+                  ? [{ player: second.playerId === player1.id ? player1 : player2, key: second.playerId === player1.id ? 'player1' as const : 'player2' as const }]
+                  : [
+                      { player: player1, key: 'player1' as const },
+                      { player: player2, key: 'player2' as const },
+                    ].filter(({ key }) => !effectiveServer || effectiveServer === key);
+                return (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                    {purchases.length > 0 && (
+                      <ul className="space-y-1">
+                        {purchases.map((x) => (
+                          <li key={x.kind} className="text-sm text-center text-white/70">
+                            <strong>{nameOf(x.playerId)}</strong> bought a {CHARGE_LABEL[x.kind]}
+                            {' '}— added to their balance.
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {next ? (
+                      <>
+                        <p className="text-xs text-center text-white/40 uppercase tracking-wide font-semibold">
+                          {next === 'second_serve' ? 'Missed serve? Buy a 2nd serve' : 'Missed again? Buy a 3rd serve'}
+                        </p>
+                        <div className={`grid gap-2 ${candidates.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                          {candidates.map(({ player }) => {
+                            const cents = serveAddOns.quotes[player.id]?.[next];
+                            return (
+                              <button
+                                key={player.id}
+                                onClick={() => handleBuyServe(player.id, next)}
+                                disabled={saving}
+                                className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl py-2.5 px-2 text-xs font-semibold text-white/70 transition-colors disabled:opacity-50"
+                              >
+                                {nameOf(player.id)} buys {CHARGE_LABEL[next]}
+                                {cents != null && <span className="block text-white/40 font-normal mt-0.5">{formatCurrency(cents / 100)}</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    ) : purchases.length > 0 ? (
+                      <p className="text-xs text-center text-white/30">No more serves available for this point.</p>
+                    ) : null}
+                    {serveError && <p className="text-xs text-red-400 text-center">{serveError}</p>}
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-1 gap-4">
                 {[

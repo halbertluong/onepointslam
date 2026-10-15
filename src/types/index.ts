@@ -94,11 +94,31 @@ export interface TournamentSettings {
   allowSecondServe?: boolean;
   /** Price of a bought 2nd serve, in dollars. Defaults to DEFAULT_SECOND_SERVE_PRICE. */
   secondServePrice?: number;
+  /** How the 2nd serve's price grows each time the same player buys one again. */
+  secondServeEscalation?: PriceEscalation;
+  /** Whether a player who faults their 2nd serve can buy a 3rd. Opt-out like
+   * the 2nd serve; has no effect while the 2nd serve itself is off. */
+  allowThirdServe?: boolean;
+  /** Price of a bought 3rd serve, in dollars. Defaults to DEFAULT_THIRD_SERVE_PRICE. */
+  thirdServePrice?: number;
+  thirdServeEscalation?: PriceEscalation;
   /** Whether an eliminated player can buy back into the tournament. Opt-out:
    * omitted means on; only an explicit false turns it off. */
   allowBuyBack?: boolean;
   /** Price of a buy-back, in dollars. Defaults to DEFAULT_BUY_BACK_PRICE. */
   buyBackPrice?: number;
+  buyBackEscalation?: PriceEscalation;
+}
+
+/**
+ * How an add-on's price changes each time the same player buys it again.
+ * 'none' keeps it flat; 'add' adds `amount` dollars per earlier purchase
+ * (10, 15, 20…); 'multiply' multiplies by `amount` per earlier purchase
+ * (10, 15, 22.50… at ×1.5).
+ */
+export interface PriceEscalation {
+  mode: 'none' | 'add' | 'multiply';
+  amount: number;
 }
 
 export type TournamentStatus =
@@ -298,7 +318,7 @@ export function mapMatch(row: Record<string, unknown>): Match {
   };
 }
 
-export type ChargeKind = 'second_serve' | 'buy_back';
+export type ChargeKind = 'second_serve' | 'third_serve' | 'buy_back';
 export type SettlementMethod = 'stripe' | 'cash' | 'check' | 'donation';
 
 /** One add-on a player owes for (a bought 2nd serve or a buy-back), collected at the end of the event. */

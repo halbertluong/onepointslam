@@ -21,10 +21,10 @@ import {
 } from './demoData';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
-import type { PrizePlace, BracketFormat } from '@/types';
-import AddOnSettings, { type AddOnValues } from '@/components/AddOnSettings';
+import type { PrizePlace, BracketFormat, TournamentSettings } from '@/types';
+import AddOnSettings, { addOnPatch, addOnValuesFromSettings, type AddOnValues } from '@/components/AddOnSettings';
 import { findOpenSlots } from '@/lib/tournamentWrites';
-import { CHARGE_LABEL, SETTLEMENT_LABEL, DEFAULT_SECOND_SERVE_PRICE, DEFAULT_BUY_BACK_PRICE } from '@/lib/addOns';
+import { CHARGE_LABEL, SETTLEMENT_LABEL, SERVE_KINDS, addOnEnabled, buyBackEnabled, priceCentsForPurchase, priorPurchaseCount, type ServeKind } from '@/lib/addOns';
 import { reverseWinner, getRoundName, getRoundsCount, actualRoundsCount, getLosersRoundsCount, getConsolationRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatchLocal } from '@/lib/courts';
 import { MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
@@ -53,11 +53,11 @@ interface TournamentConfig {
   prizePlaces: PrizePlace[];
   bracketFormat: BracketFormat;
   /** On-site add-ons — both default on, like the real settings. */
-  allowSecondServe: boolean;
-  secondServePrice: number;
-  allowBuyBack: boolean;
-  buyBackPrice: number;
+  /** The add-on slice of the tournament settings (toggles, prices, escalation) — same shape the real app saves. */
+  addOnSettings: Partial<TournamentSettings>;
 }
+
+type ServeAddOns = React.ComponentProps<typeof RefereeMatchClient>['serveAddOns'];
 
 /** An on-site add-on a player owes for, collected at the end of the event. */
 interface DemoCharge {
@@ -130,7 +130,7 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
   const [prizeMoney, setPrizeMoney] = useState('1000');
   const [fundraisingGoal, setFundraisingGoal] = useState('5400');
   const [bracketFormat, setBracketFormat] = useState<BracketFormat>('single_elimination');
-  const [addOns, setAddOns] = useState<AddOnValues>({ allowSecondServe: true, secondServePrice: '', allowBuyBack: true, buyBackPrice: '' });
+  const [addOns, setAddOns] = useState<AddOnValues>(() => addOnValuesFromSettings(null));
 
   const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none';
 
@@ -150,10 +150,7 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
       receivingSideSelection: 'server_choice',
       prizePlaces: [],
       bracketFormat,
-      allowSecondServe: addOns.allowSecondServe,
-      secondServePrice: parseFloat(addOns.secondServePrice) >= 0 ? parseFloat(addOns.secondServePrice) : DEFAULT_SECOND_SERVE_PRICE,
-      allowBuyBack: addOns.allowBuyBack,
-      buyBackPrice: parseFloat(addOns.buyBackPrice) >= 0 ? parseFloat(addOns.buyBackPrice) : DEFAULT_BUY_BACK_PRICE,
+      addOnSettings: addOnPatch(addOns),
     });
   }
 
@@ -299,7 +296,7 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">
               On-Site Add-Ons
             </label>
-            <AddOnSettings values={addOns} onChange={(patch) => setAddOns((prev) => ({ ...prev, ...patch }))} />
+            <AddOnSettings values={addOns} onChange={setAddOns} />
           </div>
 
           <button
@@ -456,14 +453,14 @@ function DirectorRefereeQueue({
   players,
   onDeclareWinner,
   onRecordToss,
-  onBuySecondServe,
+  serveAddOnsFor,
 }: {
   config: TournamentConfig;
   matches: Match[];
   players: DemoPlayer[];
   onDeclareWinner: (matchId: string, winnerId: string) => void;
   onRecordToss: (matchId: string, tossWinnerId: string | null, serverPlayerId: string) => void;
-  onBuySecondServe: (matchId: string, playerId: string) => boolean;
+  serveAddOnsFor: (matchId: string) => ServeAddOns;
 }) {
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
@@ -485,7 +482,7 @@ function DirectorRefereeQueue({
             player2={p2 as Player}
             tournamentName={config.name}
             useRandomToss
-            secondServe={config.allowSecondServe ? { priceCents: Math.round(config.secondServePrice * 100), onBuy: (pid) => onBuySecondServe(match.id, pid) } : undefined}
+            serveAddOns={serveAddOnsFor(match.id)}
             onServerDetermined={(tossWinnerId, serverPlayerId) => onRecordToss(match.id, tossWinnerId, serverPlayerId)}
             onDeclareWinner={(winnerId) => { onDeclareWinner(match.id, winnerId); setSelectedMatchId(null); }}
             onWalkover={(winnerId) => { onDeclareWinner(match.id, winnerId); setSelectedMatchId(null); }}
@@ -546,11 +543,13 @@ function DirectorPlayersTab({
   players,
   matches,
   config,
+  charges,
   onBuyBack,
 }: {
   players: DemoPlayer[];
   matches: Match[];
   config: TournamentConfig;
+  charges: DemoCharge[];
   onBuyBack: (playerId: string, matchId: string, slot: 'player1Id' | 'player2Id') => void;
 }) {
   const [buyBackFor, setBuyBackFor] = useState<DemoPlayer | null>(null);
@@ -579,7 +578,7 @@ function DirectorPlayersTab({
       {buyBackFor && (
         <div className="m-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
           <p className="text-sm font-bold text-emerald-900">
-            Buy {buyBackFor.fullName} back in — {fmt$(config.buyBackPrice)} added to their balance
+            Buy {buyBackFor.fullName} back in — {fmt$(priceCentsForPurchase(config.addOnSettings, 'buy_back', priorPurchaseCount(charges, buyBackFor.id, 'buy_back')) / 100)} added to their balance
           </p>
           {openSlots.length === 0 ? (
             <p className="text-xs text-emerald-800">No open slots right now — a slot opens when a match has one player waiting and no opponent.</p>
@@ -661,7 +660,7 @@ function DirectorPlayersTab({
                   }`}>{isEliminated(p.id) ? 'eliminated' : p.status.replace(/_/g, ' ')}</span>
                 </td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
-                  {config.allowBuyBack && isEliminated(p.id) ? (
+                  {buyBackEnabled(config.addOnSettings) && isEliminated(p.id) ? (
                     <button
                       onClick={() => { setBuyBackFor(p); setSlotKey(''); }}
                       className="text-xs font-semibold text-emerald-600 hover:text-emerald-800"
@@ -793,12 +792,7 @@ function DemoSettingsTab({
   const [serverDetermination, setServerDetermination] = useState(s.serverDetermination);
   const [receivingSide, setReceivingSide] = useState(s.receivingSideSelection);
   const [prizePlaces, setPrizePlaces] = useState<PrizePlace[]>(s.prizePlaces ?? []);
-  const [addOns, setAddOns] = useState<AddOnValues>({
-    allowSecondServe: s.allowSecondServe,
-    secondServePrice: String(s.secondServePrice),
-    allowBuyBack: s.allowBuyBack,
-    buyBackPrice: String(s.buyBackPrice),
-  });
+  const [addOns, setAddOns] = useState<AddOnValues>(() => addOnValuesFromSettings(s.addOnSettings));
   const [saved, setSaved] = useState(false);
 
   const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-slate-400';
@@ -818,10 +812,7 @@ function DemoSettingsTab({
       serverDetermination,
       receivingSideSelection: receivingSide,
       prizePlaces,
-      allowSecondServe: addOns.allowSecondServe,
-      secondServePrice: parseFloat(addOns.secondServePrice) >= 0 ? parseFloat(addOns.secondServePrice) : DEFAULT_SECOND_SERVE_PRICE,
-      allowBuyBack: addOns.allowBuyBack,
-      buyBackPrice: parseFloat(addOns.buyBackPrice) >= 0 ? parseFloat(addOns.buyBackPrice) : DEFAULT_BUY_BACK_PRICE,
+      addOnSettings: addOnPatch(addOns),
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -898,7 +889,7 @@ function DemoSettingsTab({
         {/* On-site add-ons */}
         <div className="border-t border-slate-100 pt-5 space-y-4">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">On-Site Add-Ons</h3>
-          <AddOnSettings values={addOns} onChange={(patch) => setAddOns((prev) => ({ ...prev, ...patch }))} />
+          <AddOnSettings values={addOns} onChange={setAddOns} />
         </div>
 
         {/* Match Rules */}
@@ -1045,7 +1036,7 @@ function DirectorView({
   onSwap,
   onReverseMatch,
   charges,
-  onBuySecondServe,
+  serveAddOnsFor,
   onBuyBack,
   onSettleBalance,
   onUpdateConfig,
@@ -1058,7 +1049,7 @@ function DirectorView({
   onSwap: (aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') => void;
   onReverseMatch: (matchId: string) => void;
   charges: DemoCharge[];
-  onBuySecondServe: (matchId: string, playerId: string) => boolean;
+  serveAddOnsFor: (matchId: string) => ServeAddOns;
   onBuyBack: (playerId: string, matchId: string, slot: 'player1Id' | 'player2Id') => void;
   onSettleBalance: (playerId: string, method: SettlementMethod) => void;
   onUpdateConfig: (patch: Partial<TournamentConfig>) => void;
@@ -1174,7 +1165,7 @@ function DirectorView({
             )}
 
             {tab === 'players' && (
-              <DirectorPlayersTab players={players} matches={matches} config={config} onBuyBack={onBuyBack} />
+              <DirectorPlayersTab players={players} matches={matches} config={config} charges={charges} onBuyBack={onBuyBack} />
             )}
 
             {tab === 'balances' && (
@@ -1188,7 +1179,7 @@ function DirectorView({
                 players={players}
                 onDeclareWinner={onSetWinner}
                 onRecordToss={onRecordToss}
-                onBuySecondServe={onBuySecondServe}
+                serveAddOnsFor={serveAddOnsFor}
               />
             )}
 
@@ -1254,14 +1245,14 @@ function RefereeView({
   players,
   onDeclareWinner,
   onRecordToss,
-  onBuySecondServe,
+  serveAddOnsFor,
 }: {
   config: TournamentConfig;
   matches: Match[];
   players: DemoPlayer[];
   onDeclareWinner: (matchId: string, winnerId: string) => void;
   onRecordToss: (matchId: string, tossWinnerId: string | null, serverPlayerId: string) => void;
-  onBuySecondServe: (matchId: string, playerId: string) => boolean;
+  serveAddOnsFor: (matchId: string) => ServeAddOns;
 }) {
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
@@ -1321,7 +1312,7 @@ function RefereeView({
             player2={p2 as Player}
             tournamentName={config.name}
             useRandomToss
-            secondServe={config.allowSecondServe ? { priceCents: Math.round(config.secondServePrice * 100), onBuy: (pid) => onBuySecondServe(match.id, pid) } : undefined}
+            serveAddOns={serveAddOnsFor(match.id)}
             onServerDetermined={(tossWinnerId, serverPlayerId) => onRecordToss(match.id, tossWinnerId, serverPlayerId)}
             onDeclareWinner={(winnerId) => { onDeclareWinner(match.id, winnerId); selectMatch(null); }}
             onWalkover={(winnerId) => { onDeclareWinner(match.id, winnerId); selectMatch(null); }}
@@ -1769,18 +1760,38 @@ function BracketStage({
     });
   }, [players.length]);
 
-  /** A faulted serve bought back: a charge on the player's balance, one per match. */
-  const buySecondServe = useCallback((matchId: string, playerId: string): boolean => {
-    if (charges.some((c) => c.kind === 'second_serve' && c.matchId === matchId)) return false;
-    setCharges((prev) => [...prev, { id: `charge-${prev.length + 1}`, playerId, kind: 'second_serve', amountCents: Math.round(config.secondServePrice * 100), matchId }]);
-    return true;
-  }, [charges, config.secondServePrice]);
+  /** Serve add-ons for one match, quoted the way the real server does: each price depends on how often that player already bought that serve. */
+  const serveAddOnsFor = (matchId: string): ServeAddOns => {
+    const m = matches.find((x) => x.id === matchId);
+    const enabled = SERVE_KINDS.filter((k) => addOnEnabled(config.addOnSettings, k));
+    if (!m || enabled.length === 0) return undefined;
+    const quotes: Record<string, Partial<Record<ServeKind, number>>> = {};
+    for (const pid of [m.player1Id, m.player2Id]) {
+      if (!pid || pid === 'BYE') continue;
+      quotes[pid] = {};
+      for (const kind of enabled) quotes[pid][kind] = priceCentsForPurchase(config.addOnSettings, kind, priorPurchaseCount(charges, pid, kind));
+    }
+    return {
+      enabled: [...enabled],
+      quotes,
+      purchased: charges.filter((c) => c.matchId === matchId && (c.kind === 'second_serve' || c.kind === 'third_serve')).map((c) => ({ playerId: c.playerId, kind: c.kind as ServeKind })),
+      onBuy: async (playerId, kind) => {
+        if (charges.some((c) => c.matchId === matchId && c.kind === kind)) return { ok: false, error: 'That serve was already bought for this match.' };
+        const amountCents = priceCentsForPurchase(config.addOnSettings, kind, priorPurchaseCount(charges, playerId, kind));
+        setCharges((prev) => [...prev, { id: `charge-${prev.length + 1}`, playerId, kind, amountCents, matchId }]);
+        return { ok: true };
+      },
+    };
+  };
 
   /** An eliminated player re-enters: the director picks the open slot, the fee goes on their balance. */
   const buyBack = useCallback((playerId: string, matchId: string, slot: 'player1Id' | 'player2Id') => {
     setMatches((prev) => prev.map((m) => (m.id === matchId && !m[slot] ? { ...m, [slot]: playerId } : m)));
-    setCharges((prev) => [...prev, { id: `charge-${prev.length + 1}`, playerId, kind: 'buy_back', amountCents: Math.round(config.buyBackPrice * 100), matchId }]);
-  }, [config.buyBackPrice]);
+    setCharges((prev) => [...prev, {
+      id: `charge-${prev.length + 1}`, playerId, kind: 'buy_back', matchId,
+      amountCents: priceCentsForPurchase(config.addOnSettings, 'buy_back', priorPurchaseCount(prev, playerId, 'buy_back')),
+    }]);
+  }, [config.addOnSettings]);
 
   const settleBalance = useCallback((playerId: string, method: SettlementMethod) => {
     setCharges((prev) => prev.map((c) => (c.playerId === playerId && !c.settledWith ? { ...c, settledWith: method } : c)));
@@ -1835,7 +1846,7 @@ function BracketStage({
   const refereeQueueEl = (
     <RefereeView
       config={config} matches={matches} players={players} onDeclareWinner={declareWinner}
-      onRecordToss={recordToss} onBuySecondServe={buySecondServe}
+      onRecordToss={recordToss} serveAddOnsFor={serveAddOnsFor}
     />
   );
 
@@ -1856,7 +1867,7 @@ function BracketStage({
       onSwap={swapPlayers}
       onReverseMatch={undoMatchResult}
       charges={charges}
-      onBuySecondServe={buySecondServe}
+      serveAddOnsFor={serveAddOnsFor}
       onBuyBack={buyBack}
       onSettleBalance={settleBalance}
       onUpdateConfig={(patch) => setConfig((c) => ({ ...c, ...patch }))}

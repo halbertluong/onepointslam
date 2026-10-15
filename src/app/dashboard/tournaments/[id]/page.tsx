@@ -24,8 +24,7 @@ import { calcRaised, formatCurrency, DEFAULT_PLATFORM_FEE } from '@/lib/pricing'
 import { toDateTimeLocalValue } from '@/lib/dates';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
-import AddOnSettings, { addOnPatch, type AddOnValues } from '@/components/AddOnSettings';
-import { secondServeEnabled, buyBackEnabled } from '@/lib/addOns';
+import AddOnSettings, { addOnPatch, addOnValuesFromSettings, type AddOnValues } from '@/components/AddOnSettings';
 import { MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
 import { tournamentPath } from '@/lib/slugs';
 
@@ -750,6 +749,7 @@ export default function TournamentAdminPage() {
               entranceFee={tournament.settings?.ticketPriceForFundraiser ?? 0}
               pendingRegistrations={pendingRegistrations}
               settings={tournament.settings}
+              charges={charges}
               onViewPayment={handleViewPayment}
               onDismissPending={handleDismissPending}
               onSaved={load}
@@ -1019,12 +1019,7 @@ function SettingsEditor({
   const [prizePlaces, setPrizePlaces] = useState(s?.prizePlaces ?? []);
   const [allowLateRegistration, setAllowLateRegistration] = useState(s?.allowLateRegistration ?? false);
   const [allowDonations, setAllowDonations] = useState(s?.allowDonations !== false);
-  const [addOns, setAddOns] = useState<AddOnValues>({
-    allowSecondServe: secondServeEnabled(s),
-    secondServePrice: s?.secondServePrice != null ? String(s.secondServePrice) : '',
-    allowBuyBack: buyBackEnabled(s),
-    buyBackPrice: s?.buyBackPrice != null ? String(s.buyBackPrice) : '',
-  });
+  const [addOns, setAddOns] = useState<AddOnValues>(() => addOnValuesFromSettings(s));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1267,7 +1262,7 @@ function SettingsEditor({
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">On-Site Add-Ons</h3>
         <AddOnSettings
           values={addOns}
-          onChange={(patch) => setAddOns((prev) => ({ ...prev, ...patch }))}
+          onChange={setAddOns}
           showSecondServe={(s?.sport ?? 'tennis') === 'tennis'}
         />
       </div>

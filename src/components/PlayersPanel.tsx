@@ -3,12 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { saveSeedRatings, withdrawPlayer, removePlayer, buyBackPlayer, findOpenSlots, type OpenSlot } from '@/lib/tournamentWrites';
-import { buyBackEnabled, buyBackPrice, chargePriceCents } from '@/lib/addOns';
+import { buyBackEnabled, priceCentsForPurchase, priorPurchaseCount, escalationOf } from '@/lib/addOns';
 import { formatCurrency } from '@/lib/pricing';
 import { getRoundsCount, actualRoundsCount } from '@/lib/bracket';
 import AwaitingPaymentTable from '@/components/AwaitingPaymentTable';
 import PlayerDetailModal from '@/components/PlayerDetailModal';
-import type { Match, PendingRegistration, Player, TournamentSettings } from '@/types';
+import type { Match, PendingRegistration, Player, PlayerCharge, TournamentSettings } from '@/types';
 
 /** Optional columns a director can hide to focus on what matters to them.
  *  '#' and Name are always shown — they're how you find a row — and Actions
@@ -68,6 +68,7 @@ export default function PlayersPanel({
   entranceFee = 0,
   pendingRegistrations = [],
   settings,
+  charges = [],
   onViewPayment,
   onDismissPending,
   onSaved,
@@ -82,6 +83,8 @@ export default function PlayersPanel({
   pendingRegistrations?: PendingRegistration[];
   /** Tournament settings — the buy-back flag and price live here. */
   settings?: TournamentSettings;
+  /** The add-on ledger — a buy-back's price depends on how many times that player has already bought back in. */
+  charges?: PlayerCharge[];
   /** Jumps to the Payments tab, highlighting this payment. */
   onViewPayment: (paymentIntentId: string) => void;
   onDismissPending: (id: string) => Promise<{ error?: string }>;
@@ -176,6 +179,8 @@ export default function PlayersPanel({
   }
 
   const openSlots: OpenSlot[] = buyBackFor ? findOpenSlots(matches) : [];
+  const buyBackPrior = buyBackFor ? priorPurchaseCount(charges, buyBackFor.id, 'buy_back') : 0;
+  const buyBackCents = priceCentsForPurchase(settings, 'buy_back', buyBackPrior);
 
   function slotLabel(s: OpenSlot): string {
     const bracket = { main: 'Main draw', consolation: 'Consolation', losers: 'Losers bracket', grand_final: 'Grand Final' }[s.bracket];
@@ -195,12 +200,12 @@ export default function PlayersPanel({
       playerId: buyBackFor.id,
       matchId: target.matchId,
       slot: target.slot,
-      amountCents: chargePriceCents('buy_back', settings),
+      amountCents: buyBackCents,
     });
     setBuyBackBusy(false);
     if (error) { setErr(`Could not buy ${buyBackFor.fullName} back in: ${error}`); return; }
     setErr('');
-    setMsg(`${buyBackFor.fullName} is back in — ${formatCurrency(buyBackPrice(settings))} added to their balance.`);
+    setMsg(`${buyBackFor.fullName} is back in — ${formatCurrency(buyBackCents / 100)} added to their balance.`);
     setBuyBackFor(null);
     setBuyBackSlot('');
     onSaved();
@@ -478,8 +483,9 @@ export default function PlayersPanel({
           <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 shadow-xl">
             <h3 className="font-black text-slate-900">Buy {buyBackFor.fullName} back in</h3>
             <p className="text-sm text-slate-500">
-              {formatCurrency(buyBackPrice(settings))} is added to their balance, collected at the end of the event.
-              Choose the open slot to place them in.
+              {formatCurrency(buyBackCents / 100)} is added to their balance, collected at the end of the event.
+              {buyBackPrior > 0 && ` This is buy-back #${buyBackPrior + 1} for them${escalationOf(settings, 'buy_back').mode !== 'none' ? ' — the price steps up each time' : ''}.`}
+              {' '}Choose the open slot to place them in.
             </p>
             {openSlots.length === 0 ? (
               <p className="text-sm bg-amber-50 text-amber-800 rounded-xl p-3">

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import FundraisingCalculator, { type FundraisingCalculatorResult } from '@/components/FundraisingCalculator';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
-import AddOnSettings, { addOnPatch, type AddOnValues } from '@/components/AddOnSettings';
+import AddOnSettings, { addOnPatch, addOnValuesFromSettings, type AddOnValues } from '@/components/AddOnSettings';
 import type { TournamentSettings, MaxPlayers, Sport } from '@/types';
 import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
 
@@ -31,7 +31,7 @@ const SPORT_OPTIONS: { value: Sport; label: string }[] = [
 export default function NewTournamentPage() {
   const [name, setName] = useState('');
   const [settings, setSettings] = useState<TournamentSettings>(DEFAULT_SETTINGS);
-  const [addOns, setAddOns] = useState<AddOnValues>({ allowSecondServe: true, secondServePrice: '', allowBuyBack: true, buyBackPrice: '' });
+  const [addOns, setAddOns] = useState<AddOnValues>(() => addOnValuesFromSettings(null));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -358,7 +358,7 @@ export default function NewTournamentPage() {
 
           <AddOnSettings
             values={addOns}
-            onChange={(patch) => setAddOns((prev) => ({ ...prev, ...patch }))}
+            onChange={setAddOns}
             showSecondServe={(settings.sport ?? 'tennis') === 'tennis'}
           />
 
