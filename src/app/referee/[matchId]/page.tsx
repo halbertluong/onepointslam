@@ -90,14 +90,25 @@ export default function RefereeMatchPage() {
 
   async function handleServerDetermined(tossWinnerId: string | null, serverPlayerId: string) {
     const supabase = createClient();
-    await supabase
+    const { error } = await supabase
       .from('matches')
       .update({ toss_winner_id: tossWinnerId, server_player_id: serverPlayerId })
       .eq('id', matchId);
+    // Non-fatal to scoring (the referee already knows who's serving and can
+    // keep going from memory), but worth surfacing — otherwise a failed write
+    // here just quietly leaves no server/toss badge for anyone checking the
+    // scoreboard or bracket later, with nothing telling the referee that
+    // happened.
+    if (error) setSaveError(`Could not record the server: ${error.message}`);
   }
 
   async function applyAdvancement(winnerId: string, extraFields?: Record<string, unknown>): Promise<boolean> {
     if (!match || !tournament) return false;
+    // Belt-and-suspenders against a double submission: RefereeMatchClient
+    // already guards its own re-entry, but this also blocks a stale second
+    // call (e.g. a slow first write that resolves after the caller already
+    // moved on) from re-advancing a match that's already been decided.
+    if (match.status === 'finalized' || match.status === 'walkover') return false;
     const supabase = createClient();
     const loserId = winnerId === player1?.id ? (player2?.id ?? null) : (player1?.id ?? null);
     // Double elimination sizes its draw to the actual field, not the configured
@@ -120,6 +131,10 @@ export default function RefereeMatchPage() {
       const { error } = await supabase.from('matches').update(otherExtraFields).eq('id', first.matchId);
       if (error) { setSaveError(`Could not save result: ${error.message}`); return false; }
     }
+    // Reflected locally right away so the status guard above catches a second
+    // call instead of re-resolving advancement from stale, already-superseded
+    // data.
+    setMatch({ ...match, ...(first.updates as Partial<Match>) });
     setSaveError('');
     await releaseCourtToNextMatch(supabase, match.tournamentId, match.courtNumber);
     return true;

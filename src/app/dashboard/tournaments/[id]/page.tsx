@@ -790,9 +790,15 @@ export default function TournamentAdminPage() {
 
       {/* Bracket tab */}
       {tab === 'bracket' && (() => {
-        const maxPlayers = tournament.settings?.maxPlayers ?? 32;
         const format = tournament.settings?.bracketFormat ?? 'single_elimination';
         const mainMatches = matches.filter((m) => m.bracket === 'main');
+        // The real generated draw size, not the configured setting: a field
+        // that outgrew settings.maxPlayers gets a bigger bracket at
+        // generation time (see generateBracket / actualRoundsCount), and
+        // trusting the stale setting here would render one column too few —
+        // silently dropping the later rounds' matches from the view.
+        const round0Count = mainMatches.filter((m) => m.roundIndex === 0).length;
+        const maxPlayers = round0Count > 0 ? round0Count * 2 : (tournament.settings?.maxPlayers ?? 32);
         const sharedProps = {
           players,
           tournamentId: id,

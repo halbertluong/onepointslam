@@ -69,12 +69,18 @@ export async function findTournament(
   if (!ref) return null;
 
   // A UUID is the legacy identifier, still handed out on printed material.
+  // Soft-deleted (recycle bin) tournaments are excluded here so every public
+  // route (bracket, live, register) treats them as gone, the same way the
+  // tenant's tournament list already does — archived ones stay resolvable,
+  // since archiving just declutters the director's dashboard and a tournament's
+  // historical bracket is meant to stay reachable at its old link.
   if (isUuid(ref)) {
     const { data } = await supabase
       .from('tournaments')
       .select('*')
       .eq('id', ref)
       .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
       .maybeSingle();
     return (data as ResolvedTournament | null) ?? null;
   }
@@ -84,6 +90,7 @@ export async function findTournament(
     .select('*')
     .eq('tenant_id', tenantId)
     .eq('slug', ref)
+    .is('deleted_at', null)
     .maybeSingle();
   return (data as ResolvedTournament | null) ?? null;
 }
