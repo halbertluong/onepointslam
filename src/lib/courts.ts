@@ -8,12 +8,19 @@ import { queueRoundPriority } from './bracket';
  * yet) so at most `numberOfCourts` matches are ever in play at once, instead
  * of pre-assigning every first-round match up front.
  *
- * "Next" means next in queue order (see queueRoundPriority), not next by raw
- * round_index — a consolation bracket's round_index resets to 0, so sorting
- * by round_index alone let a consolation round-0 match jump ahead of a main
- * round-2+ match that hadn't been played yet, handing out a court to the
- * consolation bracket before the main bracket the queue said should go
- * first.
+ * Goes through the claim_next_court() RPC (see migration 038) rather than a
+ * select-then-update from here: two matches finishing on different courts at
+ * the same instant could otherwise both read the same "next" match before
+ * either write commits, and the second update would silently overwrite the
+ * first — one freed court loses the race and sits idle while the match that
+ * should have gone to it flips to the other court instead. The RPC locks the
+ * candidate row as part of selecting it, so that can't happen.
+ *
+ * "Next" means next in queue order, not next by raw round_index — a
+ * consolation bracket's round_index resets to 0, so sorting by round_index
+ * alone let a consolation round-0 match jump ahead of a main round-2+ match
+ * that hadn't been played yet. The RPC's ORDER BY mirrors queueRoundPriority
+ * (src/lib/bracket.ts); keep the two in sync.
  */
 export async function releaseCourtToNextMatch(
   supabase: SupabaseClient,
@@ -22,30 +29,14 @@ export async function releaseCourtToNextMatch(
 ): Promise<void> {
   if (!freedCourtNumber) return;
 
-  const { data: candidates } = await supabase
-    .from('matches')
-    .select('id, bracket, round_index, match_index')
-    .eq('tournament_id', tournamentId)
-    .eq('status', 'scheduled')
-    .is('court_number', null)
-    .not('player1_id', 'is', null)
-    .not('player2_id', 'is', null);
-
-  const next = (candidates ?? []).sort((a, b) =>
-    queueRoundPriority(a.bracket, a.round_index) - queueRoundPriority(b.bracket, b.round_index)
-    || a.match_index - b.match_index
-  )[0];
-
-  if (next) {
-    const { error } = await supabase
-      .from('matches')
-      .update({ court_number: freedCourtNumber, status: 'court_assigned' })
-      .eq('id', next.id);
-    // Best-effort hand-off — the match that just finished is already saved
-    // either way — but a silent failure here is exactly how a court gets
-    // stuck on a finished match forever, so at least surface it.
-    if (error) console.error('releaseCourtToNextMatch: failed to hand off court', error);
-  }
+  const { error } = await supabase.rpc('claim_next_court', {
+    p_tournament_id: tournamentId,
+    p_court_number: freedCourtNumber,
+  });
+  // Best-effort hand-off — the match that just finished is already saved
+  // either way — but a silent failure here is exactly how a court gets
+  // stuck on a finished match forever, so at least surface it.
+  if (error) console.error('releaseCourtToNextMatch: failed to hand off court', error);
 }
 
 /**
