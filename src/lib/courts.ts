@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Match } from '@/types';
-import { queueRoundPriority } from './bracket';
+import { queueRoundPriority, mainRoundsByTournament } from './bracket';
 
 /**
  * When a match finishes, its court becomes free. Hand that court number to
@@ -31,8 +31,18 @@ export async function releaseCourtToNextMatch(
     .not('player1_id', 'is', null)
     .not('player2_id', 'is', null);
 
+  // The main final always goes last, so the queue needs to know which round
+  // it is — read the tournament's main bracket depth (ready candidates alone
+  // can't say).
+  const { data: mainRows } = await supabase
+    .from('matches')
+    .select('tournament_id, bracket, round_index')
+    .eq('tournament_id', tournamentId)
+    .eq('bracket', 'main');
+  const mainRounds = mainRoundsByTournament(mainRows ?? [])[tournamentId];
+
   const next = (candidates ?? []).sort((a, b) =>
-    queueRoundPriority(a.bracket, a.round_index) - queueRoundPriority(b.bracket, b.round_index)
+    queueRoundPriority(a.bracket, a.round_index, mainRounds) - queueRoundPriority(b.bracket, b.round_index, mainRounds)
     || a.match_index - b.match_index
   )[0];
 
@@ -59,6 +69,8 @@ export function releaseCourtToNextMatchLocal(
 ): Match[] {
   if (!freedCourtNumber) return matches;
 
+  const mainRounds = mainRoundsByTournament(matches);
+
   const next = matches
     .filter((m) =>
       m.status === 'scheduled' &&
@@ -67,7 +79,8 @@ export function releaseCourtToNextMatchLocal(
       m.player2Id && m.player2Id !== 'BYE',
     )
     .sort((a, b) =>
-      queueRoundPriority(a.bracket, a.roundIndex) - queueRoundPriority(b.bracket, b.roundIndex)
+      queueRoundPriority(a.bracket, a.roundIndex, mainRounds[a.tournamentId])
+      - queueRoundPriority(b.bracket, b.roundIndex, mainRounds[b.tournamentId])
       || a.matchIndex - b.matchIndex
     )[0];
 

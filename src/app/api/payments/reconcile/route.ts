@@ -77,10 +77,11 @@ async function fetchStripePayments(stripe: Awaited<ReturnType<typeof import('@/l
 /** What the database says it has taken for this tournament — confirmed rows and open reservations alike. */
 async function fetchRecorded(tournamentId: string): Promise<RecordedPayment[]> {
   const db = admin();
-  const [{ data: players }, { data: donations }, { data: pending }] = await Promise.all([
+  const [{ data: players }, { data: donations }, { data: pending }, { data: balanceCharges }] = await Promise.all([
     db.from('players').select('full_name, email, payment_status, stripe_payment_intent_id').eq('tournament_id', tournamentId),
     db.from('donations').select('amount, stripe_payment_intent_id').eq('tournament_id', tournamentId),
     db.from('pending_registrations').select('full_name, email, stripe_payment_intent_id').eq('tournament_id', tournamentId),
+    db.from('player_charges').select('stripe_payment_intent_id').eq('tournament_id', tournamentId).not('stripe_payment_intent_id', 'is', null),
   ]);
 
   const rows: RecordedPayment[] = [];
@@ -99,6 +100,10 @@ async function fetchRecorded(tournamentId: string): Promise<RecordedPayment[]> {
   for (const d of donations ?? []) {
     if (!d.stripe_payment_intent_id) continue;
     rows.push({ paymentIntentId: d.stripe_payment_intent_id, kind: 'donation', label: `Donation of $${d.amount}`, stage: 'confirmed' });
+  }
+  const balancePis = new Set((balanceCharges ?? []).map((c) => c.stripe_payment_intent_id as string));
+  for (const id of balancePis) {
+    rows.push({ paymentIntentId: id, kind: 'balance', label: 'Add-on balance', stage: 'confirmed' });
   }
   for (const r of pending ?? []) {
     rows.push({

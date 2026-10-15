@@ -25,7 +25,7 @@
  * does no I/O so it can be exercised directly.
  */
 
-export type PaymentKind = 'registration' | 'donation';
+export type PaymentKind = 'registration' | 'donation' | 'balance';
 
 /** A payment as Stripe knows it. */
 export interface StripePayment {
@@ -153,7 +153,7 @@ export function toStripePayment(pi: {
     status: pi.status,
     createdAt: new Date(pi.created * 1000).toISOString(),
     // Donations are tagged at creation; everything else on a tournament is an entry.
-    kind: meta.kind === 'donation' ? 'donation' : 'registration',
+    kind: meta.kind === 'donation' ? 'donation' : meta.kind === 'balance' ? 'balance' : 'registration',
     tournamentId: meta.tournament_id || undefined,
     registrantName: meta.registrant_name || undefined,
     registrantEmail: meta.registrant_email || undefined,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createStripeClient } from '@/lib/stripe';
 import { promotePendingRegistration } from '@/lib/paymentPromotion';
+import { settleBalanceCharges } from '@/lib/balances';
 import { releasePendingCoupon } from '@/lib/coupons';
 
 async function getStripe() {
@@ -44,6 +45,14 @@ export async function POST(req: NextRequest) {
       // Donations are recorded by /api/donations on the client's own success
       // callback, not promoted from a reservation — nothing for the webhook
       // to do here beyond what that route already handles.
+    } else if (pi.metadata?.kind === 'balance') {
+      // A player's end-of-event add-on balance (2nd serves, buy-backs) — settle
+      // the charges it covered. Safe to repeat: see settleBalanceCharges.
+      const result = await settleBalanceCharges(admin, pi);
+      if (result.error) {
+        console.error('[stripe-webhook] Could not settle balance:', pi.id, result.error);
+        return NextResponse.json({ error: 'DB update failed' }, { status: 500 });
+      }
     } else {
       // This is the source of truth: whichever of the webhook or the payer's
       // own post-payment ping (src/app/api/payments/confirm-paid) gets here

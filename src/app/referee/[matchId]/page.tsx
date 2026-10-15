@@ -10,6 +10,7 @@ import type { Match, Player, Tournament, KickOutcome, PossessionOutcome } from '
 import { mapPlayer } from '@/types';
 import { determineOneGoalBowlWinner, determineOnePointBowlWinner, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, actualRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
+import { secondServeEnabled, chargePriceCents } from '@/lib/addOns';
 
 export default function RefereeMatchPage() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -94,6 +95,18 @@ export default function RefereeMatchPage() {
       .from('matches')
       .update({ toss_winner_id: tossWinnerId, server_player_id: serverPlayerId })
       .eq('id', matchId);
+  }
+
+  async function handleBuySecondServe(playerId: string): Promise<boolean> {
+    if (!tournament || !match) return false;
+    const { error } = await createClient().from('player_charges').insert({
+      tournament_id: match.tournamentId,
+      player_id: playerId,
+      kind: 'second_serve',
+      amount_cents: chargePriceCents('second_serve', tournament.settings),
+      match_id: match.id,
+    });
+    return !error;
   }
 
   async function applyAdvancement(winnerId: string, extraFields?: Record<string, unknown>): Promise<boolean> {
@@ -230,6 +243,11 @@ export default function RefereeMatchPage() {
         onServerDetermined={handleServerDetermined}
         onDeclareWinner={handleDeclareWinner}
         onWalkover={handleWalkover}
+        secondServe={
+          secondServeEnabled(tournament?.settings)
+            ? { priceCents: chargePriceCents('second_serve', tournament?.settings), onBuy: handleBuySecondServe }
+            : undefined
+        }
         onBack={() => router.push('/referee')}
         onNext={() => router.push('/referee')}
       />

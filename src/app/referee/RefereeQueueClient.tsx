@@ -6,7 +6,7 @@ import BracketPanel from '@/components/BracketPanel';
 import { CoinTossIcon } from '@/components/icons/CoinTossIcon';
 import type { Match, Player } from '@/types';
 import { mapMatch } from '@/types';
-import { getLosersRoundsCount, getConsolationRoundsCount, getRoundsCount, actualRoundsCount, queueRoundPriority } from '@/lib/bracket';
+import { getLosersRoundsCount, getConsolationRoundsCount, getRoundsCount, actualRoundsCount, queueRoundPriority, mainRoundsByTournament } from '@/lib/bracket';
 import { MATCH_STATUS_LABEL, MATCH_STATUS_ORDER } from '@/lib/matchStatus';
 import { createClient } from '@/lib/supabase/browser';
 
@@ -73,10 +73,11 @@ export default function RefereeQueueClient({ matches: initialMatches, allMatches
   // scoreboard's On Court / Up Next lists already call matches in. Without
   // this, a referee could see an earlier, still-unassigned round-3 match
   // listed above the round-3 match a director already sent to Court 1.
+  const mainRounds = mainRoundsByTournament(allMatches ?? matches);
   const activeMatches = [...matches].sort((a, b) =>
     (MATCH_STATUS_ORDER[a.status] ?? 9) - (MATCH_STATUS_ORDER[b.status] ?? 9)
     || (a.court_number ?? 99) - (b.court_number ?? 99)
-    || queueRoundPriority(a.bracket as Match['bracket'], a.round_index) - queueRoundPriority(b.bracket as Match['bracket'], b.round_index)
+    || queueRoundPriority(a.bracket as Match['bracket'], a.round_index, mainRounds[a.tournament_id]) - queueRoundPriority(b.bracket as Match['bracket'], b.round_index, mainRounds[b.tournament_id])
     || a.match_index - b.match_index
   );
 

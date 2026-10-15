@@ -89,6 +89,16 @@ export interface TournamentSettings {
    * the registration page before paying. Opt-in: unlike allowDonations, this
    * feature never existed before, so only an explicit `true` turns it on. */
   couponCodesEnabled?: boolean;
+  /** Whether a player who faults their serve can buy a 2nd serve. Opt-out:
+   * omitted means on; only an explicit false turns it off. */
+  allowSecondServe?: boolean;
+  /** Price of a bought 2nd serve, in dollars. Defaults to DEFAULT_SECOND_SERVE_PRICE. */
+  secondServePrice?: number;
+  /** Whether an eliminated player can buy back into the tournament. Opt-out:
+   * omitted means on; only an explicit false turns it off. */
+  allowBuyBack?: boolean;
+  /** Price of a buy-back, in dollars. Defaults to DEFAULT_BUY_BACK_PRICE. */
+  buyBackPrice?: number;
 }
 
 export type TournamentStatus =
@@ -285,5 +295,37 @@ export function mapMatch(row: Record<string, unknown>): Match {
     offensePlayerId: (row.offense_player_id ?? row.offensePlayerId) as string | null | undefined,
     defensePlayerId: (row.defense_player_id ?? row.defensePlayerId) as string | null | undefined,
     possessionOutcome: (row.possession_outcome ?? row.possessionOutcome) as PossessionOutcome | null | undefined,
+  };
+}
+
+export type ChargeKind = 'second_serve' | 'buy_back';
+export type SettlementMethod = 'stripe' | 'cash' | 'check' | 'donation';
+
+/** One add-on a player owes for (a bought 2nd serve or a buy-back), collected at the end of the event. */
+export interface PlayerCharge {
+  id: string;
+  tournamentId: string;
+  playerId: string;
+  kind: ChargeKind;
+  amountCents: number;
+  matchId?: string | null;
+  createdAt: string;
+  settledAt?: string | null;
+  settlementMethod?: SettlementMethod | null;
+  stripePaymentIntentId?: string | null;
+}
+
+export function mapPlayerCharge(row: Record<string, unknown>): PlayerCharge {
+  return {
+    id: row.id as string,
+    tournamentId: (row.tournament_id ?? row.tournamentId) as string,
+    playerId: (row.player_id ?? row.playerId) as string,
+    kind: row.kind as ChargeKind,
+    amountCents: (row.amount_cents ?? row.amountCents) as number,
+    matchId: (row.match_id ?? row.matchId) as string | null | undefined,
+    createdAt: (row.created_at ?? row.createdAt) as string,
+    settledAt: (row.settled_at ?? row.settledAt) as string | null | undefined,
+    settlementMethod: (row.settlement_method ?? row.settlementMethod) as SettlementMethod | null | undefined,
+    stripePaymentIntentId: (row.stripe_payment_intent_id ?? row.stripePaymentIntentId) as string | null | undefined,
   };
 }

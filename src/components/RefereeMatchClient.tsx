@@ -20,6 +20,13 @@ interface Props {
   onDeclareWinner: (winnerId: string) => void | Promise<void>;
   /** Called when a walkover is given. `winnerId` is the advancing player. */
   onWalkover: (winnerId: string) => void | Promise<void>;
+  /** When provided, a player who faults their serve can buy a 2nd one. The
+   *  caller records the charge (added to the player's balance) and resolves
+   *  to false if it could not be saved or one was already bought. */
+  secondServe?: {
+    priceCents: number;
+    onBuy: (playerId: string) => boolean | Promise<boolean>;
+  };
   onBack: () => void;
   onNext: () => void;
 }
@@ -34,6 +41,7 @@ export default function RefereeMatchClient({
   onServerDetermined,
   onDeclareWinner,
   onWalkover,
+  secondServe,
   onBack,
   onNext,
 }: Props) {
@@ -50,6 +58,8 @@ export default function RefereeMatchClient({
   const [overrideServer, setOverrideServer] = useState<'player1' | 'player2' | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [secondServeBoughtBy, setSecondServeBoughtBy] = useState<string | null>(null);
+  const [secondServeError, setSecondServeError] = useState('');
 
   const effectiveServer = overrideServer ?? server;
   const p1Name = player1.fullName;
@@ -84,6 +94,15 @@ export default function RefereeMatchClient({
     setPhase('scoring');
     const serverId = val === 'player1' ? player1.id : player2.id;
     onServerDetermined?.(null, serverId);
+  }
+
+  async function handleBuySecondServe(playerId: string) {
+    if (!secondServe) return;
+    setSaving(true);
+    const ok = await secondServe.onBuy(playerId);
+    setSaving(false);
+    if (ok) { setSecondServeBoughtBy(playerId); setSecondServeError(''); }
+    else setSecondServeError('Could not record the 2nd serve — it may already have been bought for this match.');
   }
 
   async function handleDeclareWinner(winnerId: string) {
@@ -343,6 +362,41 @@ export default function RefereeMatchClient({
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              {secondServe && serveRuleProfile !== 'two_serves_traditional' && (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+                  {secondServeBoughtBy ? (
+                    <p className="text-sm text-center text-white/70">
+                      <strong>{secondServeBoughtBy === player1.id ? p1Name : p2Name}</strong> bought a 2nd serve
+                      — {`$${(secondServe.priceCents / 100).toFixed(2)}`} added to their balance.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-xs text-center text-white/40 uppercase tracking-wide font-semibold">
+                        Missed serve? Buy a 2nd serve · ${(secondServe.priceCents / 100).toFixed(2)}
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { player: player1, name: p1Name, key: 'player1' as const },
+                          { player: player2, name: p2Name, key: 'player2' as const },
+                        ]
+                          .filter(({ key }) => !effectiveServer || effectiveServer === key)
+                          .map(({ player, name, key }) => (
+                            <button
+                              key={key}
+                              onClick={() => handleBuySecondServe(player.id)}
+                              disabled={saving}
+                              className={`bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl py-2.5 px-2 text-xs font-semibold text-white/70 transition-colors disabled:opacity-50 ${effectiveServer ? 'col-span-2' : ''}`}
+                            >
+                              {name} buys 2nd serve
+                            </button>
+                          ))}
+                      </div>
+                    </>
+                  )}
+                  {secondServeError && <p className="text-xs text-red-400 text-center">{secondServeError}</p>}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 gap-4">
                 {[

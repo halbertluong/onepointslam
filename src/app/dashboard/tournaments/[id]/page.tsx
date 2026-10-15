@@ -14,15 +14,18 @@ import NotesPanel from '@/components/NotesPanel';
 import AssetStudio from '@/components/AssetStudio';
 import CouponCodesPanel from '@/components/CouponCodesPanel';
 import TournamentUrlCard from '@/components/TournamentUrlCard';
-import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount, getConsolationRoundsCount, actualRoundsCount, queueRoundPriority } from '@/lib/bracket';
+import { generateBracket, resolveAdvancement, matchUpdatesToColumns, getRoundsCount, getLosersRoundsCount, getConsolationRoundsCount, actualRoundsCount, queueRoundPriority, mainRoundsByTournament } from '@/lib/bracket';
 import { releaseCourtToNextMatch } from '@/lib/courts';
 import { persistReversal, settleOpenByes, resetMatchResults } from '@/lib/tournamentWrites';
-import type { Tournament, Player, Match, PendingRegistration } from '@/types';
-import { mapPlayer, mapMatch, mapPendingRegistration } from '@/types';
+import type { Tournament, Player, Match, PendingRegistration, PlayerCharge } from '@/types';
+import { mapPlayer, mapMatch, mapPendingRegistration, mapPlayerCharge } from '@/types';
+import BalancesPanel from '@/components/BalancesPanel';
 import { calcRaised, formatCurrency, DEFAULT_PLATFORM_FEE } from '@/lib/pricing';
 import { toDateTimeLocalValue } from '@/lib/dates';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
+import AddOnSettings, { addOnPatch, type AddOnValues } from '@/components/AddOnSettings';
+import { secondServeEnabled, buyBackEnabled } from '@/lib/addOns';
 import { MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
 import { tournamentPath } from '@/lib/slugs';
 
@@ -158,12 +161,16 @@ const TAB_ORDER: Tab[] = ['players', 'seeds', 'draw', 'referee', 'bracket', 'sco
 
 /** Sub-view within the Players tab — the roster itself, or Stripe payments
  *  (with coupon codes underneath) for what registrants paid. */
-type PlayersMode = 'roster' | 'payments';
+type PlayersMode = 'roster' | 'payments' | 'balances';
 
 function RefereeQueueTab({ matches, players }: { matches: Match[]; players: Player[] }) {
+  const mainRounds = mainRoundsByTournament(matches);
   const active = matches
     .filter((m) => ['playing', 'court_assigned', 'warmup', 'scheduled'].includes(m.status))
-    .sort((a, b) => queueRoundPriority(a.bracket, a.roundIndex) - queueRoundPriority(b.bracket, b.roundIndex) || a.matchIndex - b.matchIndex);
+    .sort((a, b) =>
+      queueRoundPriority(a.bracket, a.roundIndex, mainRounds[a.tournamentId])
+      - queueRoundPriority(b.bracket, b.roundIndex, mainRounds[b.tournamentId])
+      || a.matchIndex - b.matchIndex);
 
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
 
@@ -240,6 +247,7 @@ export default function TournamentAdminPage() {
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [pendingRegistrations, setPendingRegistrations] = useState<PendingRegistration[]>([]);
+  const [charges, setCharges] = useState<PlayerCharge[]>([]);
   const [focusPaymentIntentId, setFocusPaymentIntentId] = useState<string | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
@@ -260,12 +268,13 @@ export default function TournamentAdminPage() {
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const [{ data: t }, { data: p }, { data: m }, { data: me }, { data: donations }, pendingRes] = await Promise.all([
+    const [{ data: t }, { data: p }, { data: m }, { data: me }, { data: donations }, { data: chargeRows }, pendingRes] = await Promise.all([
       supabase.from('tournaments').select('*, tenants(slug, display_name, primary_color, secondary_color, logo_url)').eq('id', id).single(),
       supabase.from('players').select('*').eq('tournament_id', id).order('created_at'),
       supabase.from('matches').select('*').eq('tournament_id', id).order('round_index').order('match_index'),
       supabase.from('users').select('role').eq('id', (await supabase.auth.getUser()).data.user?.id ?? '').single(),
       supabase.from('donations').select('amount').eq('tournament_id', id),
+      supabase.from('player_charges').select('*').eq('tournament_id', id).order('created_at'),
       // pending_registrations has no client-readable RLS policy (it carries
       // personal details of people who haven't completed registration) — a
       // director-authorized API route is the only way to read it.
@@ -286,6 +295,7 @@ export default function TournamentAdminPage() {
       });
     }
     setIsSuperAdmin((me as { role?: string } | null)?.role === 'super_admin');
+    setCharges((chargeRows ?? []).map((row) => mapPlayerCharge(row as Record<string, unknown>)));
     setPlayers((p ?? []).map((row) => mapPlayer(row as Record<string, unknown>)));
     setMatches((m ?? []).map((x) => mapMatch(x as Record<string, unknown>)));
     setDonationTotal((donations ?? []).reduce((sum, d) => sum + Number(d.amount), 0));
@@ -716,6 +726,7 @@ export default function TournamentAdminPage() {
             {([
               ['roster', '👥 Players'],
               ['payments', '💳 Payments'],
+              ['balances', `🧾 Balances${charges.some((c) => !c.settledAt) ? ' •' : ''}`],
             ] as const).map(([m, label]) => (
               <button
                 key={m}
@@ -738,10 +749,13 @@ export default function TournamentAdminPage() {
               maxPlayers={tournament.settings?.maxPlayers ?? 8}
               entranceFee={tournament.settings?.ticketPriceForFundraiser ?? 0}
               pendingRegistrations={pendingRegistrations}
+              settings={tournament.settings}
               onViewPayment={handleViewPayment}
               onDismissPending={handleDismissPending}
               onSaved={load}
             />
+          ) : playersMode === 'balances' ? (
+            <BalancesPanel tournamentId={id} players={players} charges={charges} onSaved={load} />
           ) : (
             <div className="space-y-10">
               <div className="space-y-4">
@@ -1005,6 +1019,12 @@ function SettingsEditor({
   const [prizePlaces, setPrizePlaces] = useState(s?.prizePlaces ?? []);
   const [allowLateRegistration, setAllowLateRegistration] = useState(s?.allowLateRegistration ?? false);
   const [allowDonations, setAllowDonations] = useState(s?.allowDonations !== false);
+  const [addOns, setAddOns] = useState<AddOnValues>({
+    allowSecondServe: secondServeEnabled(s),
+    secondServePrice: s?.secondServePrice != null ? String(s.secondServePrice) : '',
+    allowBuyBack: buyBackEnabled(s),
+    buyBackPrice: s?.buyBackPrice != null ? String(s.buyBackPrice) : '',
+  });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1025,6 +1045,7 @@ function SettingsEditor({
     patch.prizePlaces = prizePlaces.length > 0 ? prizePlaces : undefined;
     patch.allowLateRegistration = allowLateRegistration;
     patch.allowDonations = allowDonations;
+    Object.assign(patch, addOnPatch(addOns));
     patch.bracketFormat = bracketFormat;
     // Only takes effect at generation time (see generateBracket) — editing it
     // after the bracket already exists has no effect on that bracket's
@@ -1239,6 +1260,16 @@ function SettingsEditor({
             </span>
           </span>
         </label>
+      </div>
+
+      {/* On-site add-ons */}
+      <div className="border-t border-slate-100 pt-5 space-y-4">
+        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">On-Site Add-Ons</h3>
+        <AddOnSettings
+          values={addOns}
+          onChange={(patch) => setAddOns((prev) => ({ ...prev, ...patch }))}
+          showSecondServe={(s?.sport ?? 'tennis') === 'tennis'}
+        />
       </div>
 
       {/* Match rules */}

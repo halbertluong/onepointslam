@@ -424,3 +424,132 @@ export async function withdrawPlayer(
   const { error } = await supabase.from('players').update({ status: 'no_show_eliminated' }).eq('id', playerId);
   return error ? { error: error.message } : {};
 }
+
+/**
+ * Removes a registrant completely — the player row itself, not just their
+ * active status (that's `withdrawPlayer`, which keeps the record).
+ *
+ * If they're still in an unplayed match against a real opponent, that
+ * opponent is walked over first, exactly as a withdrawal does. After that any
+ * slot still naming them is cleared, along with every per-match reference
+ * (loser, server, toss, kicker…), so nothing is left pointing at a deleted
+ * row. A player who has actually played a finalized match can't be removed:
+ * their result is part of other players' paths through the bracket, so the
+ * director has to undo it first (or withdraw instead).
+ */
+export async function removePlayer(
+  supabase: SupabaseClient,
+  matches: Match[],
+  tournamentId: string,
+  playerId: string,
+  winnersRounds: number,
+): Promise<WriteResult> {
+  const played = matches.find(
+    (m) => m.status === 'finalized' && (m.player1Id === playerId || m.player2Id === playerId),
+  );
+  if (played) {
+    return { error: 'This player has a recorded match result. Undo it from the Bracket tab first, or withdraw them instead.' };
+  }
+
+  const player = await supabase.from('players').select('status').eq('id', playerId).maybeSingle();
+  if (player.error) return { error: player.error.message };
+
+  if (player.data?.status !== 'no_show_eliminated') {
+    const withdrawn = await withdrawPlayer(supabase, matches, tournamentId, playerId, winnersRounds);
+    if (withdrawn.error) return withdrawn;
+  }
+
+  const { data: rows, error: readErr } = await supabase
+    .from('matches')
+    .select('*')
+    .eq('tournament_id', tournamentId);
+  if (readErr) return { error: readErr.message };
+
+  const referencingColumns = [
+    'player1_id', 'player2_id', 'winner_id', 'loser_id', 'server_player_id', 'toss_winner_id',
+    'kicker_player_id', 'keeper_player_id', 'coin_flip_winner_id', 'offense_player_id', 'defense_player_id',
+  ];
+  for (const row of (rows ?? []) as Record<string, unknown>[]) {
+    const patch: Record<string, null> = {};
+    for (const col of referencingColumns) {
+      if (row[col] === playerId) patch[col] = null;
+    }
+    if (Object.keys(patch).length === 0) continue;
+    const { error } = await supabase.from('matches').update(patch).eq('id', row.id as string);
+    if (error) return { error: error.message };
+  }
+
+  const { error } = await supabase.from('players').delete().eq('id', playerId);
+  return error ? { error: error.message } : {};
+}
+
+/** An empty slot in an unplayed match that has one real occupant, where a bought-back player could be placed. */
+export interface OpenSlot {
+  matchId: string;
+  slot: 'player1Id' | 'player2Id';
+  bracket: Match['bracket'];
+  roundIndex: number;
+  matchIndex: number;
+}
+
+/**
+ * Slots a director can drop a bought-back player into: an unplayed match with
+ * one real player already waiting and the other side empty, so filling it
+ * makes a playable match. A bye (a one-sided match settled as a walkover) is
+ * excluded — it already has a winner.
+ */
+export function findOpenSlots(matches: Match[]): OpenSlot[] {
+  const slots: OpenSlot[] = [];
+  for (const m of matches) {
+    if (m.winnerId || m.status === 'finalized' || m.status === 'walkover') continue;
+    const p1 = m.player1Id && m.player1Id !== 'BYE' ? m.player1Id : null;
+    const p2 = m.player2Id && m.player2Id !== 'BYE' ? m.player2Id : null;
+    if (p1 && !p2) slots.push({ matchId: m.id, slot: 'player2Id', bracket: m.bracket, roundIndex: m.roundIndex, matchIndex: m.matchIndex });
+    if (!p1 && p2) slots.push({ matchId: m.id, slot: 'player1Id', bracket: m.bracket, roundIndex: m.roundIndex, matchIndex: m.matchIndex });
+  }
+  return slots;
+}
+
+/**
+ * A player buying back into the tournament: the fee goes on their balance
+ * (collected at the end of the event) and the director-chosen open slot is
+ * filled with them. The slot is re-read fresh and must still be empty — a
+ * stale snapshot is how two players end up in one slot.
+ */
+export async function buyBackPlayer(
+  supabase: SupabaseClient,
+  args: { tournamentId: string; playerId: string; matchId: string; slot: 'player1Id' | 'player2Id'; amountCents: number },
+): Promise<WriteResult> {
+  const column = args.slot === 'player1Id' ? 'player1_id' : 'player2_id';
+  const { data: row, error: readErr } = await supabase
+    .from('matches').select('id, player1_id, player2_id, winner_id, status').eq('id', args.matchId).maybeSingle();
+  if (readErr) return { error: readErr.message };
+  if (!row || row.winner_id || row.status === 'finalized' || row.status === 'walkover') {
+    return { error: 'That match is no longer open — pick another slot.' };
+  }
+  if ((row as Record<string, unknown>)[column]) {
+    return { error: 'That slot has been filled — pick another.' };
+  }
+  const other = (row as Record<string, unknown>)[column === 'player1_id' ? 'player2_id' : 'player1_id'];
+  if (other === args.playerId) return { error: 'That player is already in this match.' };
+
+  const { data: charge, error: chargeErr } = await supabase
+    .from('player_charges')
+    .insert({
+      tournament_id: args.tournamentId,
+      player_id: args.playerId,
+      kind: 'buy_back',
+      amount_cents: args.amountCents,
+      match_id: args.matchId,
+    })
+    .select('id')
+    .single();
+  if (chargeErr) return { error: chargeErr.message };
+
+  const { error } = await supabase.from('matches').update({ [column]: args.playerId }).eq('id', args.matchId);
+  if (error) {
+    await supabase.from('player_charges').delete().eq('id', charge.id);
+    return { error: error.message };
+  }
+  return {};
+}

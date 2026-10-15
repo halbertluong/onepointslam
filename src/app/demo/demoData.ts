@@ -1,5 +1,13 @@
-import type { Player, Match, MaxPlayers } from '@/types';
-import { generateBracket, advanceWinner, settleByeAdvancementLocal } from '@/lib/bracket';
+import type { Player, Match, MaxPlayers, BracketFormat } from '@/types';
+import {
+  generateBracket,
+  resolveAdvancement,
+  settleByeAdvancementLocal,
+  queueRoundPriority,
+  mainRoundsByTournament,
+  actualRoundsCount,
+  getRoundsCount,
+} from '@/lib/bracket';
 
 // ── Name generation ───────────────────────────────────────────────────────────
 
@@ -80,11 +88,12 @@ export function generatePlayers(count: number, entryFee: number): DemoPlayer[] {
  * real generator treats as a floor — pass the participant count to size the
  * bracket to the field instead.
  */
-export function buildBracket(players: DemoPlayer[], drawSize?: number): Match[] {
+export function buildBracket(players: DemoPlayer[], drawSize?: number, bracketFormat: BracketFormat = 'single_elimination'): Match[] {
   const bracket = generateBracket(
     players,
     {
       maxPlayers: (drawSize ?? players.length) as MaxPlayers,
+      bracketFormat,
       ticketPriceForFundraiser: 0,
       systemTechFee: 0,
       serveRuleProfile: 'one_serve_sudden_death',
@@ -118,41 +127,66 @@ export function simulateCoinToss(match: Match): { tossWinnerId: string; serverPl
   return { tossWinnerId, serverPlayerId };
 }
 
+const isRealPlayer = (id: string | null | undefined): id is string => !!id && id !== 'BYE';
+
+/** A match both of whose players are decided and which hasn't been played. */
+export function isReadyMatch(m: Match): boolean {
+  return !m.winnerId && m.status !== 'walkover' && isRealPlayer(m.player1Id) && isRealPlayer(m.player2Id);
+}
+
+/**
+ * Records a result the way the real app does (see resolveAdvancement): the
+ * winner advances, and in consolation / double elimination the loser drops
+ * into the second-chance bracket.
+ */
+export function declareResultLocal(matches: Match[], matchId: string, winnerId: string): Match[] {
+  const match = matches.find((m) => m.id === matchId);
+  if (!match) return matches;
+  const loserId = match.player1Id === winnerId ? match.player2Id : match.player1Id;
+  const winnersRounds = actualRoundsCount(matches, 'main', getRoundsCount(Math.max(8, matches.length)));
+  const updates = resolveAdvancement(matches, match, winnerId, isRealPlayer(loserId) ? loserId : null, winnersRounds);
+  const byId = new Map(updates.map((u) => [u.matchId, u.updates]));
+  return matches.map((m) => (byId.has(m.id) ? { ...m, ...byId.get(m.id) } : m));
+}
+
+/** Queue order across brackets: the main final is always the last match played. */
+export function compareQueueOrder(matches: Match[]): (a: Match, b: Match) => number {
+  const rounds = mainRoundsByTournament(matches)[matches[0]?.tournamentId ?? ''];
+  return (a, b) =>
+    queueRoundPriority(a.bracket, a.roundIndex, rounds) - queueRoundPriority(b.bracket, b.roundIndex, rounds)
+    || a.matchIndex - b.matchIndex;
+}
+
+/**
+ * The match that decides the champion: the Grand Final in double elimination
+ * (its reset game, if the losers-bracket finalist won game one), otherwise
+ * the main draw's final.
+ */
+export function getChampionshipMatch(matches: Match[]): Match | undefined {
+  const reset = matches.find((m) => m.bracket === 'grand_final' && m.matchIndex === 1);
+  if (reset && isRealPlayer(reset.player1Id)) return reset;
+  const gf = matches.find((m) => m.bracket === 'grand_final' && m.matchIndex === 0);
+  if (gf) return gf;
+  const mainRounds = mainRoundsByTournament(matches)[matches[0]?.tournamentId ?? ''];
+  return matches.find((m) => m.bracket === 'main' && m.roundIndex === (mainRounds ?? 1) - 1 && m.matchIndex === 0);
+}
+
 export function speedThroughAll(matches: Match[]): Match[] {
   let current = [...matches];
   let safety = 0;
-  while (safety < 500) {
+  while (safety < 2000) {
     safety++;
-    const round = current.reduce((minR, m) => {
-      if (m.winnerId || m.status === 'walkover') return minR;
-      if (m.player1Id && m.player1Id !== 'BYE' && m.player2Id && m.player2Id !== 'BYE') {
-        return Math.min(minR, m.roundIndex);
-      }
-      return minR;
-    }, Infinity);
-    if (round === Infinity) break;
-
-    const pending = current.filter(
-      (m) =>
-        m.roundIndex === round &&
-        !m.winnerId &&
-        m.status !== 'walkover' &&
-        m.player1Id &&
-        m.player1Id !== 'BYE' &&
-        m.player2Id &&
-        m.player2Id !== 'BYE',
+    // Play in queue order so the demo mirrors a real event — in particular
+    // the consolation / losers brackets finish before the main final.
+    const next = current.filter(isReadyMatch).sort(compareQueueOrder(current))[0];
+    if (!next) break;
+    const winnerId = Math.random() < 0.5 ? next.player1Id! : next.player2Id!;
+    const toss = simulateCoinToss(next);
+    current = declareResultLocal(
+      current.map((x) => (x.id === next.id ? { ...x, ...toss } : x)),
+      next.id,
+      winnerId,
     );
-    if (!pending.length) break;
-
-    for (const m of pending) {
-      const winnerId = Math.random() < 0.5 ? m.player1Id! : m.player2Id!;
-      const toss = simulateCoinToss(m);
-      current = advanceWinner(
-        current.map((x) => (x.id === m.id ? { ...x, ...toss } : x)),
-        m.id,
-        winnerId,
-      );
-    }
   }
   return current;
 }
