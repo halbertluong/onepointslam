@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import FundraisingCalculator, { type FundraisingCalculatorResult } from '@/components/FundraisingCalculator';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
+import AddOnSettings, { addOnPatch, addOnValuesFromSettings, type AddOnValues } from '@/components/AddOnSettings';
 import type { TournamentSettings, MaxPlayers, Sport } from '@/types';
 import { DEFAULT_PLATFORM_FEE, formatCurrency } from '@/lib/pricing';
 
@@ -30,6 +31,7 @@ const SPORT_OPTIONS: { value: Sport; label: string }[] = [
 export default function NewTournamentPage() {
   const [name, setName] = useState('');
   const [settings, setSettings] = useState<TournamentSettings>(DEFAULT_SETTINGS);
+  const [addOns, setAddOns] = useState<AddOnValues>(() => addOnValuesFromSettings(null));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -98,7 +100,7 @@ export default function NewTournamentPage() {
         tenant_id: tenantId,
         name,
         status: 'registration_open',
-        settings,
+        settings: { ...settings, ...addOnPatch(addOns) },
         created_at: new Date().toISOString(),
       })
       .select()
@@ -353,6 +355,12 @@ export default function NewTournamentPage() {
               </button>
             )}
           </div>
+
+          <AddOnSettings
+            values={addOns}
+            onChange={setAddOns}
+            showSecondServe={(settings.sport ?? 'tennis') === 'tennis'}
+          />
 
           <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3.5 cursor-pointer hover:bg-slate-50 transition-colors">
             <input

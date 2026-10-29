@@ -924,13 +924,39 @@ export function actualRoundsCount(matches: Match[], bracket: Match['bracket'], f
  * becomes court-ready once both a winners and a losers champion are decided
  * — nothing here needs to hold it back further.
  */
-export function queueRoundPriority(bracket: Match['bracket'], roundIndex: number): number {
+export function queueRoundPriority(bracket: Match['bracket'], roundIndex: number, mainRounds?: number): number {
+  // The main draw's final is always the last match of the event: every
+  // consolation / losers match leads up to it (and a Grand Final, which can
+  // only exist once the main final is decided, follows it).
+  if (bracket === 'grand_final') return GRAND_FINAL_PRIORITY + roundIndex;
+  if (bracket === 'main' && mainRounds && mainRounds > 1 && roundIndex === mainRounds - 1) return MAIN_FINAL_PRIORITY;
   if (bracket === 'consolation') return 2 * roundIndex + 2;
   if (bracket === 'losers') {
     const stage = roundIndex === 0 ? 0 : Math.ceil(roundIndex / 2);
     return 2 * stage + 2;
   }
   return roundIndex <= 1 ? roundIndex : 2 * roundIndex - 1;
+}
+
+const MAIN_FINAL_PRIORITY = 1000;
+const GRAND_FINAL_PRIORITY = 2000;
+
+/**
+ * How many main-bracket rounds each tournament has, read from its match rows,
+ * for passing to `queueRoundPriority` so the main final sorts last. Accepts
+ * either row shape (database snake_case or in-memory camelCase).
+ */
+export function mainRoundsByTournament(
+  matches: Array<{ bracket: string } & ({ tournament_id: string; round_index: number } | { tournamentId: string; roundIndex: number })>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const m of matches) {
+    if (m.bracket !== 'main') continue;
+    const tid = 'tournament_id' in m ? m.tournament_id : m.tournamentId;
+    const round = 'round_index' in m ? m.round_index : m.roundIndex;
+    out[tid] = Math.max(out[tid] ?? 0, round + 1);
+  }
+  return out;
 }
 
 /** Translates a partial Match (camelCase) into the matches table's snake_case columns, for persisting `resolveAdvancement` results. */

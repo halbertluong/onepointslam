@@ -6,7 +6,7 @@ import OnePointBowlLogo from '@/components/OnePointBowlLogo';
 import BracketView from '@/components/BracketView';
 import { mapMatch, mapPlayer } from '@/types';
 import type { Match, Player } from '@/types';
-import { getConsolationRoundsCount, getLosersRoundsCount, getRoundsCount, actualRoundsCount, queueRoundPriority } from '@/lib/bracket';
+import { getConsolationRoundsCount, getLosersRoundsCount, getRoundsCount, actualRoundsCount, queueRoundPriority, mainRoundsByTournament } from '@/lib/bracket';
 
 /** Safari (incl. older iPadOS) only exposes the webkit-prefixed fullscreen API. */
 type FullscreenDoc = Document & {
@@ -253,6 +253,7 @@ export default function LiveScoreboard({
   // The current match(es) plus everything still queued behind them, in the
   // order they'll be called — replaces a court-only view so spectators can
   // see what's coming even before it's assigned a court.
+  const mainRounds = mainRoundsByTournament(matches.map((m) => ({ ...m, tournament_id: tournamentId })));
   const upcomingMatches = matches
     .filter((m) =>
       m.status !== 'finalized' && m.status !== 'walkover' &&
@@ -262,7 +263,7 @@ export default function LiveScoreboard({
     .sort((a, b) =>
       (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9) ||
       (a.court_number ?? 99) - (b.court_number ?? 99) ||
-      queueRoundPriority(a.bracket, a.round_index) - queueRoundPriority(b.bracket, b.round_index) ||
+      queueRoundPriority(a.bracket, a.round_index, mainRounds[tournamentId]) - queueRoundPriority(b.bracket, b.round_index, mainRounds[tournamentId]) ||
       a.match_index - b.match_index
     );
   // Split into two visually distinct groups: matches already out on a court

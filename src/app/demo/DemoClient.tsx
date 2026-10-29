@@ -7,19 +7,25 @@ import BracketPanel from '@/components/BracketPanel';
 import PlayerRegistrationForm from '@/components/PlayerRegistrationForm';
 import RefereeQueueClient, { type MatchRow } from '@/app/referee/RefereeQueueClient';
 import RefereeMatchClient from '@/components/RefereeMatchClient';
-import type { Match, Player } from '@/types';
+import type { Match, Player, ChargeKind, SettlementMethod } from '@/types';
 import {
   generatePlayers,
   buildBracket,
   speedThroughAll,
+  declareResultLocal,
+  compareQueueOrder,
+  getChampionshipMatch,
   simulateCoinToss,
   getTournamentStats,
   type DemoPlayer,
 } from './demoData';
 import PrizePlacesEditor from '@/components/PrizePlacesEditor';
 import MatchRulesEditor from '@/components/MatchRulesEditor';
-import type { PrizePlace } from '@/types';
-import { advanceWinner, reverseWinner, getRoundName, getRoundsCount } from '@/lib/bracket';
+import type { PrizePlace, BracketFormat, TournamentSettings } from '@/types';
+import AddOnSettings, { addOnPatch, addOnValuesFromSettings, type AddOnValues } from '@/components/AddOnSettings';
+import { findOpenSlots } from '@/lib/tournamentWrites';
+import { CHARGE_LABEL, SETTLEMENT_LABEL, SERVE_KINDS, addOnEnabled, buyBackEnabled, priceCentsForPurchase, priorPurchaseCount, type ServeKind } from '@/lib/addOns';
+import { reverseWinner, getRoundName, getRoundsCount, actualRoundsCount, getLosersRoundsCount, getConsolationRoundsCount } from '@/lib/bracket';
 import { releaseCourtToNextMatchLocal } from '@/lib/courts';
 import { MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
 
@@ -27,7 +33,7 @@ import { MATCH_STATUS_LABEL, MATCH_STATUS_STYLE } from '@/lib/matchStatus';
 
 type Stage = 'setup' | 'participants' | 'bracket';
 type DemoView = 'registrant' | 'director' | 'referee' | 'spectator';
-type DirectorSubView = 'bracket' | 'draw' | 'players' | 'referee' | 'settings';
+type DirectorSubView = 'bracket' | 'draw' | 'players' | 'balances' | 'referee' | 'settings';
 type RefereeSubView = 'queue' | 'bracket' | 'stats' | 'results';
 
 interface TournamentConfig {
@@ -45,6 +51,22 @@ interface TournamentConfig {
   serverDetermination: 'random_coin_toss' | 'referee_manual_override';
   receivingSideSelection: 'server_choice' | 'receiver_choice' | 'ad_court_fixed' | 'deuce_court_fixed';
   prizePlaces: PrizePlace[];
+  bracketFormat: BracketFormat;
+  /** On-site add-ons — both default on, like the real settings. */
+  /** The add-on slice of the tournament settings (toggles, prices, escalation) — same shape the real app saves. */
+  addOnSettings: Partial<TournamentSettings>;
+}
+
+type ServeAddOns = React.ComponentProps<typeof RefereeMatchClient>['serveAddOns'];
+
+/** An on-site add-on a player owes for, collected at the end of the event. */
+interface DemoCharge {
+  id: string;
+  playerId: string;
+  kind: ChargeKind;
+  amountCents: number;
+  matchId?: string;
+  settledWith?: SettlementMethod;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -107,6 +129,8 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
   const [numberOfCourts, setNumberOfCourts] = useState('4');
   const [prizeMoney, setPrizeMoney] = useState('1000');
   const [fundraisingGoal, setFundraisingGoal] = useState('5400');
+  const [bracketFormat, setBracketFormat] = useState<BracketFormat>('single_elimination');
+  const [addOns, setAddOns] = useState<AddOnValues>(() => addOnValuesFromSettings(null));
 
   const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none';
 
@@ -125,6 +149,8 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
       serverDetermination: 'random_coin_toss',
       receivingSideSelection: 'server_choice',
       prizePlaces: [],
+      bracketFormat,
+      addOnSettings: addOnPatch(addOns),
     });
   }
 
@@ -249,6 +275,28 @@ function SetupForm({ onNext }: { onNext: (cfg: TournamentConfig) => void }) {
             <p className="text-xs text-slate-400 mt-1">
               At {fmt$(parseFloat(entryFee) || 0)} entry × {drawSize} players = {fmt$((parseFloat(entryFee) || 0) * drawSize)} potential revenue
             </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+              Bracket Format
+            </label>
+            <select
+              value={bracketFormat}
+              onChange={(e) => setBracketFormat(e.target.value as BracketFormat)}
+              className={inputCls}
+            >
+              <option value="single_elimination">Single Elimination</option>
+              <option value="consolation">Consolation Bracket</option>
+              <option value="double_elimination">Double Elimination</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              On-Site Add-Ons
+            </label>
+            <AddOnSettings values={addOns} onChange={setAddOns} />
           </div>
 
           <button
@@ -405,19 +453,21 @@ function DirectorRefereeQueue({
   players,
   onDeclareWinner,
   onRecordToss,
+  serveAddOnsFor,
 }: {
   config: TournamentConfig;
   matches: Match[];
   players: DemoPlayer[];
   onDeclareWinner: (matchId: string, winnerId: string) => void;
   onRecordToss: (matchId: string, tossWinnerId: string | null, serverPlayerId: string) => void;
+  serveAddOnsFor: (matchId: string) => ServeAddOns;
 }) {
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
 
   const active = matches
     .filter((m) => ['playing', 'court_assigned', 'warmup', 'scheduled'].includes(m.status ?? '') && !m.winnerId && m.player1Id && m.player1Id !== 'BYE' && m.player2Id && m.player2Id !== 'BYE')
-    .sort((a, b) => (a.roundIndex ?? 0) - (b.roundIndex ?? 0) || (a.matchIndex ?? 0) - (b.matchIndex ?? 0));
+    .sort(compareQueueOrder(matches));
 
   if (selectedMatchId) {
     const match = matches.find((m) => m.id === selectedMatchId);
@@ -432,6 +482,7 @@ function DirectorRefereeQueue({
             player2={p2 as Player}
             tournamentName={config.name}
             useRandomToss
+            serveAddOns={serveAddOnsFor(match.id)}
             onServerDetermined={(tossWinnerId, serverPlayerId) => onRecordToss(match.id, tossWinnerId, serverPlayerId)}
             onDeclareWinner={(winnerId) => { onDeclareWinner(match.id, winnerId); setSelectedMatchId(null); }}
             onWalkover={(winnerId) => { onDeclareWinner(match.id, winnerId); setSelectedMatchId(null); }}
@@ -469,7 +520,7 @@ function DirectorRefereeQueue({
                   {p1?.fullName ?? '—'} <span className="text-slate-400 font-normal">vs</span> {p2?.fullName ?? '—'}
                 </p>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  {m.courtNumber ? `Court ${m.courtNumber}` : 'No court'} · Round {(m.roundIndex ?? 0) + 1}
+                  {m.courtNumber ? `Court ${m.courtNumber}` : 'No court'} · {m.bracket !== 'main' ? `${m.bracket === 'grand_final' ? 'Grand Final' : m.bracket === 'losers' ? 'Consolations' : 'Consolation'} · ` : ''}Round {(m.roundIndex ?? 0) + 1}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -488,9 +539,74 @@ function DirectorRefereeQueue({
 
 // ── Director: Players Tab ─────────────────────────────────────────────────────
 
-function DirectorPlayersTab({ players }: { players: DemoPlayer[] }) {
+function DirectorPlayersTab({
+  players,
+  matches,
+  config,
+  charges,
+  onBuyBack,
+}: {
+  players: DemoPlayer[];
+  matches: Match[];
+  config: TournamentConfig;
+  charges: DemoCharge[];
+  onBuyBack: (playerId: string, matchId: string, slot: 'player1Id' | 'player2Id') => void;
+}) {
+  const [buyBackFor, setBuyBackFor] = useState<DemoPlayer | null>(null);
+  const [slotKey, setSlotKey] = useState('');
+  const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
+
+  // Eliminated = has lost a match and has nothing left to play.
+  const lost = new Set(
+    matches.filter((m) => m.winnerId).flatMap((m) => [m.player1Id, m.player2Id].filter((id) => id && id !== 'BYE' && id !== m.winnerId) as string[]),
+  );
+  const stillPlaying = new Set(
+    matches.filter((m) => !m.winnerId && m.status !== 'walkover').flatMap((m) => [m.player1Id, m.player2Id].filter((id) => id && id !== 'BYE') as string[]),
+  );
+  const isEliminated = (id: string) => lost.has(id) && !stillPlaying.has(id);
+  const openSlots = buyBackFor ? findOpenSlots(matches) : [];
+
+  function slotLabel(s: ReturnType<typeof findOpenSlots>[number]) {
+    const m = matches.find((x) => x.id === s.matchId);
+    const waiting = m?.[s.slot === 'player1Id' ? 'player2Id' : 'player1Id'];
+    const bracket = { main: 'Main draw', consolation: 'Consolation', losers: 'Consolations', grand_final: 'Grand Final' }[s.bracket];
+    return `${bracket} · Round ${s.roundIndex + 1} · Match ${s.matchIndex + 1} — vs ${playerMap[waiting ?? '']?.fullName ?? 'a player'}`;
+  }
+
   return (
     <div className="overflow-x-auto">
+      {buyBackFor && (
+        <div className="m-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+          <p className="text-sm font-bold text-emerald-900">
+            Buy {buyBackFor.fullName} back in — {fmt$(priceCentsForPurchase(config.addOnSettings, 'buy_back', priorPurchaseCount(charges, buyBackFor.id, 'buy_back')) / 100)} added to their balance
+          </p>
+          {openSlots.length === 0 ? (
+            <p className="text-xs text-emerald-800">No open slots right now — a slot opens when a match has one player waiting and no opponent.</p>
+          ) : (
+            <select value={slotKey} onChange={(e) => setSlotKey(e.target.value)} className="w-full border border-emerald-200 rounded-xl px-3 py-2 text-sm bg-white">
+              <option value="">Place them in…</option>
+              {openSlots.map((s) => (
+                <option key={`${s.matchId}|${s.slot}`} value={`${s.matchId}|${s.slot}`}>{slotLabel(s)}</option>
+              ))}
+            </select>
+          )}
+          <div className="flex gap-2">
+            <button
+              disabled={!slotKey}
+              onClick={() => {
+                const [matchId, slot] = slotKey.split('|');
+                onBuyBack(buyBackFor.id, matchId, slot as 'player1Id' | 'player2Id');
+                setBuyBackFor(null);
+                setSlotKey('');
+              }}
+              className="btn-primary px-4 py-2 rounded-xl text-xs font-bold disabled:opacity-40"
+            >
+              Buy back &amp; place
+            </button>
+            <button onClick={() => setBuyBackFor(null)} className="px-3 py-2 text-xs text-slate-500">Cancel</button>
+          </div>
+        </div>
+      )}
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -501,11 +617,12 @@ function DirectorPlayersTab({ players }: { players: DemoPlayer[] }) {
             <th className="px-4 py-3 text-left">UTR</th>
             <th className="px-4 py-3 text-left">Seed</th>
             <th className="px-4 py-3 text-left">Status</th>
+            <th className="px-4 py-3 text-right">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {players.length === 0 && (
-            <tr><td colSpan={7} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
+            <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-400">No players yet</td></tr>
           )}
           {players
             .sort((a, b) => {
@@ -540,12 +657,116 @@ function DirectorPlayersTab({ players }: { players: DemoPlayer[] }) {
                     p.status === 'checked_in' ? 'bg-emerald-100 text-emerald-700' :
                     p.status === 'no_show_eliminated' ? 'bg-red-100 text-red-700' :
                     'bg-slate-100 text-slate-600'
-                  }`}>{p.status.replace(/_/g, ' ')}</span>
+                  }`}>{isEliminated(p.id) ? 'eliminated' : p.status.replace(/_/g, ' ')}</span>
+                </td>
+                <td className="px-4 py-3 text-right whitespace-nowrap">
+                  {buyBackEnabled(config.addOnSettings) && isEliminated(p.id) ? (
+                    <button
+                      onClick={() => { setBuyBackFor(p); setSlotKey(''); }}
+                      className="text-xs font-semibold text-emerald-600 hover:text-emerald-800"
+                    >
+                      Buy back
+                    </button>
+                  ) : (
+                    <span className="text-xs text-slate-300">—</span>
+                  )}
                 </td>
               </tr>
             ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ── Director: Add-On Balances Tab ────────────────────────────────────────────
+
+function DemoBalances({
+  players,
+  charges,
+  onSettle,
+}: {
+  players: DemoPlayer[];
+  charges: DemoCharge[];
+  onSettle: (playerId: string, method: SettlementMethod) => void;
+}) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const nameOf = Object.fromEntries(players.map((p) => [p.id, p.fullName]));
+  const open = charges.filter((c) => !c.settledWith);
+  const settled = charges.filter((c) => c.settledWith);
+  const owing = [...new Set(open.map((c) => c.playerId))];
+  const total = (cs: DemoCharge[]) => cs.reduce((sum, c) => sum + c.amountCents, 0) / 100;
+
+  return (
+    <div className="space-y-4 p-1">
+      <div>
+        <h2 className="font-bold text-slate-800">Add-On Balances</h2>
+        <p className="text-sm text-slate-500 mt-0.5">
+          Bought 2nd serves and buy-backs accrue here, collected at the end of the event. In the real
+          product, Stripe charges the card; cash, check and donation-page payments are recorded for documentation.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 max-w-md">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Outstanding</p>
+          <p className="text-xl font-black text-amber-900">{fmt$(total(open))}</p>
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Collected</p>
+          <p className="text-xl font-black text-emerald-900">{fmt$(total(settled))}</p>
+        </div>
+      </div>
+      {owing.length === 0 ? (
+        <p className="text-sm text-slate-400 py-6 text-center">
+          No balances yet — buy a 2nd serve from a match in the Referee Queue, or buy an eliminated player back in from Players.
+        </p>
+      ) : (
+        <ul className="divide-y divide-slate-100 border border-slate-200 rounded-2xl">
+          {owing.map((pid) => {
+            const cs = open.filter((c) => c.playerId === pid);
+            return (
+              <li key={pid} className="px-4 py-3 space-y-2">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="font-semibold text-slate-800">{nameOf[pid]}</p>
+                    <p className="text-xs text-slate-400">{cs.map((c) => CHARGE_LABEL[c.kind]).join(', ')}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-black">{fmt$(total(cs))}</span>
+                    <button onClick={() => setOpenId(openId === pid ? null : pid)} className="btn-primary px-3 py-1.5 rounded-lg text-xs font-bold">Collect</button>
+                  </div>
+                </div>
+                {openId === pid && (
+                  <div className="flex flex-wrap gap-2 rounded-xl bg-slate-50 p-3">
+                    {(['stripe', 'cash', 'check', 'donation'] as SettlementMethod[]).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => { onSettle(pid, m); setOpenId(null); }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold ${m === 'stripe' ? 'bg-slate-900 text-white' : 'border border-slate-300 text-slate-700 hover:bg-white'}`}
+                      >
+                        {m === 'stripe' ? 'Charge card (Stripe)' : `Paid by ${SETTLEMENT_LABEL[m].toLowerCase()}`}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {settled.length > 0 && (
+        <details className="border border-slate-200 rounded-2xl">
+          <summary className="px-4 py-3 text-sm font-semibold text-slate-600 cursor-pointer">Collected ({settled.length})</summary>
+          <ul className="divide-y divide-slate-100 border-t border-slate-100">
+            {settled.map((c) => (
+              <li key={c.id} className="px-4 py-2 text-sm flex justify-between gap-3">
+                <span>{nameOf[c.playerId]} · {CHARGE_LABEL[c.kind]}</span>
+                <span className="text-slate-500">{fmt$(c.amountCents / 100)} · {SETTLEMENT_LABEL[c.settledWith!]}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }
@@ -571,6 +792,7 @@ function DemoSettingsTab({
   const [serverDetermination, setServerDetermination] = useState(s.serverDetermination);
   const [receivingSide, setReceivingSide] = useState(s.receivingSideSelection);
   const [prizePlaces, setPrizePlaces] = useState<PrizePlace[]>(s.prizePlaces ?? []);
+  const [addOns, setAddOns] = useState<AddOnValues>(() => addOnValuesFromSettings(s.addOnSettings));
   const [saved, setSaved] = useState(false);
 
   const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-slate-400';
@@ -590,6 +812,7 @@ function DemoSettingsTab({
       serverDetermination,
       receivingSideSelection: receivingSide,
       prizePlaces,
+      addOnSettings: addOnPatch(addOns),
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -663,6 +886,12 @@ function DemoSettingsTab({
           <PrizePlacesEditor places={prizePlaces} ticketPrice={parseFloat(ticketPrice) || 0} onChange={setPrizePlaces} />
         </div>
 
+        {/* On-site add-ons */}
+        <div className="border-t border-slate-100 pt-5 space-y-4">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">On-Site Add-Ons</h3>
+          <AddOnSettings values={addOns} onChange={setAddOns} />
+        </div>
+
         {/* Match Rules */}
         <div className="border-t border-slate-100 pt-5 space-y-4">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Match Rules</h3>
@@ -696,6 +925,106 @@ function DemoSettingsTab({
   );
 }
 
+// ── Brackets (main + second-chance brackets for the chosen format) ───────────
+
+/**
+ * Renders every bracket the demo's format produced — the main draw, plus the
+ * consolation bracket or the double-elimination losers bracket and Grand
+ * Final — the same panels the real dashboard shows. Each takes the same
+ * optional winner-editing handlers.
+ */
+function DemoBrackets({
+  matches,
+  players,
+  format,
+  onSetWinner,
+  onReverseMatch,
+  resultEditable,
+}: {
+  matches: Match[];
+  players: DemoPlayer[];
+  format: BracketFormat;
+  onSetWinner?: (matchId: string, winnerId: string) => void;
+  onReverseMatch?: (matchId: string) => void;
+  resultEditable?: boolean;
+}) {
+  const maxPlayers = Math.max(8, players.length);
+  const mainMatches = matches.filter((m) => m.bracket === 'main');
+  const panels: { key: string; title: string; matches: Match[]; rounds: number; max: number }[] = [
+    {
+      key: 'main',
+      title: format === 'single_elimination' ? 'Bracket' : 'Main Draw',
+      matches: mainMatches,
+      rounds: actualRoundsCount(mainMatches, 'main', getRoundsCount(maxPlayers)),
+      max: maxPlayers,
+    },
+  ];
+  if (format === 'consolation') {
+    panels.push({
+      key: 'consolation',
+      title: 'Consolation Bracket',
+      matches: matches.filter((m) => m.bracket === 'consolation'),
+      rounds: getConsolationRoundsCount(maxPlayers),
+      max: maxPlayers,
+    });
+  }
+  if (format === 'double_elimination') {
+    panels.push(
+      {
+        key: 'losers',
+        title: 'Consolations Bracket',
+        matches: matches.filter((m) => m.bracket === 'losers'),
+        rounds: actualRoundsCount(matches, 'losers', getLosersRoundsCount(maxPlayers)),
+        max: maxPlayers,
+      },
+      {
+        key: 'grand_final',
+        title: 'Grand Final',
+        matches: matches.filter((m) => m.bracket === 'grand_final' && (m.player1Id || m.matchIndex === 0)),
+        rounds: 1,
+        max: 2,
+      },
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {panels.map((panel) => (
+        <div key={panel.key} className={panels.length > 1 ? 'bg-white rounded-2xl border border-slate-200 p-4' : undefined}>
+          {panel.matches.length === 0 ? (
+            <p className="text-slate-400 text-center py-8">Nothing here yet.</p>
+          ) : onSetWinner && !resultEditable ? (
+            <BracketPanel
+              matches={panel.matches}
+              players={players}
+              maxPlayers={panel.max}
+              totalRoundsOverride={panel.rounds}
+              title={panel.title}
+              liveUpdates={false}
+              onSetWinner={(match, winnerId) => onSetWinner(match.id, winnerId)}
+              onReverseMatch={onReverseMatch}
+            />
+          ) : (
+            <>
+              {panels.length > 1 && <h3 className="font-bold text-slate-800 text-sm mb-4">{panel.title}</h3>}
+              <BracketView
+                initialMatches={panel.matches}
+                players={players}
+                maxPlayers={panel.max}
+                totalRoundsOverride={panel.rounds}
+                liveUpdates={false}
+                resultEditable={resultEditable}
+                onSetWinner={onSetWinner ? (match, winnerId) => onSetWinner(match.id, winnerId) : undefined}
+                onReverseMatch={onReverseMatch}
+              />
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── View: Director Dashboard ──────────────────────────────────────────────────
 
 function DirectorView({
@@ -706,6 +1035,10 @@ function DirectorView({
   onRecordToss,
   onSwap,
   onReverseMatch,
+  charges,
+  serveAddOnsFor,
+  onBuyBack,
+  onSettleBalance,
   onUpdateConfig,
 }: {
   config: TournamentConfig;
@@ -715,6 +1048,10 @@ function DirectorView({
   onRecordToss: (matchId: string, tossWinnerId: string | null, serverPlayerId: string) => void;
   onSwap: (aMatchId: string, aSlot: 'p1' | 'p2', bMatchId: string, bSlot: 'p1' | 'p2') => void;
   onReverseMatch: (matchId: string) => void;
+  charges: DemoCharge[];
+  serveAddOnsFor: (matchId: string) => ServeAddOns;
+  onBuyBack: (playerId: string, matchId: string, slot: 'player1Id' | 'player2Id') => void;
+  onSettleBalance: (playerId: string, method: SettlementMethod) => void;
   onUpdateConfig: (patch: Partial<TournamentConfig>) => void;
 }) {
   const [tab, setTab] = useState<DirectorSubView>('bracket');
@@ -726,6 +1063,7 @@ function DirectorView({
     { id: 'bracket', label: 'Bracket' },
     { id: 'draw', label: 'Draw Editor' },
     { id: 'players', label: `Players (${players.length})` },
+    { id: 'balances', label: `Balances${charges.some((c) => !c.settledWith) ? ' •' : ''}` },
     { id: 'referee', label: 'Referee Queue' },
     { id: 'settings', label: 'Settings' },
   ];
@@ -795,14 +1133,12 @@ function DirectorView({
           <div className="p-5">
             {tab === 'bracket' && (
               <div className="overflow-x-auto">
-                <BracketPanel
+                <DemoBrackets
                   matches={matches}
                   players={players}
-                  maxPlayers={Math.max(8, players.length)}
-                  liveUpdates={false}
-                  onSetWinner={(match, winnerId) => onSetWinner(match.id, winnerId)}
+                  format={config.bracketFormat}
+                  onSetWinner={onSetWinner}
                   onReverseMatch={onReverseMatch}
-                  emptyMessage="No bracket yet."
                 />
               </div>
             )}
@@ -816,9 +1152,10 @@ function DirectorView({
                 </p>
                 <div className="overflow-x-auto">
                   <BracketView
-                    initialMatches={matches}
+                    initialMatches={matches.filter((m) => m.bracket === 'main')}
                     players={players}
                     maxPlayers={Math.max(8, players.length)}
+                    totalRoundsOverride={actualRoundsCount(matches, 'main', getRoundsCount(Math.max(8, players.length)))}
                     liveUpdates={false}
                     editable={!anyResults}
                     onSwap={!anyResults ? onSwap : undefined}
@@ -827,7 +1164,13 @@ function DirectorView({
               </>
             )}
 
-            {tab === 'players' && <DirectorPlayersTab players={players} />}
+            {tab === 'players' && (
+              <DirectorPlayersTab players={players} matches={matches} config={config} charges={charges} onBuyBack={onBuyBack} />
+            )}
+
+            {tab === 'balances' && (
+              <DemoBalances players={players} charges={charges} onSettle={onSettleBalance} />
+            )}
 
             {tab === 'referee' && (
               <DirectorRefereeQueue
@@ -836,6 +1179,7 @@ function DirectorView({
                 players={players}
                 onDeclareWinner={onSetWinner}
                 onRecordToss={onRecordToss}
+                serveAddOnsFor={serveAddOnsFor}
               />
             )}
 
@@ -879,13 +1223,12 @@ function BracketDeclareView({
       </div>
       <div className="px-4 py-6 overflow-x-auto">
         <div className="bg-white rounded-2xl border border-slate-200 p-4 min-w-max">
-          <BracketView
-            initialMatches={matches}
+          <DemoBrackets
+            matches={matches}
             players={players}
-            maxPlayers={Math.max(8, players.length)}
-            liveUpdates={false}
+            format={config.bracketFormat}
             resultEditable
-            onSetWinner={(match, winnerId) => onSetWinner(match.id, winnerId)}
+            onSetWinner={onSetWinner}
             onReverseMatch={onReverseMatch}
           />
         </div>
@@ -902,12 +1245,14 @@ function RefereeView({
   players,
   onDeclareWinner,
   onRecordToss,
+  serveAddOnsFor,
 }: {
   config: TournamentConfig;
   matches: Match[];
   players: DemoPlayer[];
   onDeclareWinner: (matchId: string, winnerId: string) => void;
   onRecordToss: (matchId: string, tossWinnerId: string | null, serverPlayerId: string) => void;
+  serveAddOnsFor: (matchId: string) => ServeAddOns;
 }) {
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
@@ -967,6 +1312,7 @@ function RefereeView({
             player2={p2 as Player}
             tournamentName={config.name}
             useRandomToss
+            serveAddOns={serveAddOnsFor(match.id)}
             onServerDetermined={(tossWinnerId, serverPlayerId) => onRecordToss(match.id, tossWinnerId, serverPlayerId)}
             onDeclareWinner={(winnerId) => { onDeclareWinner(match.id, winnerId); selectMatch(null); }}
             onWalkover={(winnerId) => { onDeclareWinner(match.id, winnerId); selectMatch(null); }}
@@ -1081,12 +1427,7 @@ function SpectatorView({
       </div>
       <div className="px-4 py-6 overflow-x-auto">
         <div className="bg-white rounded-2xl border border-slate-200 p-4 min-w-max">
-          <BracketView
-            initialMatches={matches}
-            players={players}
-            maxPlayers={Math.max(8, players.length)}
-            liveUpdates={false}
-          />
+          <DemoBrackets matches={matches} players={players} format={config.bracketFormat} />
         </div>
       </div>
     </div>
@@ -1237,16 +1578,15 @@ function ResultsView({
   players: DemoPlayer[];
 }) {
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
-  const totalRounds = getRoundsCount(Math.max(8, players.length));
-  const finalMatch = matches.find(
-    (m) => m.roundIndex === totalRounds - 1 && m.matchIndex === 0,
-  );
+  const mainMatches = matches.filter((m) => m.bracket === 'main');
+  const totalRounds = actualRoundsCount(mainMatches, 'main', getRoundsCount(Math.max(8, players.length)));
+  const finalMatch = getChampionshipMatch(matches);
   const champion = finalMatch?.winnerId ? playerMap[finalMatch.winnerId] : null;
   const finalist = finalMatch
     ? playerMap[finalMatch.player1Id === finalMatch.winnerId ? (finalMatch.player2Id ?? '') : (finalMatch.player1Id ?? '')]
     : null;
 
-  const semiFinals = matches.filter((m) => m.roundIndex === totalRounds - 2);
+  const semiFinals = mainMatches.filter((m) => m.roundIndex === totalRounds - 2);
   const sf3rd = semiFinals
     .map((m) => {
       const loser = m.winnerId ? (m.player1Id === m.winnerId ? m.player2Id : m.player1Id) : null;
@@ -1318,12 +1658,7 @@ function ResultsView({
 
         <div className="bg-white rounded-2xl border border-slate-200 p-4 overflow-x-auto">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">Full Bracket</p>
-          <BracketView
-            initialMatches={matches}
-            players={players}
-            maxPlayers={Math.max(8, players.length)}
-            liveUpdates={false}
-          />
+          <DemoBrackets matches={matches} players={players} format={config.bracketFormat} />
         </div>
       </div>
     </div>
@@ -1395,6 +1730,7 @@ function BracketStage({
   const [mobile, setMobile] = useState(false);
   const [speeding, setSpeeding] = useState(false);
   const [shareMsg, setShareMsg] = useState('');
+  const [charges, setCharges] = useState<DemoCharge[]>([]);
 
   const declareWinner = useCallback((matchId: string, winnerId: string) => {
     setMatches((prev) => {
@@ -1405,7 +1741,7 @@ function BracketStage({
       const withToss = finishing && !finishing.serverPlayerId
         ? prev.map((m) => (m.id === matchId ? { ...m, ...simulateCoinToss(m) } : m))
         : prev;
-      const advanced = advanceWinner(withToss, matchId, winnerId);
+      const advanced = declareResultLocal(withToss, matchId, winnerId);
       return releaseCourtToNextMatchLocal(advanced, finishing?.courtNumber);
     });
   }, []);
@@ -1418,7 +1754,47 @@ function BracketStage({
   }, []);
 
   const undoMatchResult = useCallback((matchId: string) => {
-    setMatches((prev) => reverseWinner(prev, matchId));
+    setMatches((prev) => {
+      const mainMatches = prev.filter((m) => m.bracket === 'main');
+      return reverseWinner(prev, matchId, actualRoundsCount(mainMatches, 'main', getRoundsCount(Math.max(8, players.length))));
+    });
+  }, [players.length]);
+
+  /** Serve add-ons for one match, quoted the way the real server does: each price depends on how often that player already bought that serve. */
+  const serveAddOnsFor = (matchId: string): ServeAddOns => {
+    const m = matches.find((x) => x.id === matchId);
+    const enabled = SERVE_KINDS.filter((k) => addOnEnabled(config.addOnSettings, k));
+    if (!m || enabled.length === 0) return undefined;
+    const quotes: Record<string, Partial<Record<ServeKind, number>>> = {};
+    for (const pid of [m.player1Id, m.player2Id]) {
+      if (!pid || pid === 'BYE') continue;
+      quotes[pid] = {};
+      for (const kind of enabled) quotes[pid][kind] = priceCentsForPurchase(config.addOnSettings, kind, priorPurchaseCount(charges, pid, kind));
+    }
+    return {
+      enabled: [...enabled],
+      quotes,
+      purchased: charges.filter((c) => c.matchId === matchId && (c.kind === 'second_serve' || c.kind === 'third_serve')).map((c) => ({ playerId: c.playerId, kind: c.kind as ServeKind })),
+      onBuy: async (playerId, kind) => {
+        if (charges.some((c) => c.matchId === matchId && c.kind === kind)) return { ok: false, error: 'That serve was already bought for this match.' };
+        const amountCents = priceCentsForPurchase(config.addOnSettings, kind, priorPurchaseCount(charges, playerId, kind));
+        setCharges((prev) => [...prev, { id: `charge-${prev.length + 1}`, playerId, kind, amountCents, matchId }]);
+        return { ok: true };
+      },
+    };
+  };
+
+  /** An eliminated player re-enters: the director picks the open slot, the fee goes on their balance. */
+  const buyBack = useCallback((playerId: string, matchId: string, slot: 'player1Id' | 'player2Id') => {
+    setMatches((prev) => prev.map((m) => (m.id === matchId && !m[slot] ? { ...m, [slot]: playerId } : m)));
+    setCharges((prev) => [...prev, {
+      id: `charge-${prev.length + 1}`, playerId, kind: 'buy_back', matchId,
+      amountCents: priceCentsForPurchase(config.addOnSettings, 'buy_back', priorPurchaseCount(prev, playerId, 'buy_back')),
+    }]);
+  }, [config.addOnSettings]);
+
+  const settleBalance = useCallback((playerId: string, method: SettlementMethod) => {
+    setCharges((prev) => prev.map((c) => (c.playerId === playerId && !c.settledWith ? { ...c, settledWith: method } : c)));
   }, []);
 
   const swapPlayers = useCallback(
@@ -1464,16 +1840,13 @@ function BracketStage({
     (m) => !m.winnerId && m.status !== 'walkover' && m.player1Id && m.player1Id !== 'BYE' && m.player2Id && m.player2Id !== 'BYE',
   ).length;
 
-  const finalMatch = (() => {
-    const totalRounds = getRoundsCount(Math.max(8, players.length));
-    return matches.find((m) => m.roundIndex === totalRounds - 1 && m.matchIndex === 0);
-  })();
+  const finalMatch = getChampionshipMatch(matches);
   const isComplete = !!finalMatch?.winnerId;
 
   const refereeQueueEl = (
     <RefereeView
       config={config} matches={matches} players={players} onDeclareWinner={declareWinner}
-      onRecordToss={recordToss}
+      onRecordToss={recordToss} serveAddOnsFor={serveAddOnsFor}
     />
   );
 
@@ -1493,6 +1866,10 @@ function BracketStage({
       onRecordToss={recordToss}
       onSwap={swapPlayers}
       onReverseMatch={undoMatchResult}
+      charges={charges}
+      serveAddOnsFor={serveAddOnsFor}
+      onBuyBack={buyBack}
+      onSettleBalance={settleBalance}
       onUpdateConfig={(patch) => setConfig((c) => ({ ...c, ...patch }))}
     />
   );
@@ -1621,13 +1998,13 @@ export default function DemoClient() {
   }
 
   function handleParticipantsNext(ps: DemoPlayer[]) {
-    const bracket = buildBracket(ps, config?.drawSize);
+    const bracket = buildBracket(ps, config?.drawSize, config?.bracketFormat);
     const courts = config?.numberOfCourts ?? 0;
     // Assign only the first `courts` ready matches, same as the real app's
     // Start Live Play — the rest stay queued and pick up a court in real
     // time as matches finish (see declareWinner / releaseCourtToNextMatchLocal).
     const readyRound0 = bracket
-      .filter((m) => m.roundIndex === 0 && m.player1Id && m.player1Id !== 'BYE' && m.player2Id && m.player2Id !== 'BYE')
+      .filter((m) => m.bracket === 'main' && m.roundIndex === 0 && m.player1Id && m.player1Id !== 'BYE' && m.player2Id && m.player2Id !== 'BYE')
       .sort((a, b) => a.matchIndex - b.matchIndex)
       .slice(0, courts);
     const courtByMatchId = new Map(readyRound0.map((m, i) => [m.id, i + 1]));

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { formatCurrency } from '@/lib/pricing';
+import { getTenantDirectorEmail } from '@/lib/directorEmail';
 
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
   // Pull player + tournament + tenant names from DB — never trust caller-supplied display strings
   const { data: player } = await admin
     .from('players')
-    .select('id, full_name, last_confirmation_sent_at, payment_status, stripe_payment_intent_id, tournaments(name, tenants(display_name))')
+    .select('id, full_name, last_confirmation_sent_at, payment_status, stripe_payment_intent_id, tournaments(name, tenant_id, tenants(display_name))')
     .eq('tournament_id', tournamentId)
     .eq('email', to.toLowerCase())
     .maybeSingle();
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
   await admin.from('players').update({ last_confirmation_sent_at: new Date().toISOString() }).eq('id', player.id);
 
   // Use DB-sourced values — ignore any caller-supplied playerName/tournamentName/tenantName
-  const t = player.tournaments as unknown as { name: string; tenants: { display_name: string } } | null;
+  const t = player.tournaments as unknown as { name: string; tenant_id: string; tenants: { display_name: string } } | null;
   const resolvedPlayerName = player.full_name ?? 'Player';
   const resolvedTournamentName = t?.name ?? 'the tournament';
   const resolvedOrgName = t?.tenants?.display_name ?? 'One Point Bowl';
@@ -80,6 +81,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const replyTo = t?.tenant_id ? await getTenantDirectorEmail(admin, t.tenant_id) : null;
   const from = process.env.RESEND_FROM_EMAIL ?? 'noreply@onepointbowl.com';
   const orgName = resolvedOrgName;
 
@@ -119,6 +121,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         from: `${orgName} via One Point Bowl <${from}>`,
         to: [to],
+        ...(replyTo ? { reply_to: replyTo } : {}),
         subject,
         html: `
           <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 16px">

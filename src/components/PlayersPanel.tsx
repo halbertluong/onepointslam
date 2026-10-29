@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/browser';
-import { saveSeedRatings, withdrawPlayer } from '@/lib/tournamentWrites';
+import { saveSeedRatings, withdrawPlayer, removePlayer, buyBackPlayer, findOpenSlots, type OpenSlot } from '@/lib/tournamentWrites';
+import { buyBackEnabled, priceCentsForPurchase, priorPurchaseCount, escalationOf } from '@/lib/addOns';
+import { formatCurrency } from '@/lib/pricing';
 import { getRoundsCount, actualRoundsCount } from '@/lib/bracket';
 import AwaitingPaymentTable from '@/components/AwaitingPaymentTable';
 import PlayerDetailModal from '@/components/PlayerDetailModal';
-import type { Match, PendingRegistration, Player } from '@/types';
+import type { Match, PendingRegistration, Player, PlayerCharge, TournamentSettings } from '@/types';
 
 /** Optional columns a director can hide to focus on what matters to them.
  *  '#' and Name are always shown — they're how you find a row — and Actions
@@ -65,6 +67,8 @@ export default function PlayersPanel({
    *  nothing to reconcile, so the Payment column is hidden entirely. */
   entranceFee = 0,
   pendingRegistrations = [],
+  settings,
+  charges = [],
   onViewPayment,
   onDismissPending,
   onSaved,
@@ -77,12 +81,20 @@ export default function PlayersPanel({
   entranceFee?: number;
   /** Registrations reserved before payment finished — see AwaitingPaymentTable. */
   pendingRegistrations?: PendingRegistration[];
+  /** Tournament settings — the buy-back flag and price live here. */
+  settings?: TournamentSettings;
+  /** The add-on ledger — a buy-back's price depends on how many times that player has already bought back in. */
+  charges?: PlayerCharge[];
   /** Jumps to the Payments tab, highlighting this payment. */
   onViewPayment: (paymentIntentId: string) => void;
   onDismissPending: (id: string) => Promise<{ error?: string }>;
   onSaved: () => void;
 }) {
   const showPayments = entranceFee > 0;
+  const canBuyBack = bracketGenerated && buyBackEnabled(settings);
+  const [buyBackFor, setBuyBackFor] = useState<Player | null>(null);
+  const [buyBackSlot, setBuyBackSlot] = useState('');
+  const [buyBackBusy, setBuyBackBusy] = useState(false);
   const unpaidPlayers = showPayments ? players.filter((p) => p.paymentStatus !== 'paid') : [];
   const [seedEdits, setSeedEdits] = useState<Record<string, string>>(() => {
     const m: Record<string, string> = {};
@@ -147,6 +159,59 @@ export default function PlayersPanel({
     setTimeout(() => setMsg(''), 2500);
   }
 
+  async function handleRemove(p: Player) {
+    if (!window.confirm(
+      `Remove ${p.fullName} completely? This deletes the registration and any unsettled add-on charges. ` +
+      'If they have an active match, their opponent is awarded a walkover. ' +
+      (p.paymentStatus === 'paid' ? 'Their entry fee was paid — refund it from Stripe separately. ' : '') +
+      'This cannot be undone.',
+    )) return;
+    setWithdrawingId(p.id);
+    const winnersRounds = actualRoundsCount(matches, 'main', getRoundsCount(maxPlayers));
+    const { error } = await removePlayer(createClient(), matches, tournamentId, p.id, winnersRounds);
+    setWithdrawingId(null);
+    if (error) { setErr(`Could not remove ${p.fullName}: ${error}`); return; }
+    setErr('');
+    setMsg(`${p.fullName} removed.`);
+    if (selectedPlayerId === p.id) setSelectedPlayerId(null);
+    onSaved();
+    setTimeout(() => setMsg(''), 2500);
+  }
+
+  const openSlots: OpenSlot[] = buyBackFor ? findOpenSlots(matches) : [];
+  const buyBackPrior = buyBackFor ? priorPurchaseCount(charges, buyBackFor.id, 'buy_back') : 0;
+  const buyBackCents = priceCentsForPurchase(settings, 'buy_back', buyBackPrior);
+
+  function slotLabel(s: OpenSlot): string {
+    const bracket = { main: 'Main draw', consolation: 'Consolation', losers: 'Losers bracket', grand_final: 'Grand Final' }[s.bracket];
+    const m = matches.find((x) => x.id === s.matchId);
+    const waiting = m?.[s.slot === 'player1Id' ? 'player2Id' : 'player1Id'];
+    const waitingName = players.find((x) => x.id === waiting)?.fullName ?? 'a player';
+    return `${bracket} · Round ${s.roundIndex + 1} · Match ${s.matchIndex + 1} — vs ${waitingName}`;
+  }
+
+  async function handleBuyBack() {
+    if (!buyBackFor) return;
+    const target = openSlots.find((s) => `${s.matchId}|${s.slot}` === buyBackSlot);
+    if (!target) { setErr('Pick an open slot to place them in.'); return; }
+    setBuyBackBusy(true);
+    const { error } = await buyBackPlayer(createClient(), {
+      tournamentId,
+      playerId: buyBackFor.id,
+      matchId: target.matchId,
+      slot: target.slot,
+      amountCents: buyBackCents,
+    });
+    setBuyBackBusy(false);
+    if (error) { setErr(`Could not buy ${buyBackFor.fullName} back in: ${error}`); return; }
+    setErr('');
+    setMsg(`${buyBackFor.fullName} is back in — ${formatCurrency(buyBackCents / 100)} added to their balance.`);
+    setBuyBackFor(null);
+    setBuyBackSlot('');
+    onSaved();
+    setTimeout(() => setMsg(''), 3000);
+  }
+
   // "In the bracket" means holding a first-round slot — that's the source of
   // truth for the draw; later rounds only ever fill by advancing.
   const placedIds = new Set(
@@ -165,7 +230,12 @@ export default function PlayersPanel({
         const decided = matches.find(
           (m) => m.winnerId && (m.player1Id === id || m.player2Id === id) && m.winnerId !== id,
         );
-        return !!decided;
+        // A player bought back into an open slot has lost before but is
+        // playing again — still eliminated only if nothing is left for them.
+        const stillPlaying = matches.some(
+          (m) => !m.winnerId && m.status !== 'walkover' && (m.player1Id === id || m.player2Id === id),
+        );
+        return !!decided && !stillPlaying;
       }),
   );
 
@@ -374,18 +444,31 @@ export default function PlayersPanel({
                         )}
                       </td>
                     )}
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      {p.status !== 'no_show_eliminated' ? (
+                    <td className="px-4 py-3 text-right whitespace-nowrap space-x-3">
+                      {p.status !== 'no_show_eliminated' && (
                         <button
                           onClick={() => handleWithdraw(p)}
                           disabled={withdrawingId === p.id}
                           className="text-xs font-semibold text-red-500 hover:text-red-700 disabled:opacity-50"
                         >
-                          {withdrawingId === p.id ? 'Withdrawing…' : 'Withdraw'}
+                          {withdrawingId === p.id ? 'Working…' : 'Withdraw'}
                         </button>
-                      ) : (
-                        <span className="text-xs text-slate-300">—</span>
                       )}
+                      {canBuyBack && statusFor(p).label === 'Eliminated' && (
+                        <button
+                          onClick={() => { setBuyBackFor(p); setBuyBackSlot(''); }}
+                          className="text-xs font-semibold text-emerald-600 hover:text-emerald-800"
+                        >
+                          Buy back
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleRemove(p)}
+                        disabled={withdrawingId === p.id}
+                        className="text-xs font-semibold text-slate-400 hover:text-red-700 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
                     </td>
                   </tr>
                 );
@@ -394,6 +477,47 @@ export default function PlayersPanel({
           </table>
         </div>
       </div>
+
+      {buyBackFor && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 shadow-xl">
+            <h3 className="font-black text-slate-900">Buy {buyBackFor.fullName} back in</h3>
+            <p className="text-sm text-slate-500">
+              {formatCurrency(buyBackCents / 100)} is added to their balance, collected at the end of the event.
+              {buyBackPrior > 0 && ` This is buy-back #${buyBackPrior + 1} for them${escalationOf(settings, 'buy_back').mode !== 'none' ? ' — the price steps up each time' : ''}.`}
+              {' '}Choose the open slot to place them in.
+            </p>
+            {openSlots.length === 0 ? (
+              <p className="text-sm bg-amber-50 text-amber-800 rounded-xl p-3">
+                No open slots right now — a slot opens when a match has one player waiting and no opponent.
+                Try again once more results are in.
+              </p>
+            ) : (
+              <select
+                value={buyBackSlot}
+                onChange={(e) => setBuyBackSlot(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm"
+                aria-label="Open slot"
+              >
+                <option value="">Select a slot…</option>
+                {openSlots.map((s) => (
+                  <option key={`${s.matchId}|${s.slot}`} value={`${s.matchId}|${s.slot}`}>{slotLabel(s)}</option>
+                ))}
+              </select>
+            )}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setBuyBackFor(null)} className="px-3 py-2 text-sm text-slate-500 hover:text-slate-700">Cancel</button>
+              <button
+                onClick={handleBuyBack}
+                disabled={buyBackBusy || !buyBackSlot}
+                className="btn-primary px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-40"
+              >
+                {buyBackBusy ? 'Placing…' : 'Buy back & place'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedPlayer && (
         <PlayerDetailModal

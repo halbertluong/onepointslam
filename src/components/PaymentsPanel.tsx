@@ -171,7 +171,7 @@ export default function PaymentsPanel({ tournamentId, focusPaymentIntentId, onRe
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div>
                     <p className="font-bold text-slate-800">
-                      {formatCurrency(p.amountCents / 100)} · {p.kind === 'donation' ? 'Donation' : 'Entry'}
+                      {formatCurrency(p.amountCents / 100)} · {p.kind === 'donation' ? 'Donation' : p.kind === 'balance' ? 'Add-on balance' : 'Entry'}
                     </p>
                     <p className="text-xs text-slate-400 mt-0.5">
                       {new Date(p.createdAt).toLocaleString()} · <span className="font-mono">{p.id}</span>

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { getTenantDirectorEmail } from '@/lib/directorEmail';
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -68,6 +70,19 @@ export async function POST(req: NextRequest) {
     : 'One Point Bowl';
   const tenantName = tenantNameRaw.replace(/[\r\n]/g, ' ').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+  // Replies go to the director who sent this, not the platform's no-reply
+  // sender. A super admin sending on a tenant's behalf routes replies to that
+  // tenant's own director instead of themselves.
+  let replyTo: string | null = appUser?.role === 'tenant_admin' ? (user.email ?? null) : null;
+  if (!replyTo) {
+    const admin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+    replyTo = await getTenantDirectorEmail(admin, tournament.tenant_id);
+  }
+
   // Use Supabase Auth to send emails via their built-in SMTP
   // (or fall back to logging if no email provider configured)
   const resendApiKey = process.env.RESEND_API_KEY;
@@ -85,6 +100,7 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             from: `${tenantName} via One Point Bowl <${process.env.RESEND_FROM_EMAIL ?? 'noreply@onepointbowl.com'}>`,
             to: [email],
+            ...(replyTo ? { reply_to: replyTo } : {}),
             subject: cleanSubject,
             text: `${message}\n\n---\nSent by ${tenantName} via One Point Bowl`,
             html: `<p>${message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br/>')}</p><hr/><p style="color:#888;font-size:12px">Sent by ${tenantName} via One Point Bowl</p>`,
